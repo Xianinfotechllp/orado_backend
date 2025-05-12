@@ -3,7 +3,12 @@ const Product = require('../models/productModel'); // Assuming FoodItem is the m
 // Create a product
 exports.createProduct = async (req, res) => {
   try {
-    const restaurantId = req.params.restaurantId;
+    const restaurantId = req.params.restaurantId.trim()
+    console.log(restaurantId)
+    if (!req.body.name || !req.body.price || !req.body.foodType) {
+        console.log(req.body.name)
+  return res.status(400).json({ error: 'Name, price, and food type are required' });
+}
     const newProduct = new Product({ ...req.body, restaurantId });
     await newProduct.save();
     res.status(201).json(newProduct);
@@ -11,6 +16,7 @@ exports.createProduct = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // Get products for a restaurant
 exports.getRestaurantProducts = async (req, res) => {
