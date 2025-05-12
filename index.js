@@ -1,11 +1,14 @@
 const express = require("express");
 const dotenv = require("dotenv");
-dotenv
+const db = require("./db");
+
 dotenv.config();
+db()
 
 const app = express();
 
 app.use(express.json());
+
 
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
