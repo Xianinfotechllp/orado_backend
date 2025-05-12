@@ -18,9 +18,16 @@ const userSchema = new mongoose.Schema(
       state: String,
       zip: String,
       location: {
-        type: { type: String, enum: ["Point"], default: "Point" },
-        coordinates: { type: [Number], default: [0, 0] }, // [longitude, latitude]
-      },
+        type: {
+          type: String,
+          enum: ["Point"],
+          default: "Point"
+        },
+        coordinates: {
+          type: [Number],
+          default: [0, 0]
+        }
+      }
     },
     active: { type: Boolean, default: true },
     profilePicture: { type: String },
