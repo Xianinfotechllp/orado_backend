@@ -1,15 +1,14 @@
 const express = require("express");
 const dotenv = require("dotenv");
-const db = require("./config/dbConfig");
-
+const db = require("./db");
+const userRouter = require("./routes/userRoutes");
 dotenv.config();
 db()
 
 const app = express();
 
 app.use(express.json());
-
-
+app.use("/user", userRouter);
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
 });

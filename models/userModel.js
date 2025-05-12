@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema(
     userType: {
       type: String,
       enum: ["customer", "agent", "merchant", "admin"],
+      default: "customer",
       required: true,
     },
     address: {
@@ -17,9 +18,16 @@ const userSchema = new mongoose.Schema(
       state: String,
       zip: String,
       location: {
-        type: { type: String, enum: ["Point"], default: "Point" },
-        coordinates: { type: [Number], default: [0, 0] }, // [longitude, latitude]
-      },
+        type: {
+          type: String,
+          enum: ["Point"],
+          default: "Point"
+        },
+        coordinates: {
+          type: [Number],
+          default: [0, 0]
+        }
+      }
     },
     active: { type: Boolean, default: true },
     profilePicture: { type: String },
@@ -39,11 +47,6 @@ const userSchema = new mongoose.Schema(
 
     gst: String,
     fssai: String,
-
-    role: {
-      type: String,
-      enum: ["manager", "delivery_manager", "admin"],
-    },
 
     fraudulent: { type: Boolean, default: false },
     codEnabled: { type: Boolean, default: false },
