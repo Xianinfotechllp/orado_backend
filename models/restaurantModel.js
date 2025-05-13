@@ -46,8 +46,19 @@ const restaurantSchema = new mongoose.Schema(
     },
     rating: { type: Number, default: 0 }, // Restaurant rating
     serviceAreas: [
-      { type: "Polygon", coordinates: [[Number, Number]] }, // Delivery zones
-    ],
+        {
+          type: {
+            type: String,
+            enum: ['Polygon'],
+            required: true,
+            default: 'Polygon'
+          },
+          coordinates: {
+            type: [[[Number]]], // Array of arrays of positions [ [ [lng, lat], [lng, lat], ... ] ]
+            required: true
+          }
+        }
+      ],
     minOrderAmount: { type: Number, required: true }, // Minimum order amount
     paymentMethods: [
       { type: String, enum: ["cash", "online", "wallet"], required: true },
@@ -57,10 +68,6 @@ const restaurantSchema = new mongoose.Schema(
 );
 
 
-restaurantSchema.index({ ownerId: 1 });
-restaurantSchema.index({ "address.location": "2dsphere" });
-restaurantSchema.index({ active: 1 });
-restaurantSchema.index({ merchantSearchName: "text" }); 
-restaurantSchema.index({ rating: -1 }); 
+ 
 
 module.exports = mongoose.model("Restaurant", restaurantSchema);
