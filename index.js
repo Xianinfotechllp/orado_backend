@@ -12,7 +12,7 @@ app.use(express.json());
 
 // routes using
 app.use("/user", userRouter);
-app.use("/products",productRouter);
+app.use("/restaurants",productRouter);
 
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
