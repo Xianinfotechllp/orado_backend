@@ -33,7 +33,8 @@ const userSchema = new mongoose.Schema(
     profilePicture: { type: String },
 
     verification: {
-      otp: String,
+      phoneOtp: String,
+      emailOtp: String,
       otpExpiry: Date,
       emailVerified: { type: Boolean, default: false },
       phoneVerified: { type: Boolean, default: false },
