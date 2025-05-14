@@ -1,20 +1,79 @@
-const Product = require('../models/productModel'); // Assuming FoodItem is the model name
+const Product = require('../models/productModel');
+const Category = require('../models/categoryModel');
+const Restaurant = require('../models/restaurantModel');
+
 
 // Create a product
+
+
 exports.createProduct = async (req, res) => {
   try {
-    const restaurantId = req.params.restaurantId.trim()
-    console.log(restaurantId)
-    if (!req.body.name || !req.body.price || !req.body.foodType) {
-        console.log(req.body.name)
-  return res.status(400).json({ error: 'Name, price, and food type are required' });
-}
-    const newProduct = new Product({ ...req.body, restaurantId });
+    const restaurantId = req.params.restaurantId?.trim();
+
+    if (!restaurantId) {
+      return res.status(400).json({ error: 'Restaurant ID is required in params' });
+    }
+
+
+
+    // Accessing the properties directly from req.body
+    const name = req.body.name;
+    const price = req.body.price;
+    const foodType = req.body.foodType;
+    const categoryId = req.body.categoryId;
+
+    // Validate required fields
+    if (!name || !price || !foodType || !categoryId) {
+      return res.status(400).json({
+        error: 'Name, price, foodType, and categoryId are required fields.'
+      });
+    }
+
+    // Validate restaurant exists
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: 'Restaurant not found' });
+    }
+
+    // Check if product with the same name already exists for this restaurant
+    const existingProduct = await Product.findOne({
+      name: name.trim(),
+      restaurantId,
+      categoryId
+    });
+
+    if (existingProduct) {
+      return res.status(400).json({
+        message: 'A product with the same name already exists in this category for this restaurant.'
+      });
+    }
+
+    // Validate category exists and belongs to the same restaurant
+    const category = await Category.findOne({ _id: categoryId, restaurantId });
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found for this restaurant' });
+    }
+
+    // Create and save product
+    const newProduct = new Product({
+      name, 
+      price, 
+      foodType, 
+      categoryId, 
+      restaurantId
+    });
+
     await newProduct.save();
-    res.status(201).json(newProduct);
+
+    res.status(201).json({
+      message: 'Product created successfully',
+      product: newProduct
+    });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    console.error('Error creating product:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };
 
 

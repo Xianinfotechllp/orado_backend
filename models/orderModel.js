@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+
 const orderSchema = mongoose.Schema({
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     restaurantId:{ type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant' },
@@ -27,7 +28,24 @@ const orderSchema = mongoose.Schema({
       cancellationReason: String,  // Store reason for cancellation
       debtCancellation: Boolean, //flag for cancellation due to debt
       deliveryMode: {type: String, enum: ['contact', 'no_contact', 'do_not_disturb']},
-      location: { type: 'Point', coordinates: [Number, Number] }, // Delivery location
+      location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      required: true,
+      default: 'Point',
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      required: true,
+      validate: {
+        validator: function (val) {
+          return val.length === 2;
+        },
+        message: 'Coordinates must be [longitude, latitude]',
+      },
+    },
+  },
       surgeCharge: Number,
       orderPreparationDelay: Boolean, // Flag for order delay
       scheduledTime: Date, // For scheduled orders
