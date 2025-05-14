@@ -9,6 +9,12 @@ const resturantRouter = require("./routes/restaurantRoutes");
 
 const offerRouter = require("./routes/offerRoutes"); 
 
+const orderRouter = require("./routes/orderRoutes");
+
+const couponRoutes = require("./routes/couponRoutes"); 
+
+
+
 dotenv.config();
 db()
   
@@ -21,6 +27,8 @@ app.use("/user", userRouter);
 app.use("/restaurants",productRouter);
 app.use("/restaurants",resturantRouter)
 app.use("/restaurants",offerRouter)
+app.use("/order",orderRouter)
+app.use("/coupon",couponRoutes)
 
 
 app.get("/", (req, res) => {
