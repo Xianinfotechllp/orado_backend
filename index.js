@@ -6,7 +6,10 @@ const userRouter = require("./routes/userRoutes");
 const productRouter = require("./routes/productRoutesRoutes");
 
 const resturantRouter = require("./routes/restaurantRoutes"); 
+const locationRouter = require("./routes/locationRoutes")
 
+
+const agentRouter = require("./routes/agentRoutes")
 const offerRouter = require("./routes/offerRoutes"); 
 
 const orderRouter = require("./routes/orderRoutes");
@@ -29,6 +32,13 @@ app.use("/restaurants",resturantRouter)
 app.use("/restaurants",offerRouter)
 app.use("/order",orderRouter)
 app.use("/coupon",couponRoutes)
+
+
+
+app.use("/resturants",resturantRouter)
+app.use("/location",locationRouter)
+app.use("/agent",agentRouter)
+
 
 
 app.get("/", (req, res) => {
