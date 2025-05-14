@@ -1,4 +1,4 @@
-const Order=require("../models/orderModel");
+const Order = require("../models/orderModel");
 
 exports.createOrder = async (req, res) => {
   try {
@@ -15,11 +15,22 @@ exports.createOrder = async (req, res) => {
       instructions,
       surgeCharge,
       discountAmount,
-      couponCode
+      couponCode,
     } = req.body;
 
-    if (!customerId || !restaurantId || !orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
-      return res.status(400).json({ error: 'Required fields missing or invalid: customerId, restaurantId, orderItems' });
+    if (
+      !customerId ||
+      !restaurantId ||
+      !orderItems ||
+      !Array.isArray(orderItems) ||
+      orderItems.length === 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "Required fields missing or invalid: customerId, restaurantId, orderItems",
+        });
     }
 
     const order = new Order({
@@ -30,33 +41,36 @@ exports.createOrder = async (req, res) => {
       deliveryCharge,
       tipAmount,
       paymentMethod,
-      paymentStatus: 'pending',
+      paymentStatus: "pending",
       location,
       scheduledTime,
       instructions,
       surgeCharge,
       discountAmount,
-      couponCode
+      couponCode,
     });
 
     const savedOrder = await order.save();
     res.status(201).json(savedOrder);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create order', details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to create order", details: err.message });
   }
 };
 
-//  Get Order by ID 
+//  Get Order by ID
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.orderId)
-      .populate('customerId restaurantId orderItems.productId');
+    const order = await Order.findById(req.params.orderId).populate(
+      "customerId restaurantId orderItems.productId"
+    );
 
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
     res.json(order);
   } catch (err) {
-    res.status(500).json({ error: 'Error fetching order' });
+    res.status(500).json({ error: "Error fetching order" });
   }
 };
 
@@ -66,27 +80,34 @@ exports.getOrdersByCustomer = async (req, res) => {
     const orders = await Order.find({ customerId: req.params.customerId });
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    res.status(500).json({ error: "Failed to fetch orders" });
   }
 };
 
-//Get Orders by Agent 
+//Get Orders by Agent
 exports.getOrdersByAgent = async (req, res) => {
   try {
     const orders = await Order.find({ agentId: req.params.agentId });
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    res.status(500).json({ error: "Failed to fetch orders" });
   }
 };
 
 //Update Order Status
 exports.updateOrderStatus = async (req, res) => {
   const { status } = req.body;
-  const validStatuses = ['pending', 'preparing', 'ready', 'on_the_way', 'delivered', 'cancelled'];
+  const validStatuses = [
+    "pending",
+    "preparing",
+    "ready",
+    "on_the_way",
+    "delivered",
+    "cancelled",
+  ];
 
   if (!validStatuses.includes(status)) {
-    return res.status(400).json({ error: 'Invalid status value' });
+    return res.status(400).json({ error: "Invalid status value" });
   }
 
   try {
@@ -95,10 +116,10 @@ exports.updateOrderStatus = async (req, res) => {
       { orderStatus: status },
       { new: true }
     );
-    if (!updated) return res.status(404).json({ error: 'Order not found' });
+    if (!updated) return res.status(404).json({ error: "Order not found" });
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update status' });
+    res.status(500).json({ error: "Failed to update status" });
   }
 };
 
@@ -109,16 +130,16 @@ exports.cancelOrder = async (req, res) => {
     const updated = await Order.findByIdAndUpdate(
       req.params.orderId,
       {
-        orderStatus: 'cancelled',
-        cancellationReason: reason || '',
-        debtCancellation: debtCancellation || false
+        orderStatus: "cancelled",
+        cancellationReason: reason || "",
+        debtCancellation: debtCancellation || false,
       },
       { new: true }
     );
-    if (!updated) return res.status(404).json({ error: 'Order not found' });
+    if (!updated) return res.status(404).json({ error: "Order not found" });
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to cancel order' });
+    res.status(500).json({ error: "Failed to cancel order" });
   }
 };
 
@@ -129,25 +150,25 @@ exports.reviewOrder = async (req, res) => {
     const updated = await Order.findByIdAndUpdate(
       req.params.orderId,
       {
-        customerReview: customerReview || '',
-        restaurantReview: restaurantReview || ''
+        customerReview: customerReview || "",
+        restaurantReview: restaurantReview || "",
       },
       { new: true }
     );
-    if (!updated) return res.status(404).json({ error: 'Order not found' });
+    if (!updated) return res.status(404).json({ error: "Order not found" });
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to submit review' });
+    res.status(500).json({ error: "Failed to submit review" });
   }
 };
 
 //updateDeliveryMode
 exports.updateDeliveryMode = async (req, res) => {
   const { mode } = req.body;
-  const validModes = ['contact', 'no_contact', 'do_not_disturb'];
+  const validModes = ["contact", "no_contact", "do_not_disturb"];
 
   if (!validModes.includes(mode)) {
-    return res.status(400).json({ error: 'Invalid delivery mode' });
+    return res.status(400).json({ error: "Invalid delivery mode" });
   }
 
   try {
@@ -158,17 +179,16 @@ exports.updateDeliveryMode = async (req, res) => {
     );
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update delivery mode' });
+    res.status(500).json({ error: "Failed to update delivery mode" });
   }
 };
-
 
 //assign-Agent
 exports.assignAgent = async (req, res) => {
   const { agentId } = req.body;
 
   if (!agentId) {
-    return res.status(400).json({ error: 'agentId is required' });
+    return res.status(400).json({ error: "agentId is required" });
   }
 
   try {
@@ -179,17 +199,17 @@ exports.assignAgent = async (req, res) => {
     );
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to assign agent' });
+    res.status(500).json({ error: "Failed to assign agent" });
   }
 };
 
 //getAllOrders-Admin
 exports.getAllOrders = async (req, res) => {
   try {
-    const orders = await Order.find().populate('customerId restaurantId');
+    const orders = await Order.find().populate("customerId restaurantId");
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    res.status(500).json({ error: "Failed to fetch orders" });
   }
 };
 
@@ -197,7 +217,7 @@ exports.getAllOrders = async (req, res) => {
 exports.updateScheduledTime = async (req, res) => {
   const { scheduledTime } = req.body;
   if (!scheduledTime) {
-    return res.status(400).json({ error: 'scheduledTime is required' });
+    return res.status(400).json({ error: "scheduledTime is required" });
   }
 
   try {
@@ -208,7 +228,7 @@ exports.updateScheduledTime = async (req, res) => {
     );
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update scheduled time' });
+    res.status(500).json({ error: "Failed to update scheduled time" });
   }
 };
 
@@ -224,7 +244,7 @@ exports.updateInstructions = async (req, res) => {
     );
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update instructions' });
+    res.status(500).json({ error: "Failed to update instructions" });
   }
 };
 
@@ -240,7 +260,7 @@ exports.applyDiscount = async (req, res) => {
     );
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to apply discount' });
+    res.status(500).json({ error: "Failed to apply discount" });
   }
 };
 
@@ -251,18 +271,17 @@ exports.getCustomerOrderStatus = async (req, res) => {
     const customerId = req.params.customerId;
 
     const orders = await Order.find({ customerId })
-      .select('orderStatus _id scheduledTime restaurantId')
-      .populate('restaurantId', 'name'); // optional: populate restaurant name
+      .select("orderStatus _id scheduledTime restaurantId")
+      .populate("restaurantId", "name"); // optional: populate restaurant name
 
     res.json(orders);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error while fetching order status' });
+    res
+      .status(500)
+      .json({ message: "Server error while fetching order status" });
   }
 };
-
-
-
 
 // sheduling order
 
@@ -272,12 +291,17 @@ exports.getScheduledOrders = async (req, res) => {
     const now = new Date();
     const orders = await Order.find({
       scheduledTime: { $gte: now },
-      orderStatus: 'pending',
-    }).populate('customerId restaurantId');
+      orderStatus: "pending",
+    }).populate("customerId restaurantId");
 
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch scheduled orders', details: err.message });
+    res
+      .status(500)
+      .json({
+        error: "Failed to fetch scheduled orders",
+        details: err.message,
+      });
   }
 };
 
@@ -290,12 +314,17 @@ exports.getCustomerScheduledOrders = async (req, res) => {
     const orders = await Order.find({
       customerId,
       scheduledTime: { $gte: now },
-      orderStatus: 'pending',
+      orderStatus: "pending",
     }).sort({ scheduledTime: 1 });
 
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch customer scheduled orders', details: err.message });
+    res
+      .status(500)
+      .json({
+        error: "Failed to fetch customer scheduled orders",
+        details: err.message,
+      });
   }
 };
 
@@ -304,24 +333,30 @@ exports.rescheduleOrder = async (req, res) => {
   const { newScheduledTime } = req.body;
 
   if (!newScheduledTime || new Date(newScheduledTime) <= Date.now()) {
-    return res.status(400).json({ error: 'Scheduled time must be a future date' });
+    return res
+      .status(400)
+      .json({ error: "Scheduled time must be a future date" });
   }
 
   try {
     const order = await Order.findById(req.params.orderId);
 
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
-    if (order.orderStatus !== 'pending') {
-      return res.status(400).json({ error: 'Only pending orders can be rescheduled' });
+    if (order.orderStatus !== "pending") {
+      return res
+        .status(400)
+        .json({ error: "Only pending orders can be rescheduled" });
     }
 
     order.scheduledTime = newScheduledTime;
     const updated = await order.save();
 
-    res.json({ message: 'Scheduled time updated', order: updated });
+    res.json({ message: "Scheduled time updated", order: updated });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to reschedule order', details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to reschedule order", details: err.message });
   }
 };
 
@@ -331,17 +366,71 @@ exports.processScheduledOrders = async () => {
     const now = new Date();
     const orders = await Order.find({
       scheduledTime: { $lte: now },
-      orderStatus: 'pending',
+      orderStatus: "pending",
     });
 
     for (const order of orders) {
-      order.orderStatus = 'preparing';
+      order.orderStatus = "preparing";
       await order.save();
       console.log(`Order ${order._id} moved to 'preparing'`);
     }
 
     return orders.length;
   } catch (err) {
-    console.error('Error processing scheduled orders:', err.message);
+    console.error("Error processing scheduled orders:", err.message);
+  }
+};
+
+exports.merchantAcceptOrder = async (req,res) => {
+  try {
+    const orderId = req.params.orderId;
+    const order = await Order.findOne({ _id: orderId });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.orderStatus !== "pending") {
+      return res
+        .status(400)
+        .json({ message: "Order has already been processed" });
+    }
+    order.orderStatus = "accepted";
+    await order.save();
+
+    res.status(200).json({
+      message: "Order accepted successfully",
+      order,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+exports.merchantRejectOrder = async (req,res) => {
+  try {
+    const orderId = req.params.orderId;
+    const order = await Order.findOne({ _id: orderId });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.orderStatus !== "pending") {
+      return res
+        .status(400)
+        .json({ message: "Order has already been processed" });
+    }
+    order.orderStatus = "rejected";
+    await order.save();
+
+    res.status(200).json({
+      message: "Order  rejected successfully",
+      order,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
 };

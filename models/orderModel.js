@@ -14,9 +14,28 @@ const orderSchema = mongoose.Schema({
     deliveryTime: Date,
     orderStatus: {
         type: String,
-        default: 'pending',
-        enum: ['pending', 'preparing', 'ready', 'on_the_way', 'delivered', 'cancelled']
+        default: 'pending',enum: [
+  'pending',               // Order received, awaiting restaurant confirmation
+  'accepted_by_restaurant',// Restaurant accepted the order
+  'rejected_by_restaurant',// Restaurant rejected the order
+  'preparing',             // Restaurant is preparing food
+  'ready',                 // Food is ready for pickup
+  'assigned_to_agent',     // Delivery agent assigned
+  'picked_up',             // Agent has collected the order
+  'on_the_way',            // Order is being delivered
+  'arrived',               // Agent arrived at delivery location
+  'delivered',             // Order successfully delivered
+  'cancelled_by_customer', // Cancelled by customer
+ 
+]
+
       },
+
+      assignedAgent: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Agent',
+  required: false,
+},
 
       totalAmount: Number,
       deliveryCharge: Number,
