@@ -8,6 +8,8 @@ const restaurantSchema = new mongoose.Schema(
       ref: "User", // Reference to User model (merchant)
       required: true,
     },
+    images: [String], // URLs of images (e.g. Cloudinary URLs)
+
     address: {
       street: String,
       city: String,
@@ -20,10 +22,29 @@ const restaurantSchema = new mongoose.Schema(
     },
     phone: { type: String, required: true },
     email: { type: String, required: true },
+    // offers-added
+    offers: [
+  {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Offer'
+  }
+]
+,
     openingHours: {
       startTime: { type: String, required: true }, // "HH:mm"
       endTime: { type: String, required: true }, // "HH:mm"
     },
+
+    businessHours: {
+  type: Map,
+  of: {
+    startTime: { type: String }, // "HH:mm"
+    endTime: { type: String },
+    closed: { type: Boolean, default: false } // optional field to mark a day closed
+  },
+  default: {}
+},
+
     categories: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, // Reference to Categories
     ],
