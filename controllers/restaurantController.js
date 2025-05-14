@@ -291,6 +291,7 @@ exports.getRestaurantById = async (req, res) => {
  
   try {
     const { restaurantId } = req.params;
+  
     if (!restaurantId) {
       return res.status(400).json({ message: 'restaurantId is required.' });
     }

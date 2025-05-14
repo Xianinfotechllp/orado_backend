@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 exports.createCategory = async (req, res) => {
 try {
     const {restaurantId} = req.params
+    
     const {name,description} = req.body;
    // Check required fields
   
@@ -18,7 +19,8 @@ if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
 
 
  // Check if restaurant exists
- const restaurant = await Restaurant.findById(restaurantId);
+
+ const restaurant = await Restaurant.find({_id:restaurantId});
  if (!restaurant) {
     return res.status(404).json({ message: 'Restaurant not found.' });
   }
@@ -63,9 +65,10 @@ exports.getAResturantCategories = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
         return res.status(400).json({ message: 'Invalid restaurantId.' });
       }
-  
+    
      // Check if restaurant exists
   const restaurant = await Restaurant.findOne({_id: restaurantId} );
+  console.log(restaurant,restaurantId)
    if (!restaurant) {
     return res.status(404).json({ message: 'Restaurant not found.' });
   }
