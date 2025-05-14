@@ -1,5 +1,6 @@
 const Order = require("../models/orderModel");
 
+// Create Order
 exports.createOrder = async (req, res) => {
   try {
     const {
@@ -16,26 +17,9 @@ exports.createOrder = async (req, res) => {
       surgeCharge,
       discountAmount,
       couponCode,
-
-    } = req.body;
-
-    if (
-      !customerId ||
-      !restaurantId ||
-      !orderItems ||
-      !Array.isArray(orderItems) ||
-      orderItems.length === 0
-    ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Required fields missing or invalid: customerId, restaurantId, orderItems",
-        });
-
       guestName,
       guestPhone,
-      guestEmail
+      guestEmail,
     } = req.body;
 
     if (!restaurantId || !Array.isArray(orderItems) || orderItems.length === 0) {
@@ -63,9 +47,6 @@ exports.createOrder = async (req, res) => {
       surgeCharge,
       discountAmount,
       couponCode,
-
-    });
-
     };
 
     if (customerId) {
@@ -76,28 +57,18 @@ exports.createOrder = async (req, res) => {
       orderData.guestEmail = guestEmail;
     }
 
-
     const order = new Order(orderData);
     const savedOrder = await order.save();
     res.status(201).json(savedOrder);
   } catch (err) {
-    res
-      .status(500)
-      .json({ error: "Failed to create order", details: err.message });
+    res.status(500).json({ error: "Failed to create order", details: err.message });
   }
 };
 
-
-
-
-
-//  Get Order by ID 
-
+// Get Order by ID
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.orderId).populate(
-      "customerId restaurantId orderItems.productId"
-    );
+    const order = await Order.findById(req.params.orderId).populate("customerId restaurantId orderItems.productId");
 
     if (!order) return res.status(404).json({ error: "Order not found" });
 
@@ -117,26 +88,21 @@ exports.getOrdersByCustomer = async (req, res) => {
   }
 };
 
-//Get Orders by Agent
+// Get Orders by Agent
 exports.getOrdersByAgent = async (req, res) => {
   try {
-    const orders = await Order.find({ agentId: req.params.agentId });
+    const orders = await Order.find({ assignedAgent: req.params.agentId });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
   }
 };
 
-//Update Order Status
+// Update Order Status
 exports.updateOrderStatus = async (req, res) => {
   const { status } = req.body;
   const validStatuses = [
-    "pending",
-    "preparing",
-    "ready",
-    "on_the_way",
-    "delivered",
-    "cancelled",
+    "pending", "preparing", "ready", "on_the_way", "delivered", "cancelled"
   ];
 
   if (!validStatuses.includes(status)) {
@@ -156,7 +122,7 @@ exports.updateOrderStatus = async (req, res) => {
   }
 };
 
-// cancelOrder
+// Cancel Order
 exports.cancelOrder = async (req, res) => {
   const { reason, debtCancellation } = req.body;
   try {
@@ -176,7 +142,7 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
-// reviewOrder
+// Review Order
 exports.reviewOrder = async (req, res) => {
   const { customerReview, restaurantReview } = req.body;
   try {
@@ -195,7 +161,7 @@ exports.reviewOrder = async (req, res) => {
   }
 };
 
-//updateDeliveryMode
+// Update Delivery Mode
 exports.updateDeliveryMode = async (req, res) => {
   const { mode } = req.body;
   const validModes = ["contact", "no_contact", "do_not_disturb"];
@@ -216,7 +182,7 @@ exports.updateDeliveryMode = async (req, res) => {
   }
 };
 
-//assign-Agent
+// Assign Agent
 exports.assignAgent = async (req, res) => {
   const { agentId } = req.body;
 
@@ -227,7 +193,7 @@ exports.assignAgent = async (req, res) => {
   try {
     const updated = await Order.findByIdAndUpdate(
       req.params.orderId,
-      { agentId },
+      { assignedAgent: agentId },
       { new: true }
     );
     res.json(updated);
@@ -236,7 +202,7 @@ exports.assignAgent = async (req, res) => {
   }
 };
 
-//getAllOrders-Admin
+// Get All Orders (Admin)
 exports.getAllOrders = async (req, res) => {
   try {
     const orders = await Order.find().populate("customerId restaurantId");
@@ -246,7 +212,7 @@ exports.getAllOrders = async (req, res) => {
   }
 };
 
-//updateScheduledTime
+// Update Scheduled Time
 exports.updateScheduledTime = async (req, res) => {
   const { scheduledTime } = req.body;
   if (!scheduledTime) {
@@ -265,7 +231,7 @@ exports.updateScheduledTime = async (req, res) => {
   }
 };
 
-//updateInstructions
+// Update Instructions
 exports.updateInstructions = async (req, res) => {
   const { instructions } = req.body;
 
@@ -297,29 +263,22 @@ exports.applyDiscount = async (req, res) => {
   }
 };
 
-// getCustomerOrderStatus
-
+// Get Customer Order Status
 exports.getCustomerOrderStatus = async (req, res) => {
   try {
     const customerId = req.params.customerId;
 
     const orders = await Order.find({ customerId })
       .select("orderStatus _id scheduledTime restaurantId")
-      .populate("restaurantId", "name"); // optional: populate restaurant name
+      .populate("restaurantId", "name");
 
     res.json(orders);
   } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ message: "Server error while fetching order status" });
+    res.status(500).json({ message: "Server error while fetching order status" });
   }
 };
 
-
-
-
-//list only guest orders:Admin Feature
+// Get Guest Orders (Admin)
 exports.getGuestOrders = async (req, res) => {
   try {
     const orders = await Order.find({ customerId: null });
@@ -329,14 +288,7 @@ exports.getGuestOrders = async (req, res) => {
   }
 };
 
-
-
-
-
-
-// sheduling order
-
-// Get All Scheduled Orders (Admin or Restaurant Dashboard)
+// Get Scheduled Orders (Admin or Restaurant Dashboard)
 exports.getScheduledOrders = async (req, res) => {
   try {
     const now = new Date();
@@ -347,16 +299,14 @@ exports.getScheduledOrders = async (req, res) => {
 
     res.json(orders);
   } catch (err) {
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch scheduled orders",
-        details: err.message,
-      });
+    res.status(500).json({
+      error: "Failed to fetch scheduled orders",
+      details: err.message,
+    });
   }
 };
 
-// Get Scheduled Orders by Customer
+// Get Customer Scheduled Orders
 exports.getCustomerScheduledOrders = async (req, res) => {
   try {
     const customerId = req.params.customerId;
@@ -370,118 +320,9 @@ exports.getCustomerScheduledOrders = async (req, res) => {
 
     res.json(orders);
   } catch (err) {
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch customer scheduled orders",
-        details: err.message,
-      });
-  }
-};
-
-// Reschedule an Order (Only if still pending)
-exports.rescheduleOrder = async (req, res) => {
-  const { newScheduledTime } = req.body;
-
-  if (!newScheduledTime || new Date(newScheduledTime) <= Date.now()) {
-    return res
-      .status(400)
-      .json({ error: "Scheduled time must be a future date" });
-  }
-
-  try {
-    const order = await Order.findById(req.params.orderId);
-
-    if (!order) return res.status(404).json({ error: "Order not found" });
-
-    if (order.orderStatus !== "pending") {
-      return res
-        .status(400)
-        .json({ error: "Only pending orders can be rescheduled" });
-    }
-
-    order.scheduledTime = newScheduledTime;
-    const updated = await order.save();
-
-    res.json({ message: "Scheduled time updated", order: updated });
-  } catch (err) {
-    res
-      .status(500)
-      .json({ error: "Failed to reschedule order", details: err.message });
-  }
-};
-
-// Auto Transition Scheduled Orders to "preparing" (Cron job support)
-exports.processScheduledOrders = async () => {
-  try {
-    const now = new Date();
-    const orders = await Order.find({
-      scheduledTime: { $lte: now },
-      orderStatus: "pending",
+    res.status(500).json({
+      error: "Failed to fetch customer scheduled orders",
+      details: err.message,
     });
-
-    for (const order of orders) {
-      order.orderStatus = "preparing";
-      await order.save();
-      console.log(`Order ${order._id} moved to 'preparing'`);
-    }
-
-    return orders.length;
-  } catch (err) {
-    console.error("Error processing scheduled orders:", err.message);
-  }
-};
-
-exports.merchantAcceptOrder = async (req,res) => {
-  try {
-    const orderId = req.params.orderId;
-    const order = await Order.findOne({ _id: orderId });
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    if (order.orderStatus !== "pending") {
-      return res
-        .status(400)
-        .json({ message: "Order has already been processed" });
-    }
-    order.orderStatus = "accepted";
-    await order.save();
-
-    res.status(200).json({
-      message: "Order accepted successfully",
-      order,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-
-
-exports.merchantRejectOrder = async (req,res) => {
-  try {
-    const orderId = req.params.orderId;
-    const order = await Order.findOne({ _id: orderId });
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    if (order.orderStatus !== "pending") {
-      return res
-        .status(400)
-        .json({ message: "Order has already been processed" });
-    }
-    order.orderStatus = "rejected";
-    await order.save();
-
-    res.status(200).json({
-      message: "Order  rejected successfully",
-      order,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
   }
 };
