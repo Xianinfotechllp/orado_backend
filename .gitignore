@@ -1,3 +1,4 @@
+
  # Environment variables
 .env
 .env.local
@@ -58,3 +59,20 @@ Thumbs.db
 *.bak
 *.backup
 .env.backup
+
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock 
