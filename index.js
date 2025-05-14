@@ -9,6 +9,10 @@ const resturantRouter = require("./routes/restaurantRoutes");
 
 const offerRouter = require("./routes/offerRoutes"); 
 
+const orderRouter = require("./routes/orderRoutes"); 
+
+
+
 dotenv.config();
 db()
   
@@ -21,6 +25,7 @@ app.use("/user", userRouter);
 app.use("/restaurants",productRouter);
 app.use("/restaurants",resturantRouter)
 app.use("/restaurants",offerRouter)
+app.use("/order",orderRouter)
 
 
 app.get("/", (req, res) => {
