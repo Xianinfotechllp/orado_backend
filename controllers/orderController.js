@@ -16,6 +16,7 @@ exports.createOrder = async (req, res) => {
       surgeCharge,
       discountAmount,
       couponCode,
+
     } = req.body;
 
     if (
@@ -31,10 +32,24 @@ exports.createOrder = async (req, res) => {
           error:
             "Required fields missing or invalid: customerId, restaurantId, orderItems",
         });
+
+      guestName,
+      guestPhone,
+      guestEmail
+    } = req.body;
+
+    if (!restaurantId || !Array.isArray(orderItems) || orderItems.length === 0) {
+      return res.status(400).json({ error: 'restaurantId and orderItems are required' });
     }
 
-    const order = new Order({
-      customerId,
+    // If it's a guest order, require guest contact info
+    if (!customerId) {
+      if (!guestName || !guestPhone) {
+        return res.status(400).json({ error: 'Guest name and phone are required for guest checkout' });
+      }
+    }
+
+    const orderData = {
       restaurantId,
       orderItems,
       totalAmount,
@@ -48,8 +63,21 @@ exports.createOrder = async (req, res) => {
       surgeCharge,
       discountAmount,
       couponCode,
+
     });
 
+    };
+
+    if (customerId) {
+      orderData.customerId = customerId;
+    } else {
+      orderData.guestName = guestName;
+      orderData.guestPhone = guestPhone;
+      orderData.guestEmail = guestEmail;
+    }
+
+
+    const order = new Order(orderData);
     const savedOrder = await order.save();
     res.status(201).json(savedOrder);
   } catch (err) {
@@ -59,7 +87,12 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-//  Get Order by ID
+
+
+
+
+//  Get Order by ID 
+
 exports.getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId).populate(
@@ -282,6 +315,24 @@ exports.getCustomerOrderStatus = async (req, res) => {
       .json({ message: "Server error while fetching order status" });
   }
 };
+
+
+
+
+//list only guest orders:Admin Feature
+exports.getGuestOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ customerId: null });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch guest orders' });
+  }
+};
+
+
+
+
+
 
 // sheduling order
 
