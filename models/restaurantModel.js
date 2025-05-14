@@ -20,6 +20,14 @@ const restaurantSchema = new mongoose.Schema(
     },
     phone: { type: String, required: true },
     email: { type: String, required: true },
+    // offers-added
+    offers: [
+  {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Offer'
+  }
+]
+,
     openingHours: {
       startTime: { type: String, required: true }, // "HH:mm"
       endTime: { type: String, required: true }, // "HH:mm"
