@@ -6,6 +6,7 @@ const userRouter = require("./routes/userRoutes");
 const productRouter = require("./routes/productRoutesRoutes");
 
 const resturantRouter = require("./routes/restaurantRoutes"); 
+const locationRouter = require("./routes/locationRoutes")
 
 dotenv.config();
 db()
@@ -20,6 +21,7 @@ app.use("/user", userRouter);
 app.use("/restaurants",productRouter);
 
 app.use("/resturants",resturantRouter)
+app.use("/location",locationRouter)
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
 });
