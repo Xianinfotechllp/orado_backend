@@ -1,4 +1,5 @@
 const Agent = require('../models/agentModel');
+const Order = require('../models/orderModel');
 const bcrypt = require('bcrypt');
 
 exports.registerAgent = async (req, res) => {
@@ -97,5 +98,142 @@ exports.registerAgent = async (req, res) => {
   } catch (error) {
     console.error('Agent Registration Error:', error);
     res.status(500).json({ message: 'Something went wrong', error: error.message });
+  }
+};
+
+
+
+
+exports.agentAcceptsOrder = async (req, res) => {
+  try {
+    const agentId = req.params.agentId;
+    const { orderId } = req.body;
+
+    // Validate input
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // Fetch the order
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Ensure order is in 'accepted_by_restaurant' status
+    if (order.orderStatus !== 'accepted_by_restaurant') {
+      return res.status(400).json({
+        error: `Cannot accept order. Current status is: ${order.orderStatus}`,
+      });
+    }
+
+    // Assign the agent and update order status
+    order.orderStatus = 'assigned_to_agent';
+    order.assignedAgent = agentId; // assuming this field exists in your schema
+
+    await order.save();
+
+    res.status(200).json({
+      message: 'Order successfully accepted by agent',
+      order,
+    });
+
+  } catch (error) {
+    console.error('Agent Accept Order Error:', error);
+    res.status(500).json({ error: 'Something went wrong while accepting the order' });
+  }
+};
+
+
+
+exports.agentRejectsOrder = async (req, res) => {
+  try {
+    const agentId = req.params.agentId;
+    const { orderId, rejectionReason } = req.body;
+
+    // Validate input
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // Fetch the order
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Ensure order is in 'accepted_by_restaurant' status
+    if (order.orderStatus !== 'accepted_by_restaurant') {
+      return res.status(400).json({
+        error: `Cannot reject order. Current status is: ${order.orderStatus}`,
+      });
+    }
+
+    // Update status to cancelled_by_agent and optionally store rejection reason
+    order.orderStatus = 'cancelled_by_agent';
+    order.cancellationReason = rejectionReason || 'Rejected by agent';
+    order.assignedAgent = null;
+
+    await order.save();
+
+    res.status(200).json({
+      message: 'Order successfully rejected by agent',
+      order,
+    });
+
+  } catch (error) {
+    console.error('Agent Reject Order Error:', error);
+    res.status(500).json({ error: 'Something went wrong while rejecting the order' });
+  }
+};
+
+exports.agentUpdatesOrderStatus = async (req, res) => {
+  try {
+    const { agentId, orderId } = req.params;
+    const { status } = req.body;
+
+    // Check if agentId, orderId, and status are provided
+    if (!agentId || !orderId || !status) {
+      return res.status(400).json({ error: "agentId, orderId, and status are required" });
+    }
+
+    // Validate orderId format (if using MongoDB ObjectId)
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ error: "Invalid orderId format" });
+    }
+
+    // Validate status value
+   const allowedStatuses = [
+  'picked_up',   // Agent collected the order
+  'on_the_way',  // Agent started delivery
+  'arrived',     // Agent reached customer location
+  'delivered'    // Order handed over
+];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status value" });
+    }
+
+    // Find the order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Check if agent is assigned to this order
+    if (order.assignedAgent.toString() !== agentId) {
+      return res.status(403).json({ error: "You are not assigned to this order" });
+    }
+
+    // Update status
+    order.status = status;
+    await order.save();
+
+    return res.status(200).json({ message: "Order status updated successfully", order });
+
+  } catch (error) {
+    console.error("Error updating order status", error);
+    res.status(500).json({ error: "Server error while updating order status" });
   }
 };
