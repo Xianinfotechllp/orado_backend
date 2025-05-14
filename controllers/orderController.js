@@ -15,15 +15,24 @@ exports.createOrder = async (req, res) => {
       instructions,
       surgeCharge,
       discountAmount,
-      couponCode
+      couponCode,
+      guestName,
+      guestPhone,
+      guestEmail
     } = req.body;
 
-    if (!customerId || !restaurantId || !orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
-      return res.status(400).json({ error: 'Required fields missing or invalid: customerId, restaurantId, orderItems' });
+    if (!restaurantId || !Array.isArray(orderItems) || orderItems.length === 0) {
+      return res.status(400).json({ error: 'restaurantId and orderItems are required' });
     }
 
-    const order = new Order({
-      customerId,
+    // If it's a guest order, require guest contact info
+    if (!customerId) {
+      if (!guestName || !guestPhone) {
+        return res.status(400).json({ error: 'Guest name and phone are required for guest checkout' });
+      }
+    }
+
+    const orderData = {
       restaurantId,
       orderItems,
       totalAmount,
@@ -36,15 +45,26 @@ exports.createOrder = async (req, res) => {
       instructions,
       surgeCharge,
       discountAmount,
-      couponCode
-    });
+      couponCode,
+    };
 
+    if (customerId) {
+      orderData.customerId = customerId;
+    } else {
+      orderData.guestName = guestName;
+      orderData.guestPhone = guestPhone;
+      orderData.guestEmail = guestEmail;
+    }
+
+    const order = new Order(orderData);
     const savedOrder = await order.save();
     res.status(201).json(savedOrder);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create order', details: err.message });
   }
 };
+
+
 
 //  Get Order by ID 
 exports.getOrderById = async (req, res) => {
@@ -260,6 +280,18 @@ exports.getCustomerOrderStatus = async (req, res) => {
     res.status(500).json({ message: 'Server error while fetching order status' });
   }
 };
+
+
+//list only guest orders:Admin Feature
+exports.getGuestOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ customerId: null });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch guest orders' });
+  }
+};
+
 
 
 
