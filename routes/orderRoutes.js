@@ -15,6 +15,9 @@ const {
   updateScheduledTime,
   updateInstructions,
   applyDiscount,
+  getScheduledOrders,
+  getCustomerScheduledOrders,
+  rescheduleOrder,
 } = require('../controllers/orderController');
 
 // orders
@@ -36,5 +39,12 @@ router.put('/:orderId/agent', assignAgent);
 router.put('/:orderId/scheduled-time', updateScheduledTime);
 router.put('/:orderId/instructions', updateInstructions);
 router.post('/:orderId/apply-discount', applyDiscount);
+
+
+//-ordershedules-//
+router.get('/admin/scheduled-orders', getScheduledOrders);
+router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders);
+router.put('/reschedule/:orderId', rescheduleOrder);
+
 
 module.exports = router;

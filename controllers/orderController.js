@@ -260,3 +260,88 @@ exports.getCustomerOrderStatus = async (req, res) => {
     res.status(500).json({ message: 'Server error while fetching order status' });
   }
 };
+
+
+
+
+// sheduling order
+
+// Get All Scheduled Orders (Admin or Restaurant Dashboard)
+exports.getScheduledOrders = async (req, res) => {
+  try {
+    const now = new Date();
+    const orders = await Order.find({
+      scheduledTime: { $gte: now },
+      orderStatus: 'pending',
+    }).populate('customerId restaurantId');
+
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch scheduled orders', details: err.message });
+  }
+};
+
+// Get Scheduled Orders by Customer
+exports.getCustomerScheduledOrders = async (req, res) => {
+  try {
+    const customerId = req.params.customerId;
+    const now = new Date();
+
+    const orders = await Order.find({
+      customerId,
+      scheduledTime: { $gte: now },
+      orderStatus: 'pending',
+    }).sort({ scheduledTime: 1 });
+
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch customer scheduled orders', details: err.message });
+  }
+};
+
+// Reschedule an Order (Only if still pending)
+exports.rescheduleOrder = async (req, res) => {
+  const { newScheduledTime } = req.body;
+
+  if (!newScheduledTime || new Date(newScheduledTime) <= Date.now()) {
+    return res.status(400).json({ error: 'Scheduled time must be a future date' });
+  }
+
+  try {
+    const order = await Order.findById(req.params.orderId);
+
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    if (order.orderStatus !== 'pending') {
+      return res.status(400).json({ error: 'Only pending orders can be rescheduled' });
+    }
+
+    order.scheduledTime = newScheduledTime;
+    const updated = await order.save();
+
+    res.json({ message: 'Scheduled time updated', order: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reschedule order', details: err.message });
+  }
+};
+
+// Auto Transition Scheduled Orders to "preparing" (Cron job support)
+exports.processScheduledOrders = async () => {
+  try {
+    const now = new Date();
+    const orders = await Order.find({
+      scheduledTime: { $lte: now },
+      orderStatus: 'pending',
+    });
+
+    for (const order of orders) {
+      order.orderStatus = 'preparing';
+      await order.save();
+      console.log(`Order ${order._id} moved to 'preparing'`);
+    }
+
+    return orders.length;
+  } catch (err) {
+    console.error('Error processing scheduled orders:', err.message);
+  }
+};
