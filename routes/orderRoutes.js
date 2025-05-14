@@ -18,6 +18,7 @@ const {
   getScheduledOrders,
   getCustomerScheduledOrders,
   rescheduleOrder,
+  getGuestOrders,
 } = require('../controllers/orderController');
 
 // orders
@@ -29,6 +30,9 @@ router.get('/:orderId', getOrderById); // Get specific order
 router.get('/customer/:customerId', getOrdersByCustomer);
 router.get('/customer/:customerId/status', getOrdersByCustomer);
 router.get('/agent/:agentId', getOrdersByAgent);
+
+// Get guest-only orders (Admin)
+router.get('/admin/guests', getGuestOrders); // ✅ NEW
 
 // updates and actions on orders
 router.put('/:orderId/status', updateOrderStatus);
