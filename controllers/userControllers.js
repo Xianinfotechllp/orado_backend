@@ -44,7 +44,7 @@ exports.registerUser = async (req, res) => {
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
     await sendEmail(email, 'OTP Verification', `Your OTP is ${emailOtp}`);
-    await sendSms(phone, `Hi, your OTP is ${phoneOtp}`);
+    // await sendSms(phone, `Hi, your OTP is ${phoneOtp}`);
 
     const newUser = new User({
       name,
