@@ -50,8 +50,6 @@ router.get('/admin/scheduled-orders', getScheduledOrders);
 router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders);
 // router.put('/reschedule/:orderId', rescheduleOrder);
 
-
-
 //merchants actins
 
 router.put('/:orderId/merchant-accept',merchantAcceptOrder);

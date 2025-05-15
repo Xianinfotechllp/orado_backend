@@ -134,28 +134,28 @@ exports.getOrdersByAgent = async (req, res) => {
 };
 
 // Update Order Status
-exports.updateOrderStatus = async (req, res) => {
-  const { status } = req.body;
-  const validStatuses = [
-    "pending", "preparing", "ready", "on_the_way", "delivered", "cancelled"
-  ];
+// exports.updateOrderStatus = async (req, res) => {
+//   const { status } = req.body;
+//   const validStatuses = [
+//     "pending", "preparing", "ready", "on_the_way", "delivered", "cancelled"
+//   ];
 
-  if (!validStatuses.includes(status)) {
-    return res.status(400).json({ error: "Invalid status value" });
-  }
+//   if (!validStatuses.includes(status)) {
+//     return res.status(400).json({ error: "Invalid status value" });
+//   }
 
-  try {
-    const updated = await Order.findByIdAndUpdate(
-      req.params.orderId,
-      { orderStatus: status },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ error: "Order not found" });
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to update status" });
-  }
-};
+//   try {
+//     const updated = await Order.findByIdAndUpdate(
+//       req.params.orderId,
+//       { orderStatus: status },
+//       { new: true }
+//     );
+//     if (!updated) return res.status(404).json({ error: "Order not found" });
+//     res.json(updated);
+//   } catch (err) {
+//     res.status(500).json({ error: "Failed to update status" });
+//   }
+// };
 
 // Cancel Order
 exports.cancelOrder = async (req, res) => {
@@ -471,3 +471,43 @@ exports.merchantRejectOrder = async (req, res) => {
     });
   }
 };
+=======
+// Update Order Status (Merchant)
+exports.updateOrderStatus = async (req, res) => {
+  const { orderId } = req.params;
+  const { newStatus } = req.body;
+
+  const merchantAllowedStatuses = [
+    'accepted_by_restaurant',
+    'rejected_by_restaurant',
+    'preparing',
+    'ready'
+  ];
+
+  if (!merchantAllowedStatuses.includes(newStatus)) {
+    return res.status(400).json({
+      error: `Invalid status. Merchants can only update status to: ${merchantAllowedStatuses.join(', ')}`
+    });
+  }
+
+  try {
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    order.orderStatus = newStatus;
+    await order.save();
+
+
+    res.status(200).json({
+      message: 'Order status updated successfully',
+      order
+    });
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
