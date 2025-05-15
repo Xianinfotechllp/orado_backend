@@ -72,6 +72,8 @@ const userSchema = new mongoose.Schema(
 
     lastActivity: Date,
 
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
     loginAttempts: {
       count: { type: Number, default: 0 },
       lastAttempt: Date,
@@ -81,9 +83,6 @@ const userSchema = new mongoose.Schema(
 );
 
 
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 }, { unique: true });
-userSchema.index({ "address.location": "2dsphere" });
-userSchema.index({ userType: 1 });
+
 
 module.exports = mongoose.model("User", userSchema);

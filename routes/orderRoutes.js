@@ -17,7 +17,10 @@ const {
   applyDiscount,
   getScheduledOrders,
   getCustomerScheduledOrders,
-  rescheduleOrder
+  rescheduleOrder,
+  merchantAcceptOrder,
+  merchantRejectOrder,
+ 
   
 } = require('../controllers/orderController');
 
@@ -49,8 +52,8 @@ router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders)
 
 //merchants actins
 
-// router.put('/:orderId/merchant-accept',merchantAcceptOrder);
-// router.put('/:orderId/merchant-reject',merchantRejectOrder)
+router.put('/:orderId/merchant-accept',merchantAcceptOrder);
+router.put('/:orderId/merchant-reject',merchantRejectOrder)
 
 
 

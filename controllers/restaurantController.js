@@ -373,3 +373,9 @@ exports.addKyc = async (req, res) => {
     
   }
 }
+
+
+
+exports.addServiceArea = async (req, res) => {
+ 
+};

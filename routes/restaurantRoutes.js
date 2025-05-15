@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours}  = require('../controllers/restaurantController')
+const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea}  = require('../controllers/restaurantController')
 // restaurant routes
 router.post("/",createRestaurant)
 router.put("/:restaurantId",updateRestaurant)
@@ -9,6 +9,7 @@ router.delete("/:restaurantId",deleteRestaurant)
 router.get("/:restaurantId",getRestaurantById)
 router.put("/:restaurantId/business-hours", updateBusinessHours)
 
+router.post('/:restaurantId/service-areas',addServiceArea)
 // kyc
 
 
