@@ -83,9 +83,6 @@ const userSchema = new mongoose.Schema(
 );
 
 
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 }, { unique: true });
-userSchema.index({ "address.location": "2dsphere" });
-userSchema.index({ userType: 1 });
+
 
 module.exports = mongoose.model("User", userSchema);
