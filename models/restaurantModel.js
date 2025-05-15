@@ -66,6 +66,10 @@ const restaurantSchema = new mongoose.Schema(
       enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
+    kycDocuments: {
+      type: [String], 
+      default: [],
+    },
     rating: { type: Number, default: 0 },
     serviceAreas: [
       {

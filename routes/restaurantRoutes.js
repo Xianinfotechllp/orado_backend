@@ -1,21 +1,25 @@
 const express = require('express')
 const router = express.Router()
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours}  = require('../controllers/restaurantController')
+const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours, addKyc, getKyc}  = require('../controllers/restaurantController')
+const {upload} = require('../middlewares/multer')
 // restaurant routes
-router.post("/",createRestaurant)
-router.put("/:restaurantId",updateRestaurant)
+router.post("/", upload.array('images', 1), createRestaurant);
+router.put("/:restaurantId", upload.array('images', 1), updateRestaurant);
 router.delete("/:restaurantId",deleteRestaurant)
 router.get("/:restaurantId",getRestaurantById)
 router.put("/:restaurantId/business-hours", updateBusinessHours)
 
+
 // kyc
+router.post('/:restaurantId/kyc', upload.array('documents'), addKyc);
+router.get('/kyc/:restaurantId', getKyc);
 
 
 //categories routes
-router.post("/:restaurantId/categories",createCategory)
+router.post("/:restaurantId/categories", upload.single('images'), createCategory);
 router.get("/:restaurantId/categories",getAResturantCategories)
-router.put('/categories/:categoryId',editResturantCategory)
+router.put('/categories/:categoryId', upload.single('images'), editResturantCategory);
 router.delete('/categories/:categoryId',deleteResturantCategory)
 
 

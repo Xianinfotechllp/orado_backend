@@ -1,10 +1,9 @@
+const mongoose = require('mongoose');
 const Product = require('../models/productModel');
 const Category = require('../models/categoryModel');
 const Restaurant = require('../models/restaurantModel');
 
-
-// Create a product
-
+const { uploadOnCloudinary } = require('../utils/cloudinary');
 
 exports.createProduct = async (req, res) => {
   try {
@@ -14,28 +13,19 @@ exports.createProduct = async (req, res) => {
       return res.status(400).json({ error: 'Restaurant ID is required in params' });
     }
 
+    const { name, price, foodType, categoryId } = req.body;
 
-
-    // Accessing the properties directly from req.body
-    const name = req.body.name;
-    const price = req.body.price;
-    const foodType = req.body.foodType;
-    const categoryId = req.body.categoryId;
-
-    // Validate required fields
     if (!name || !price || !foodType || !categoryId) {
       return res.status(400).json({
         error: 'Name, price, foodType, and categoryId are required fields.'
       });
     }
 
-    // Validate restaurant exists
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({ error: 'Restaurant not found' });
     }
 
-    // Check if product with the same name already exists for this restaurant
     const existingProduct = await Product.findOne({
       name: name.trim(),
       restaurantId,
@@ -48,19 +38,25 @@ exports.createProduct = async (req, res) => {
       });
     }
 
-    // Validate category exists and belongs to the same restaurant
     const category = await Category.findOne({ _id: categoryId, restaurantId });
     if (!category) {
       return res.status(404).json({ error: 'Category not found for this restaurant' });
     }
 
-    // Create and save product
+    let imageUrl = null;
+    if (req.file?.path) {
+      const uploaded = await uploadOnCloudinary(req.file.path);
+      if (!uploaded) return res.status(500).json({ error: 'Image upload failed' });
+      imageUrl = uploaded.secure_url;
+    }
+
     const newProduct = new Product({
-      name, 
-      price, 
-      foodType, 
-      categoryId, 
-      restaurantId
+      name,
+      price,
+      foodType,
+      categoryId,
+      restaurantId,
+      images: imageUrl 
     });
 
     await newProduct.save();
@@ -72,9 +68,10 @@ exports.createProduct = async (req, res) => {
 
   } catch (err) {
     console.error('Error creating product:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };
+
 
 
 // Get products for a restaurant
@@ -90,16 +87,36 @@ exports.getRestaurantProducts = async (req, res) => {
 // Update a product
 exports.updateProduct = async (req, res) => {
   try {
-    const updated = await Product.findByIdAndUpdate(
-      req.params.productId,
-      req.body,
-      { new: true }
-    );
-    res.json(updated);
+    const { productId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ error: 'Invalid product ID' });
+    }
+
+    const product = await Product.findById(productId);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    const { name, price, foodType, categoryId } = req.body;
+    if (name) product.name = name;
+    if (price) product.price = price;
+    if (foodType) product.foodType = foodType;
+    if (categoryId) product.categoryId = categoryId;
+
+    if (req.file?.path) {
+      const uploaded = await uploadOnCloudinary(req.file.path);
+      if (!uploaded) return res.status(500).json({ error: 'Image upload failed' });
+      product.images = uploaded.secure_url;
+    }
+
+    await product.save();
+    res.json({ message: "Product updated successfully", product });
+
   } catch (err) {
+    console.error('Update error:', err);
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // Delete a product
 exports.deleteProduct = async (req, res) => {
