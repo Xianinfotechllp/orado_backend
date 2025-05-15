@@ -51,16 +51,20 @@ const product = new mongoose.Schema({
     startDate: Date,
     endDate: Date
   },
-  rating: {
+  rating: { 
     type: Number,
     default: 0
   },
-  attributes: {
-    size: String,
-    color: String,
-    spiciness: String,
-    // Add more as needed
-  },
+   attributes: [
+    {
+      name: { type: String, required: true },  
+      price: { type: Number, required: true },
+      stock: { type: Number, default: 0 },
+      calories: Number,
+      isAvailable: { type: Boolean, default: true },
+      description: { type: String, default: null }
+    }
+  ],
   unit: {
     type: String,
     default: 'piece'

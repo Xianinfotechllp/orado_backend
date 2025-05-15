@@ -13,7 +13,19 @@ exports.createProduct = async (req, res) => {
       return res.status(400).json({ error: 'Restaurant ID is required in params' });
     }
 
-    const { name, price, foodType, categoryId } = req.body;
+    const {
+      name,
+      price,
+      description,
+      foodType,
+      categoryId,
+      attributes,
+      addOns,
+      specialOffer,
+      unit,
+      stock,
+      reorderLevel
+    } = req.body;
 
     if (!name || !price || !foodType || !categoryId) {
       return res.status(400).json({
@@ -43,21 +55,31 @@ exports.createProduct = async (req, res) => {
       return res.status(404).json({ error: 'Category not found for this restaurant' });
     }
 
-    let imageUrl = null;
-    if (req.file?.path) {
-      const uploaded = await uploadOnCloudinary(req.file.path);
-      if (!uploaded) return res.status(500).json({ error: 'Image upload failed' });
-      imageUrl = uploaded.secure_url;
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const uploaded = await uploadOnCloudinary(file.path);
+        if (uploaded?.secure_url) {
+          imageUrls.push(uploaded.secure_url);
+        }
+      }
     }
-
     const newProduct = new Product({
-      name,
+      name: name.trim(),
+      description,
       price,
       foodType,
       categoryId,
       restaurantId,
-      images: imageUrl 
+      images: imageUrls,
+      attributes: attributes || [],
+      addOns: addOns || [],
+      specialOffer: specialOffer || {},
+      unit: unit || 'piece',
+      stock: stock || 0,
+      reorderLevel: reorderLevel || 0,
     });
+
 
     await newProduct.save();
 
@@ -94,28 +116,61 @@ exports.updateProduct = async (req, res) => {
     }
 
     const product = await Product.findById(productId);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
 
-    const { name, price, foodType, categoryId } = req.body;
+    const {
+      name,
+      price,
+      description,
+      foodType,
+      categoryId,
+      attributes,
+      addOns,
+      specialOffer,
+      unit,
+      stock,
+      reorderLevel
+    } = req.body;
+
     if (name) product.name = name;
+    if (description) product.description = description;
     if (price) product.price = price;
     if (foodType) product.foodType = foodType;
     if (categoryId) product.categoryId = categoryId;
+    if (unit) product.unit = unit;
+    if (stock) product.stock = stock;
+    if (reorderLevel) product.reorderLevel = reorderLevel;
+    if (attributes) product.attributes = attributes;
+    if (addOns) product.addOns = addOns;
+    if (specialOffer) product.specialOffer = specialOffer;
 
-    if (req.file?.path) {
-      const uploaded = await uploadOnCloudinary(req.file.path);
-      if (!uploaded) return res.status(500).json({ error: 'Image upload failed' });
-      product.images = uploaded.secure_url;
+    if (req.files && req.files.length > 0) {
+      let newImageUrls = [];
+      for (const file of req.files) {
+        const uploaded = await uploadOnCloudinary(file.path);
+        if (uploaded?.secure_url) {
+          newImageUrls.push(uploaded.secure_url);
+        }
+      }
+      product.images = newImageUrls;
     }
 
     await product.save();
-    res.json({ message: "Product updated successfully", product });
+
+    res.json({
+      message: 'Product updated successfully',
+      product
+    });
 
   } catch (err) {
     console.error('Update error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+
 
 
 // Delete a product
