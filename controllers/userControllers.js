@@ -294,3 +294,70 @@ exports.resendOtp = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "No user with that email" });
+    }
+
+    // Generate token (random hex string)
+    const resetToken = crypto.randomBytes(20).toString("hex");
+
+    // Set token and expiry (1 hour from now)
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 3600000;
+
+    await user.save();
+
+    // Construct reset URL for user - adjust your frontend URL here
+    const resetUrl = `http://localhost:5000/reset-password/${resetToken}`;
+
+    // Send email (implement sendEmail yourself or use nodemailer)
+    await sendEmail({
+      to: user.email,
+      subject: "Password Reset Request",
+      text: `You requested a password reset. Click here to reset: ${resetUrl}`,
+    });
+
+    res.json({ message: "Password reset email sent" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+
+    // Find user by token and check if token is not expired
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    // Update user password and clear reset token fields
+    user.password = newPassword; // hash password as per your setup
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+
+    res.json({ message: "Password reset successful" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};

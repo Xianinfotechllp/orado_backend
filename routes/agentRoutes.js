@@ -9,7 +9,7 @@ router.post("/register",registerAgent)
 // delivery routes
 router.post('/:agentId/orders/accept',agentAcceptsOrder)
 router.post("/:agentId/orders/reject",agentRejectsOrder)
-router.put("/agents/:agentId/orders/:orderId/status",agentUpdatesOrderStatus)
+router.put("/:agentId/orders/:orderId/status",agentUpdatesOrderStatus)
 
     
 
