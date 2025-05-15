@@ -17,13 +17,8 @@ const {
   applyDiscount,
   getScheduledOrders,
   getCustomerScheduledOrders,
-  rescheduleOrder,
-
-  merchantAcceptOrder,
-  merchantRejectOrder,
+  rescheduleOrder
   
-
-  getGuestOrders,
 } = require('../controllers/orderController');
 
 // orders
@@ -35,9 +30,6 @@ router.get('/:orderId', getOrderById); // Get specific order
 router.get('/customer/:customerId', getOrdersByCustomer);
 router.get('/customer/:customerId/status', getOrdersByCustomer);
 router.get('/agent/:agentId', getOrdersByAgent);
-
-// Get guest-only orders (Admin)
-router.get('/admin/guests', getGuestOrders); // ✅ NEW
 
 // updates and actions on orders
 router.put('/:orderId/status', updateOrderStatus);
@@ -53,13 +45,16 @@ router.post('/:orderId/apply-discount', applyDiscount);
 //-ordershedules-//
 router.get('/admin/scheduled-orders', getScheduledOrders);
 router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders);
-router.put('/reschedule/:orderId', rescheduleOrder);
+// router.put('/reschedule/:orderId', rescheduleOrder);
 
 
 
 //merchants actins
 
-router.put('/:orderId/merchant-accept',merchantAcceptOrder);
-router.put('/:orderId/merchant-reject',merchantRejectOrder)
+// router.put('/:orderId/merchant-accept',merchantAcceptOrder);
+// router.put('/:orderId/merchant-reject',merchantRejectOrder)
+
+
+
 
 module.exports = router;
