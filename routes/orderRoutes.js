@@ -20,6 +20,7 @@ const {
   rescheduleOrder,
   merchantAcceptOrder,
   merchantRejectOrder,
+  getOrdersByMerchant
  
   
 } = require('../controllers/orderController');
@@ -54,6 +55,7 @@ router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders)
 
 router.put('/:orderId/merchant-accept',merchantAcceptOrder);
 router.put('/:orderId/merchant-reject',merchantRejectOrder)
+router.get('/restaurant/:restaurantId', getOrdersByMerchant);
 
 
 

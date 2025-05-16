@@ -78,3 +78,6 @@ pids/
 *.pid
 *.seed
 *.pid.lock 
+
+# firebase config
+/config/orado-1eb0c-firebase-adminsdk-fbsvc-700cb01560.json

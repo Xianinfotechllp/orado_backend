@@ -295,7 +295,7 @@ exports.getRestaurantById = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ message: 'Invalid restaurantId format.' });
     }
-       const restaurant = await Restaurant.findById(restaurantId);
+       const restaurant = await Restaurant.findOne({_id: restaurantId });
         if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found.' });
     }
