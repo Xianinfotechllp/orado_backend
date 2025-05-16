@@ -180,7 +180,7 @@ exports.getRestaurantById = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ message: 'Invalid restaurantId format.' });
     }
-       const restaurant = await Restaurant.findById(restaurantId);
+       const restaurant = await Restaurant.findOne({_id: restaurantId });
         if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found.' });
     }
@@ -307,4 +307,14 @@ exports.getKyc = async (req, res) => {
     console.error("Error fetching KYC:", error);
     res.status(500).json({ message: "Server error while fetching KYC." });
   }
+
 };
+
+}
+
+
+
+exports.addServiceArea = async (req, res) => {
+ 
+};
+
