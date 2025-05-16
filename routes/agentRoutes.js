@@ -16,15 +16,7 @@ router.post(
 );
 router.post("/login",loginAgent)
 
-// upload documents
-router.post(
-  '/:agentId/upload-documents',
-  upload.fields([
-    { name: 'license', maxCount: 1 },
-    { name: 'insurance', maxCount: 1 }
-  ]),
-  uploadDocuments
-);
+
 
 // delivery routes
 router.post('/:agentId/orders/accept',agentAcceptsOrder)

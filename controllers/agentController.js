@@ -300,31 +300,3 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Server error while updating order status" });
   }
 };
-
-// document upload
-exports.uploadDocuments = async (req, res) => {
-  try {
-    const { agentId } = req.params;
-    const agent = await Agent.findById(agentId);
-    if (!agent) return res.status(404).json({ message: "Agent not found" });
-
-    const updates = {};
-
-    if (req.files['license']) {
-      const result = await uploadOnCloudinary(req.files['license'][0].path);
-      if (result?.secure_url) updates['documents.license'] = result.secure_url;
-    }
-
-    if (req.files['insurance']) {
-      const result = await uploadOnCloudinary(req.files['insurance'][0].path);
-      if (result?.secure_url) updates['documents.insurance'] = result.secure_url;
-    }
-
-    await Agent.findByIdAndUpdate(agentId, { $set: updates }, { new: true });
-
-    res.status(200).json({ message: "Documents uploaded successfully", documents: updates });
-  } catch (error) {
-    console.error("Upload error:", error);
-    res.status(500).json({ message: "Failed to upload documents" });
-  }
-};
