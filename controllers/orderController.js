@@ -380,6 +380,7 @@ exports.getCustomerScheduledOrders = async (req, res) => {
 
 
 
+
 exports.merchantAcceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -491,6 +492,7 @@ exports.merchantRejectOrder = async (req, res) => {
   }
 };
 
+
 // Update Order Status (Merchant)
 exports.updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
@@ -536,6 +538,7 @@ exports.updateOrderStatus = async (req, res) => {
 
 
 
+
 exports.getOrdersByMerchant = async (req, res) => {
   try {
     
@@ -564,3 +567,4 @@ exports.getOrdersByMerchant = async (req, res) => {
     return res.status(500).json({ error: "Failed to fetch orders", details: err.message });
   }
 };
+
