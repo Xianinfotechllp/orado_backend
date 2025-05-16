@@ -4,10 +4,10 @@ const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editadd
 const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
 
 // Routes
-router.post("/register",bruteForcePrevent, registerUser);
-router.post("/verify-otp",bruteForcePrevent, verifyOtp);
+router.post("/register", registerUser);
+router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);
-router.post("/login", bruteForcePrevent,loginUser);
+router.post("/login", loginUser);
 router.post("/address",addAddress)
 router.put("/address/:addressId",updateAddressById)
 router.delete("/delete/:addressId ",deleteAddressById)
