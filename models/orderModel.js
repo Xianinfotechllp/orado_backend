@@ -61,7 +61,7 @@ const orderSchema = mongoose.Schema({
         },
         message: 'Coordinates must be [longitude, latitude]',
       },
-    },
+    }
   },
 
   surgeCharge: Number,

@@ -13,11 +13,42 @@ const io = socketIo(server, {
 io.on("connection", (socket) => {
   console.log("New client connected: " + socket.id);
 
+  // Restaurant joins their room by restaurantId
   socket.on("join-restaurant", (restaurantId) => {
-    socket.join(restaurantId);
-    console.log(`Socket ${socket.id} joined restaurant ${restaurantId}`);
+    if (mongoose.Types.ObjectId.isValid(restaurantId)) {
+      socket.join(restaurantId);
+      console.log(`Socket ${socket.id} joined restaurant room: ${restaurantId}`);
+    } else {
+      console.log(`Invalid restaurantId ${restaurantId} from socket ${socket.id}`);
+    }
+  });
+
+  // User joins their personal room by userId
+  socket.on("join-user", (userId) => {
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      socket.join(userId);
+      console.log(`Socket ${socket.id} joined user room: ${userId}`);
+    } else {
+      console.log(`Invalid userId ${userId} from socket ${socket.id}`);
+    }
+  });
+
+  // Driver joins their personal room by driverId
+  socket.on("join-driver", (driverId) => {
+    if (mongoose.Types.ObjectId.isValid(driverId)) {
+      socket.join(driverId);
+      console.log(`Socket ${socket.id} joined driver room: ${driverId}`);
+    } else {
+      console.log(`Invalid driverId ${driverId} from socket ${socket.id}`);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected: " + socket.id);
   });
 });
+
+// Attach io instance to app so controllers can access it
 app.set("io", io);
 
 
