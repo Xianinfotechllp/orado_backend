@@ -14,12 +14,10 @@ const uploadOnCloudinary = async (localFilePath) => {
 
     const ext = path.extname(localFilePath).toLowerCase(); // 🧠 Now this works
 
-    // Smart switch: PDF and such use raw, rest default to auto
     const resourceType = ['.pdf', '.docx', '.xlsx', '.csv', '.zip'].includes(ext)
       ? 'raw'
       : 'auto';
 
-    console.log("Uploading with resource_type:", resourceType, "| File:", localFilePath);
 
     const response = await cloudinary.uploader.upload(localFilePath, {
       resource_type: resourceType
@@ -29,7 +27,7 @@ const uploadOnCloudinary = async (localFilePath) => {
     return response;
   } catch (error) {
     if (fs.existsSync(localFilePath)) {
-      fs.unlinkSync(localFilePath); // always clean up even on fail
+      fs.unlinkSync(localFilePath); 
     }
     console.error("Cloudinary upload error:", error);
     return null;

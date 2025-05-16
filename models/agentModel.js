@@ -68,6 +68,11 @@ const agentSchema = new mongoose.Schema(
         endDate: { type: Date, required: true },
       }
     ],
+    documents: {
+      license: { type: String },
+      insurance: { type: String },
+    },
+
     availabilityStatus: { type: String, enum: ["Available", "Unavailable"], default: "Available" },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }

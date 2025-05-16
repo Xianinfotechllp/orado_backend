@@ -310,7 +310,7 @@ exports.getKyc = async (req, res) => {
 
 };
 
-}
+
 
 
 
