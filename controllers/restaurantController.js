@@ -1,5 +1,7 @@
 const Restaurant = require("../models/restaurantModel")
 const mongoose = require("mongoose");
+const { uploadOnCloudinary } = require('../utils/cloudinary'); 
+
 exports.createRestaurant = async (req, res) => {
   try {
     const {
@@ -12,133 +14,33 @@ exports.createRestaurant = async (req, res) => {
       foodType,
       merchantSearchName,
       minOrderAmount,
-      paymentMethods, // optional if you want to send this too
+      paymentMethods
     } = req.body;
 
-    if (
-      !name ||
-      !ownerId ||
-      !address ||
-      !phone ||
-      !email ||
-      !openingHours ||
-      !foodType ||
-      !merchantSearchName ||
-      !minOrderAmount ||
-      !address.coordinates
-    ) {
-      return res.status(400).json({ message: "All fields are required." });
+
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      const uploads = await Promise.all(
+        req.files.map(file => uploadOnCloudinary(file.path))
+      );
+      imageUrls = uploads
+        .filter(result => result && result.secure_url)
+        .map(result => result.secure_url);
     }
 
-    // Phone validation
-    const phoneRegex = /^[6-9]\d{9}$/;
-    if (!phoneRegex.test(phone)) {
-      return res.status(400).json({ message: "Invalid phone number." });
-    }
-
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: "Invalid email address." });
-    }
-
-    // Address validation
-    const { street, city, state, pincode, coordinates } = address;
-    if (!street || !city || !state || !pincode) {
-      return res.status(400).json({
-        message:
-          "Complete address is required: street, city, state, pincode.",
-      });
-    }
-
-    if (
-      typeof street !== "string" ||
-      street.trim() === "" ||
-      typeof city !== "string" ||
-      city.trim() === "" ||
-      typeof state !== "string" ||
-      state.trim() === ""
-    ) {
-      return res.status(400).json({
-        message:
-          "Address fields street, city, and state must be non-empty strings.",
-      });
-    }
-
-    const pincodeRegex = /^[1-9][0-9]{5}$/;
-    if (!pincodeRegex.test(pincode)) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Invalid pincode. It must be a 6-digit number starting with 1-9.",
-        });
-    }
-
-    // Opening hours validation
-    const { startTime, endTime } = openingHours;
-    const timeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
-    if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-      return res.status(400).json({
-        message: "Invalid time format. Please use HH:mm.",
-      });
-    }
-
-    // Food type validation
-    const validFoodTypes = ["veg", "non-veg", "both"];
-    if (!validFoodTypes.includes(foodType)) {
-      return res.status(400).json({
-        message: "Invalid foodType. Valid values are: veg, non-veg, both.",
-      });
-    }
-
-    // Min order amount validation
-    if (typeof minOrderAmount !== "number" || minOrderAmount <= 0) {
-      return res.status(400).json({
-        message: "Minimum order amount must be a positive number.",
-      });
-    }
-
-   // Coordinates validation
-if (
-  !Array.isArray(coordinates) ||
-  coordinates.length !== 2 ||
-  typeof coordinates[0] !== "number" ||
-  typeof coordinates[1] !== "number"
-) {
-  return res.status(400).json({
-    message: "Invalid coordinates. Must be an array: [latitude, longitude] as numbers.",
-  });
-}
-
-const [latitude, longitude] = coordinates;
-
-if (latitude < -90 || latitude > 90) {
-  return res.status(400).json({
-    message: "Invalid latitude. Must be between -90 and 90.",
-  });
-}
-
-if (longitude < -180 || longitude > 180) {
-  return res.status(400).json({
-    message: "Invalid longitude. Must be between -180 and 180.",
-  });
-}
-    // Build GeoJSON Point
     const location = {
       type: "Point",
-      coordinates: [coordinates[1], coordinates[0]], // GeoJSON expects [lng, lat]
+      coordinates: [address?.coordinates?.[1], address?.coordinates?.[0]] // [lng, lat]
     };
 
-    // Create new restaurant
     const newRestaurant = new Restaurant({
       name,
       ownerId,
       address: {
-        street,
-        city,
-        state,
-        zip: pincode,
+        street: address?.street,
+        city: address?.city,
+        state: address?.state,
+        zip: address?.pincode,
       },
       phone,
       email,
@@ -146,8 +48,9 @@ if (longitude < -180 || longitude > 180) {
       foodType,
       merchantSearchName,
       minOrderAmount,
-      location,
       paymentMethods,
+      location,
+      images: imageUrls,
     });
 
     await newRestaurant.save();
@@ -157,20 +60,22 @@ if (longitude < -180 || longitude > 180) {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Server error." });
+    res.status(500).json({ message: "Server error.", error });
   }
 };
 
+
+
 exports.updateRestaurant = async (req, res) => {
   try {
-    if (!req.body) {
-      return res.status(400).json({ message: 'Request body is missing.' });
-    }
+    if (!req.body) return res.status(400).json({ message: 'Request body is missing.' });
 
     const { restaurantId } = req.params;
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
+
     const {
       name,
-      ownerId,
       address,
       phone,
       email,
@@ -178,84 +83,64 @@ exports.updateRestaurant = async (req, res) => {
       foodType,
       merchantSearchName,
       minOrderAmount,
-      images // ✅ new field
+      paymentMethods,
+      isActive,
+      status
     } = req.body;
 
-    if (!restaurantId || !mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ message: 'Invalid restaurantId.' });
-    }
-
-    const restaurant = await Restaurant.findById(restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ message: 'Restaurant not found.' });
-    }
-
+    // 🛠 Update basic fields if they exist
     if (name) restaurant.name = name;
-    if (ownerId) restaurant.ownerId = ownerId;
+    if (phone) restaurant.phone = phone;
+    if (email) restaurant.email = email;
+    if (foodType) restaurant.foodType = foodType;
     if (merchantSearchName) restaurant.merchantSearchName = merchantSearchName;
+    if (minOrderAmount) restaurant.minOrderAmount = minOrderAmount;
+    if (paymentMethods) restaurant.paymentMethods = paymentMethods;
+    if (openingHours) restaurant.openingHours = openingHours;
+    if (isActive !== undefined) restaurant.isActive = isActive;
+    if (status) restaurant.status = status;
 
-    if (phone) {
-      const phoneRegex = /^[6-9]\d{9}$/;
-      if (!phoneRegex.test(phone)) {
-        return res.status(400).json({ message: 'Invalid phone number.' });
-      }
-      restaurant.phone = phone;
-    }
-
-    if (email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: 'Invalid email address.' });
-      }
-      restaurant.email = email;
-    }
-
-    if (openingHours) {
-      const { startTime, endTime } = openingHours;
-      const timeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
-      if (!startTime || !endTime || !timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-        return res.status(400).json({ message: 'Invalid time format. Use HH:mm.' });
-      }
-      restaurant.openingHours = openingHours;
-    }
-
-    if (foodType) {
-      const validFoodTypes = ['veg', 'non-veg', 'both'];
-      if (!validFoodTypes.includes(foodType)) {
-        return res.status(400).json({ message: 'Invalid foodType.' });
-      }
-      restaurant.foodType = foodType;
-    }
-
-    if (minOrderAmount !== undefined) {
-      if (typeof minOrderAmount !== 'number' || minOrderAmount <= 0) {
-        return res.status(400).json({ message: 'Minimum order must be a positive number.' });
-      }
-      restaurant.minOrderAmount = minOrderAmount;
-    }
-
+    // 🧭 Address and Location
     if (address) {
-      const { street, city, state, pincode } = address;
-      const pincodeRegex = /^[1-9][0-9]{5}$/;
-      if (!street || !city || !state || !pincode || !pincodeRegex.test(pincode)) {
-        return res.status(400).json({ message: 'Invalid or incomplete address.' });
+      restaurant.address.street = address?.street || restaurant.address.street;
+      restaurant.address.city = address?.city || restaurant.address.city;
+      restaurant.address.state = address?.state || restaurant.address.state;
+      restaurant.address.zip = address?.pincode || restaurant.address.zip;
+
+      if (address.coordinates && address.coordinates.length === 2) {
+        restaurant.location = {
+          type: "Point",
+          coordinates: [address.coordinates[1], address.coordinates[0]],
+        };
       }
-      restaurant.address = address;
     }
 
-    // ✅ Image handling
-    if (Array.isArray(images)) {
-      restaurant.images = images;
+    // 🖼️ Image replacement (optional: delete old ones)
+    if (req.files && req.files.length > 0) {
+      const uploads = await Promise.all(
+        req.files.map(file => uploadOnCloudinary(file.path))
+      );
+      const newImageUrls = uploads
+        .filter(result => result && result.secure_url)
+        .map(result => result.secure_url);
+
+      // Replace images
+      restaurant.images = newImageUrls;
     }
 
     await restaurant.save();
-    res.status(200).json({ message: 'Restaurant updated successfully.', restaurant });
+    res.status(200).json({
+      message: 'Restaurant updated successfully.',
+      restaurant
+    });
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error.' });
+    res.status(500).json({ message: 'Server error.', error });
   }
 };
+
+
 
 exports.deleteRestaurant = async (req, res) => {
 
@@ -309,7 +194,6 @@ exports.getRestaurantById = async (req, res) => {
 
 }
 
-// Enable merchants to set and update their daily and weekly business hours.
 exports.updateBusinessHours = async (req, res) => {
   try {
     const { restaurantId } = req.params;
@@ -364,12 +248,63 @@ exports.updateBusinessHours = async (req, res) => {
 };
 
 
-
-
 exports.addKyc = async (req, res) => {
   try {
-    
+    const { restaurantId } = req.params;
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    let kycUrls = [];
+    if (req.files && req.files.length > 0) {
+      console.log("Uploading files to Cloudinary...");
+      const uploads = await Promise.all(
+        req.files.map(file => uploadOnCloudinary(file.path))
+      );
+      console.log("Uploads result:", uploads);
+
+      kycUrls = uploads
+        .filter(result => result && result.secure_url)
+        .map(result => result.secure_url);
+    }
+
+    restaurant.kycDocuments = [...restaurant.kycDocuments, ...kycUrls];
+
+    restaurant.kycStatus = "pending";
+
+    await restaurant.save();
+
+    res.status(200).json({
+      message: "KYC documents uploaded successfully.",
+      restaurant,
+    });
+
   } catch (error) {
-    
+    console.error("KYC upload error:", error);
+    res.status(500).json({ message: "Server error while uploading KYC." });
   }
-}
+};
+
+exports.getKyc = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    const restaurant = await Restaurant.findById(restaurantId);
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    res.status(200).json({
+      message: "KYC details fetched successfully.",
+      kycDocuments: restaurant.kycDocuments || [],
+      kycStatus: restaurant.kycStatus || "not-submitted",
+    });
+
+  } catch (error) {
+    console.error("Error fetching KYC:", error);
+    res.status(500).json({ message: "Server error while fetching KYC." });
+  }
+};
