@@ -5,7 +5,9 @@ const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
 
 // Routes
 router.post("/register", registerUser);
-router.post("/verify-otp", verifyOtp);
+
+router.post("/verify-otp",verifyOtp);
+
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
 router.post("/address",addAddress)
@@ -15,6 +17,5 @@ router.delete("/delete/:addressId ",deleteAddressById)
 router.post("/forgot-password",forgotPassword)
 router.post("/reset-password/:token",resetPassword)
 
-/// thsi new
 
 module.exports = router;
