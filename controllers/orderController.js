@@ -1,67 +1,117 @@
+const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
+// Create Orderconst Product = require("../models/FoodItem"); // Your product model
+const Product = require("../models/productModel")
 
-// Create Order
+
+const firebaseAdmin = require('../config/firebaseAdmin')
+const Restaurant = require("../models/restaurantModel");
+const { sendPushNotification }  = require('../utils/sendPushNotification')
+
+
 exports.createOrder = async (req, res) => {
   try {
-    const {
-      customerId,
-      restaurantId,
-      orderItems,
-      totalAmount,
-      deliveryCharge,
-      tipAmount,
-      paymentMethod,
-      location,
-      scheduledTime,
-      instructions,
-      surgeCharge,
-      discountAmount,
-      couponCode,
-      guestName,
-      guestPhone,
-      guestEmail,
-    } = req.body;
+    const { customerId, restaurantId, orderItems, paymentMethod, location } = req.body;
 
-    if (!restaurantId || !Array.isArray(orderItems) || orderItems.length === 0) {
-      return res.status(400).json({ error: 'restaurantId and orderItems are required' });
+    if (!restaurantId || !orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
+      return res.status(400).json({ error: "restaurantId and orderItems are required" });
     }
 
-    // If it's a guest order, require guest contact info
-    if (!customerId) {
-      if (!guestName || !guestPhone) {
-        return res.status(400).json({ error: 'Guest name and phone are required for guest checkout' });
+    // Validate location
+    if (!location || !Array.isArray(location.coordinates) || location.coordinates.length !== 2) {
+      return res.status(400).json({
+        error: "Valid location coordinates are required in [longitude, latitude] format",
+      });
+    }
+
+    const [longitude, latitude] = location.coordinates;
+    if (typeof longitude !== 'number' || typeof latitude !== 'number') {
+      return res.status(400).json({
+        error: "Coordinates must be numbers in [longitude, latitude] format",
+      });
+    }
+
+    // ✅ Check if restaurant exists
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
+    // Extract product IDs from order items
+    const productIds = orderItems.map(item => item.productId);
+
+    // Fetch active products matching those IDs and restaurant
+    const products = await Product.find({ _id: { $in: productIds }, restaurantId, active: true });
+
+    const foundIds = products.map(p => p._id.toString());
+    const missingIds = productIds.filter(id => !foundIds.includes(id));
+
+    if (missingIds.length > 0) {
+      const missingItems = orderItems.filter(item => missingIds.includes(item.productId));
+      const missingNames = missingItems.map(item => item.name || "Unknown Product");
+      return res.status(400).json({
+        error: "Some ordered items are invalid or unavailable",
+        missingProducts: missingNames,
+      });
+    }
+
+    // Calculate total amount dynamically
+    let totalAmount = 0;
+    const now = new Date();
+
+    for (const item of orderItems) {
+      const product = products.find(p => p._id.toString() === item.productId);
+      let price = product.price;
+
+      if (
+        product.specialOffer &&
+        product.specialOffer.discount > 0 &&
+        product.specialOffer.startDate <= now &&
+        now <= product.specialOffer.endDate
+      ) {
+        const discountAmount = (price * product.specialOffer.discount) / 100;
+        price -= discountAmount;
       }
+
+      totalAmount += price * (item.quantity || 1);
     }
+
+    const io = req.app.get("io");
 
     const orderData = {
       restaurantId,
       orderItems,
       totalAmount,
-      deliveryCharge,
-      tipAmount,
       paymentMethod,
       paymentStatus: "pending",
-      location,
-      scheduledTime,
-      instructions,
-      surgeCharge,
-      discountAmount,
-      couponCode,
+      customerId: customerId || null,
+      location: {
+        type: "Point",
+        coordinates: [longitude, latitude],
+      },
     };
 
-    if (customerId) {
-      orderData.customerId = customerId;
-    } else {
-      orderData.guestName = guestName;
-      orderData.guestPhone = guestPhone;
-      orderData.guestEmail = guestEmail;
-    }
+    const newOrder = new Order(orderData);
+    const savedOrder = await newOrder.save();
+ // ✅ Send push notification if restaurant has device token
 
-    const order = new Order(orderData);
-    const savedOrder = await order.save();
-    res.status(201).json(savedOrder);
+    await sendPushNotification(restaurantId, "new order placed", "an new order placed by cusotmer")
+
+    // ✅ send realtime notification via Socket.IO
+    io.to(restaurantId).emit("new-order", {
+      orderId: savedOrder._id,
+      totalAmount: savedOrder.totalAmount,
+      orderItems: savedOrder.orderItems,
+    });
+
+    return res.status(201).json({
+      message: "Order created successfully",
+      order: savedOrder,
+    });
+
   } catch (err) {
-    res.status(500).json({ error: "Failed to create order", details: err.message });
+    console.error("createOrder error:", err);
+    return res.status(500).json({ error: "Failed to create order", details: err.message });
   }
 };
 
@@ -327,6 +377,122 @@ exports.getCustomerScheduledOrders = async (req, res) => {
   }
 };
 
+
+
+
+
+exports.merchantAcceptOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    // Validate orderId format
+    if (!orderId || orderId.length !== 24) {
+      return res.status(400).json({ error: "Invalid order ID format" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Prevent double accepting or invalid status transitions
+    if (order.orderStatus === "accepted") {
+      return res.status(400).json({ error: "Order is already accepted" });
+    }
+
+    if (order.orderStatus === "cancelled") {
+      return res.status(400).json({ error: "Cannot accept a cancelled order" });
+    }
+
+    // Update status to 'accepted'
+    order.orderStatus = "accepted";
+    await order.save();
+
+    
+
+    // Emit to  user  via Socket.IO
+    const io = req.app.get("io");
+    if (io) {
+      io.to(order.customerId.toString()).emit("order-accepted", {
+        message: "Order status chhanged",
+        order
+      });
+    }
+
+    
+
+    res.status(200).json({
+      success: true,
+      message: "Order accepted successfully",
+      order
+    });
+
+  } catch (error) {
+    console.error("merchantAcceptOrder error:", error);
+    res.status(500).json({
+      error: "Failed to accept order",
+      details: error.message
+    });
+  }
+};
+
+
+
+exports.merchantRejectOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { rejectionReason } = req.body;
+
+    // Validate orderId format
+    if (!orderId || orderId.length !== 24) {
+      return res.status(400).json({ error: "Invalid order ID format" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Prevent rejecting completed or already cancelled orders
+    if (order.orderStatus === "completed") {
+      return res.status(400).json({ error: "Cannot reject a completed order" });
+    }
+
+    if (order.orderStatus === "cancelled") {
+      return res.status(400).json({ error: "Order is already cancelled" });
+    }
+
+    // Update order status to 'cancelled'
+    order.orderStatus = "cancelled";
+    order.rejectionReason = rejectionReason || "Rejected by merchant";
+    await order.save();
+
+    // Emit event via Socket.IO
+    const io = req.app.get("io");
+    if (io) {
+      io.to(order.restaurantId.toString()).emit("order-rejected", {
+        orderId: order._id,
+        message: "Order has been rejected by the merchant",
+        reason: order.rejectionReason
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Order rejected successfully",
+      order
+    });
+
+  } catch (error) {
+    console.error("merchantRejectOrder error:", error);
+    res.status(500).json({
+      error: "Failed to reject order",
+      details: error.message
+    });
+  }
+};
+
+
 // Update Order Status (Merchant)
 exports.updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
@@ -362,6 +528,43 @@ exports.updateOrderStatus = async (req, res) => {
   } catch (error) {
     console.error('Error updating order status:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
+
+
+
+
+
+
+
+exports.getOrdersByMerchant = async (req, res) => {
+  try {
+    
+    const { restaurantId } = req.query;
+
+    if (!restaurantId) {
+      return res.status(400).json({ error: "restaurantId is required" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ error: "Invalid restaurantId format" });
+    }
+
+    const orders = await Order.find({ restaurantId })
+      .populate("customerId", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: "Orders fetched successfully",
+      totalOrders: orders.length,
+      orders,
+    });
+
+  } catch (err) {
+    console.error("getOrdersByMerchant error:", err);
+    return res.status(500).json({ error: "Failed to fetch orders", details: err.message });
   }
 };
 

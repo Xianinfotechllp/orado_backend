@@ -1,5 +1,58 @@
 const express = require("express");
 const dotenv = require("dotenv");
+const socketIo = require('socket.io')
+const app = express();
+const http = require("http");
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: { origin: "*" }
+});
+
+// Attach io to app
+
+io.on("connection", (socket) => {
+  console.log("New client connected: " + socket.id);
+
+  // Restaurant joins their room by restaurantId
+  socket.on("join-restaurant", (restaurantId) => {
+    if (mongoose.Types.ObjectId.isValid(restaurantId)) {
+      socket.join(restaurantId);
+      console.log(`Socket ${socket.id} joined restaurant room: ${restaurantId}`);
+    } else {
+      console.log(`Invalid restaurantId ${restaurantId} from socket ${socket.id}`);
+    }
+  });
+
+  // User joins their personal room by userId
+  socket.on("join-user", (userId) => {
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      socket.join(userId);
+      console.log(`Socket ${socket.id} joined user room: ${userId}`);
+    } else {
+      console.log(`Invalid userId ${userId} from socket ${socket.id}`);
+    }
+  });
+
+  // Driver joins their personal room by driverId
+  socket.on("join-driver", (driverId) => {
+    if (mongoose.Types.ObjectId.isValid(driverId)) {
+      socket.join(driverId);
+      console.log(`Socket ${socket.id} joined driver room: ${driverId}`);
+    } else {
+      console.log(`Invalid driverId ${driverId} from socket ${socket.id}`);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected: " + socket.id);
+  });
+});
+
+// Attach io instance to app so controllers can access it
+app.set("io", io);
+
+
+
 const db = require("./config/dbConfig");
 const userRouter = require("./routes/userRoutes");
 
@@ -21,7 +74,7 @@ const couponRoutes = require("./routes/couponRoutes");
 dotenv.config();
 db()
   
-const app = express();
+
 
 app.use(express.json());
 
@@ -46,6 +99,6 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

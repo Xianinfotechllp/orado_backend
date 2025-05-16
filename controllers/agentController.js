@@ -1,6 +1,7 @@
 const Agent = require('../models/agentModel');
 const Order = require('../models/orderModel');
 const bcrypt = require('bcrypt');
+const mongoose = require('mongoose')
 const { uploadOnCloudinary } = require('../utils/cloudinary');
 const fs = require('fs');
 
@@ -196,6 +197,9 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     const { agentId, orderId } = req.params;
     const { status } = req.body;
 
+    const io = req.app.get('io');
+
+       console.log(agentId, orderId, status)
     // Check if agentId, orderId, and status are provided
     if (!agentId || !orderId || !status) {
       return res.status(400).json({ error: "agentId, orderId, and status are required" });
@@ -223,13 +227,15 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Check if agent is assigned to this order
-    if (order.assignedAgent.toString() !== agentId) {
-      return res.status(403).json({ error: "You are not assigned to this order" });
-    }
+    // // Check if agent is assigned to this order
+    // if (order.assignedAgent.toString() !== agentId) {
+    //   return res.status(403).json({ error: "You are not assigned to this order" });
+    // }
 
     // Update status
-    order.status = status;
+    order.orderStatus = status;
+          // Emit notification to all connected clients
+  io.emit("orderstatus", { message: "New Order Placed!",date:order });
     await order.save();
 
     return res.status(200).json({ message: "Order status updated successfully", order });

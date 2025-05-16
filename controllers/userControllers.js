@@ -44,7 +44,7 @@ exports.registerUser = async (req, res) => {
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
     await sendEmail(email, 'OTP Verification', `Your OTP is ${emailOtp}`);
-    await sendSms(phone, `Hi, your OTP is ${phoneOtp}`);
+    // await sendSms(phone, `Hi, your OTP is ${phoneOtp}`);
 
     const newUser = new User({
       name,
@@ -112,14 +112,11 @@ exports.verifyOtp = async (req, res) => {
 
 
 
-
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password are required" });
+      return res.status(400).json({ message: "Email and password are required" });
     }
 
     const userExist = await User.findOne({ email });
@@ -138,16 +135,26 @@ exports.loginUser = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    // Create a safe user object without password
+    const user = {
+      _id: userExist._id,
+      name: userExist.name,
+      email: userExist.email,
+      role: userExist.role, // if you have roles like admin/customer etc.
+    };
+
     res.json({
       message: "Logged in successfully",
       token,
-      userId: userExist._id,
+      user,
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 exports.addAddress = async (req, res) => {
@@ -291,6 +298,73 @@ exports.resendOtp = async (req, res) => {
     res.json({ message: "OTP sent successfully to email and phone" });
   } catch (error) {
     console.error("Resend OTP Error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "No user with that email" });
+    }
+
+    // Generate token (random hex string)
+    const resetToken = crypto.randomBytes(20).toString("hex");
+
+    // Set token and expiry (1 hour from now)
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 3600000;
+
+    await user.save();
+
+    // Construct reset URL for user - adjust your frontend URL here
+    const resetUrl = `http://localhost:5000/reset-password/${resetToken}`;
+
+    // Send email (implement sendEmail yourself or use nodemailer)
+    await sendEmail({
+      to: user.email,
+      subject: "Password Reset Request",
+      text: `You requested a password reset. Click here to reset: ${resetUrl}`,
+    });
+
+    res.json({ message: "Password reset email sent" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+
+    // Find user by token and check if token is not expired
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    // Update user password and clear reset token fields
+    user.password = newPassword; // hash password as per your setup
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+
+    res.json({ message: "Password reset successful" });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Server error" });
   }
 };
