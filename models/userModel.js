@@ -6,12 +6,29 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+
     userType: {
       type: String,
       enum: ["customer", "agent", "merchant", "admin"],
       default: "customer",
       required: true,
     },
+
+    isAgent: { type: Boolean, default: false }, // Set to true when approved
+    agentApplicationStatus: {
+      type: String,
+      enum: ["none", "pending", "approved", "rejected"],
+      default: "none",
+    },
+    profilePicture: { type: String }, // URL or file path
+    agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" }, // Set after approval
+
+    agentApplicationDocuments: {
+      license: { type: String },   // URL or file path
+      insurance: { type: String }, // URL or file path
+      submittedAt: { type: Date }, // Optional: to track submission time
+    },
+
     address: {
       street: String,
       city: String,
@@ -29,6 +46,7 @@ const userSchema = new mongoose.Schema(
         }
       }
     },
+
     active: { type: Boolean, default: true },
     profilePicture: { type: String },
 
@@ -69,11 +87,11 @@ const userSchema = new mongoose.Schema(
     ],
 
     deviceTokens: [String],
-
     lastActivity: Date,
 
-  resetPasswordToken: String,
-  resetPasswordExpires: Date,
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
+
     loginAttempts: {
       count: { type: Number, default: 0 },
       lastAttempt: Date,
@@ -81,8 +99,5 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-
-
 
 module.exports = mongoose.model("User", userSchema);

@@ -1,11 +1,20 @@
 const express = require('express')
 const router = express.Router()
-const { registerAgent,agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, uploadDocuments
+const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, uploadDocuments
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 
 
-router.post("/register",registerAgent)
+router.post(
+  "/register",
+  upload.fields([
+    { name: "license", maxCount: 1 },
+    { name: "insurance", maxCount: 1 },
+    { name: "profilePicture", maxCount: 1 }
+  ]),
+  registerAgent
+);
+router.post("/login",loginAgent)
 
 // upload documents
 router.post(

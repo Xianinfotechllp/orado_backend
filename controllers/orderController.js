@@ -379,8 +379,6 @@ exports.getCustomerScheduledOrders = async (req, res) => {
 
 
 
-
-
 exports.merchantAcceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
