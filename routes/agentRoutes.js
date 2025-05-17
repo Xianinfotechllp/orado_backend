@@ -17,7 +17,7 @@ router.post(
 router.post("/login",loginAgent)
 
 // availability
-router.put('/:agentId/availability', toggleAvailability);
+router.put('/:userId/availability', toggleAvailability);
 
 // delivery routes
 router.post('/:agentId/orders/accept',agentAcceptsOrder)
