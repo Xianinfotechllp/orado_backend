@@ -300,3 +300,41 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Server error while updating order status" });
   }
 };
+
+
+exports.toggleAvailability = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.body;
+
+    if (!["Available", "Unavailable"].includes(status)) {
+      return res.status(400).json({ message: "Invalid availability status" });
+    }
+
+    // 1. Find the user by userId
+    const user = await User.findById(userId);
+
+    if (!user || !user.agentId) {
+      return res.status(404).json({ message: "Agent not linked to user or user not found" });
+    }
+
+    // 2. Update the agent's availability
+    const agent = await Agent.findByIdAndUpdate(
+      user.agentId,
+      { availabilityStatus: status },
+      { new: true }
+    );
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent record not found" });
+    }
+
+    res.json({
+      message: "Availability status updated",
+      availabilityStatus: agent.availabilityStatus,
+    });
+  } catch (error) {
+    console.error("Availability toggle error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};

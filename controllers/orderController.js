@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
 const Product = require("../models/productModel")
+const { uploadOnCloudinary } = require('../utils/cloudinary'); 
+const fs = require('fs');
 
 
 const firebaseAdmin = require('../config/firebaseAdmin')
@@ -195,21 +197,48 @@ exports.cancelOrder = async (req, res) => {
 // Review Order
 exports.reviewOrder = async (req, res) => {
   const { customerReview, restaurantReview } = req.body;
+
   try {
+    const customerImageFiles = req.files['customerImages'] || [];
+    const restaurantImageFiles = req.files['restaurantImages'] || [];
+
+    // Upload customer images to Cloudinary
+    const customerImages = [];
+    for (const file of customerImageFiles) {
+      const result = await uploadOnCloudinary(file.path);
+      if (result?.secure_url) customerImages.push(result.secure_url);
+    }
+
+    // Upload restaurant images to Cloudinary
+    const restaurantImages = [];
+    for (const file of restaurantImageFiles) {
+      const result = await uploadOnCloudinary(file.path);
+      if (result?.secure_url) restaurantImages.push(result.secure_url);
+    }
+
+    // Update the order document
     const updated = await Order.findByIdAndUpdate(
       req.params.orderId,
       {
         customerReview: customerReview || "",
         restaurantReview: restaurantReview || "",
+        $push: {
+          customerReviewImages: { $each: customerImages },
+          restaurantReviewImages: { $each: restaurantImages },
+        },
       },
       { new: true }
     );
+
     if (!updated) return res.status(404).json({ error: "Order not found" });
+
     res.json(updated);
   } catch (err) {
+    console.error("Review submission failed:", err);
     res.status(500).json({ error: "Failed to submit review" });
   }
 };
+
 
 // Update Delivery Mode
 exports.updateDeliveryMode = async (req, res) => {

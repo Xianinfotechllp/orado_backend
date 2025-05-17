@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, uploadDocuments
+const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, toggleAvailability
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 
@@ -16,7 +16,8 @@ router.post(
 );
 router.post("/login",loginAgent)
 
-
+// availability
+router.put('/:agentId/availability', toggleAvailability);
 
 // delivery routes
 router.post('/:agentId/orders/accept',agentAcceptsOrder)
