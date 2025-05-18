@@ -4,6 +4,8 @@ const socketIo = require('socket.io')
 const app = express();
 const http = require("http");
 const server = http.createServer(app);
+const cors = require('cors');
+
 const io = socketIo(server, {
   cors: { origin: "*" }
 });
@@ -70,6 +72,7 @@ const orderRouter = require("./routes/orderRoutes");
 const couponRoutes = require("./routes/couponRoutes");
 
 const feedbackRoutes = require("./routes/feedbackRoutes"); 
+const chatRouter  = require("./routes/chatRoutes")
 
 
 
@@ -79,6 +82,7 @@ db()
 
 
 app.use(express.json());
+app.use(cors());
 
 // routes using
 app.use("/user", userRouter);
@@ -88,15 +92,9 @@ app.use("/restaurants",offerRouter)
 app.use("/order",orderRouter)
 app.use("/coupon",couponRoutes)
 
-// {
-//   "userId": "6825a5545d887cc953bd60c0",         
-//   "orderId": "6825a7199f3329682fd6294b",
-//   "restaurantId": "6822e6600cd0390135d35483",
-//   "agentId": "AGENT_OBJECT_ID",
-//   "targetType": "restaurant",
-//   "rating": 5,
-//   "comment": "Fantastic food!"
-// }
+app.use("/chat",chatRouter)
+
+
 
 
 app.use("/resturants",resturantRouter)
