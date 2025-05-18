@@ -471,7 +471,7 @@ exports.merchantRejectOrder = async (req, res) => {
     });
   }
 };
-=======
+
 // Update Order Status (Merchant)
 exports.updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
