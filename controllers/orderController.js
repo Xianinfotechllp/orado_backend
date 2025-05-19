@@ -421,19 +421,22 @@ exports.merchantAcceptOrder = async (req, res) => {
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
-
+    if (order.orderStatus === "cancelled") {
+      return res.status(400).json({ error: "Cannot accept a cancelled order" });
+    }
     // Prevent double accepting or invalid status transitions
     if (order.orderStatus === "accepted") {
       return res.status(400).json({ error: "Order is already accepted" });
     }
 
-    if (order.orderStatus === "cancelled") {
-      return res.status(400).json({ error: "Cannot accept a cancelled order" });
-    }
+   
 
     // Update status to 'accepted'
     order.orderStatus = "accepted";
     await order.save();
+
+    
+
 
     
 
@@ -518,7 +521,6 @@ exports.merchantRejectOrder = async (req, res) => {
     });
   }
 };
-
 
 // Update Order Status (Merchant)
 exports.updateOrderStatus = async (req, res) => {

@@ -7,7 +7,9 @@ const {addAgentReview} = require('../controllers/agentController')
 
 // Routes
 router.post("/register", registerUser);
-router.post("/verify-otp", verifyOtp);
+
+router.post("/verify-otp",verifyOtp);
+
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
 router.post("/address",addAddress)
@@ -17,10 +19,12 @@ router.delete("/delete/:addressId ",deleteAddressById)
 router.post("/forgot-password",forgotPassword)
 router.post("/reset-password/:token",resetPassword)
 
+
 // post agent review
 router.post("/:agentId/review", protectUser, addAgentReview);
 
 
 /// thsi new
+
 
 module.exports = router;

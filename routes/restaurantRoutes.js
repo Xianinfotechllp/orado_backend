@@ -1,9 +1,11 @@
 const express = require('express')
 const router = express.Router()
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
+
 const {upload} = require('../middlewares/multer')
 
 const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc}  = require('../controllers/restaurantController')
+
 
 // restaurant routes
 router.post("/", upload.array('images', 1), createRestaurant);

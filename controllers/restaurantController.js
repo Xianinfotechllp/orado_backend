@@ -28,11 +28,6 @@ exports.createRestaurant = async (req, res) => {
         .map(result => result.secure_url);
     }
 
-    const location = {
-      type: "Point",
-      coordinates: [address?.coordinates?.[1], address?.coordinates?.[0]] // [lng, lat]
-    };
-
     const newRestaurant = new Restaurant({
       name,
       ownerId,
@@ -315,6 +310,69 @@ exports.getKyc = async (req, res) => {
 
 
 exports.addServiceArea = async (req, res) => {
+
+  
+try {
+
+     const { restaurantId } = req.params;
+      const { serviceAreas } = req.body;
+        if (!Array.isArray(serviceAreas) || serviceAreas.length === 0) {
+      return res.status(400).json({
+        message: 'serviceAreas must be a non-empty array of GeoJSON Polygons',
+        messageType: 'failure',
+      });
+    }
+
+       // Basic validation of each polygon
+    for (const area of serviceAreas) {
+      if (
+        !area.type ||
+        area.type !== 'Polygon' ||
+        !Array.isArray(area.coordinates) ||
+        area.coordinates.length === 0
+      ) {
+        return res.status(400).json({
+          message: 'Each serviceArea must be a valid GeoJSON Polygon with coordinates',
+          messageType: 'failure',
+        });
+      }
+    }
+
+
+      const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({
+        message: 'Restaurant not found',
+        messageType: 'failure',
+      });
+    }
+
+
+     restaurant.serviceAreas = serviceAreas;
+    await restaurant.save();
+    return res.status(200).json({
+      message: 'Service areas updated successfully',
+      messageType: 'success',
+      data: restaurant.serviceAreas,
+    });
+    
+  } catch (error) {
+    
+    
+console.error('Error updating serviceAreas:', error);
+    return res.status(500).json({
+      message: 'Server error',
+      messageType: 'failure',
+    });
+  }
+
+
+
+  }
+
+    
+     
+
  
-};
+
 

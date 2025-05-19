@@ -4,6 +4,8 @@ const socketIo = require('socket.io')
 const app = express();
 const http = require("http");
 const server = http.createServer(app);
+const cors = require('cors');
+
 const io = socketIo(server, {
   cors: { origin: "*" }
 });
@@ -67,7 +69,10 @@ const offerRouter = require("./routes/offerRoutes");
 
 const orderRouter = require("./routes/orderRoutes");
 
-const couponRoutes = require("./routes/couponRoutes"); 
+const couponRoutes = require("./routes/couponRoutes");
+
+const feedbackRoutes = require("./routes/feedbackRoutes"); 
+const chatRouter  = require("./routes/chatRoutes")
 
 
 
@@ -77,6 +82,7 @@ db()
 
 
 app.use(express.json());
+app.use(cors());
 
 // routes using
 app.use("/user", userRouter);
@@ -86,11 +92,17 @@ app.use("/restaurants",offerRouter)
 app.use("/order",orderRouter)
 app.use("/coupon",couponRoutes)
 
+app.use("/chat",chatRouter)
+
+
 
 
 app.use("/resturants",resturantRouter)
 app.use("/location",locationRouter)
 app.use("/agent",agentRouter)
+
+
+app.use("/feedback",feedbackRoutes)
 
 
 
