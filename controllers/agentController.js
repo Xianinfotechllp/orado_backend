@@ -338,3 +338,53 @@ exports.toggleAvailability = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+// agent reviews by user
+
+exports.addAgentReview = async (req, res) => {
+  const { agentId } = req.params;
+  const { userId, orderId, rating, comment } = req.body;
+
+  try {
+    const order = await Order.findById(orderId);
+
+    // Check if order exists and is delivered
+    if (!order || order.orderStatus !== "delivered") {
+      return res.status(400).json({ message: "You can only leave a review after delivery is completed." });
+    }
+
+    // Optional: Check if the user leaving the review is the customer who made the order
+    if (order.customerId.toString() !== userId) {
+      return res.status(403).json({ message: "You are not allowed to review this order." });
+    }
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found." });
+    }
+
+    // Check for duplicate review on same order
+    const alreadyReviewed = agent.feedback.reviews.some(
+      review => review.orderId.toString() === orderId
+    );
+    if (alreadyReviewed) {
+      return res.status(400).json({ message: "You have already reviewed this order." });
+    }
+
+    // Add review
+    agent.feedback.reviews.push({ userId, orderId, rating, comment });
+
+    // Update average rating and total reviews
+    const allRatings = agent.feedback.reviews.map(r => r.rating);
+    agent.feedback.totalReviews = allRatings.length;
+    agent.feedback.averageRating = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
+
+    await agent.save();
+
+    res.status(200).json({ message: "Review added successfully!" });
+
+  } catch (error) {
+    console.error("Review Error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
