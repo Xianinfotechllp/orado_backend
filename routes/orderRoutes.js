@@ -24,6 +24,7 @@ const {
  
   
 } = require('../controllers/orderController');
+const { upload } = require('../middlewares/multer');
 
 // orders
 router.post('/create', createOrder); // Create new order
@@ -38,7 +39,14 @@ router.get('/agent/:agentId', getOrdersByAgent);
 // updates and actions on orders
 router.put('/:orderId/status', updateOrderStatus);
 router.post('/:orderId/cancel', cancelOrder);
-router.post('/:orderId/review', reviewOrder);
+router.post(
+  '/:orderId/review',
+  upload.fields([
+    { name: 'customerImages', maxCount: 3 },
+    { name: 'restaurantImages', maxCount: 2 },
+  ]),
+  reviewOrder
+);
 router.put('/:orderId/delivery-mode', updateDeliveryMode);
 router.put('/:orderId/agent', assignAgent);
 router.put('/:orderId/scheduled-time', updateScheduledTime);

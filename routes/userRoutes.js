@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword} = require("../controllers/userControllers");
 const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
+const {protectUser} = require('../middlewares/authMiddleware')
+const {addAgentReview} = require('../controllers/agentController')
 
 // Routes
 router.post("/register", registerUser);
@@ -16,6 +18,13 @@ router.delete("/delete/:addressId ",deleteAddressById)
 
 router.post("/forgot-password",forgotPassword)
 router.post("/reset-password/:token",resetPassword)
+
+
+// post agent review
+router.post("/:agentId/review", protectUser, addAgentReview);
+
+
+/// thsi new
 
 
 module.exports = router;

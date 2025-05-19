@@ -2,8 +2,9 @@ const express = require('express')
 const router = express.Router()
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
 
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours, addKyc, getKyc,addServiceArea}  = require('../controllers/restaurantController')
 const {upload} = require('../middlewares/multer')
+
+const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc}  = require('../controllers/restaurantController')
 
 
 // restaurant routes
