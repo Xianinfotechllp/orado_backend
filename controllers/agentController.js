@@ -1,7 +1,8 @@
 const Agent = require('../models/agentModel');
 const Order = require('../models/orderModel');
 const bcrypt = require('bcrypt');
-const mongoose = require('mongoose')
+const mongoose = require('mongoose');
+const { awardDeliveryPoints } = require('../utils/awardPoints');
 
 exports.registerAgent = async (req, res) => {
   try {
@@ -104,7 +105,6 @@ exports.registerAgent = async (req, res) => {
 
 
 
-
 exports.agentAcceptsOrder = async (req, res) => {
   try {
     const agentId = req.params.agentId;
@@ -190,51 +190,41 @@ exports.agentRejectsOrder = async (req, res) => {
   }
 };
 
+
+
 exports.agentUpdatesOrderStatus = async (req, res) => {
   try {
     const { agentId, orderId } = req.params;
     const { status } = req.body;
-
     const io = req.app.get('io');
 
-       console.log(agentId, orderId, status)
-    // Check if agentId, orderId, and status are provided
     if (!agentId || !orderId || !status) {
       return res.status(400).json({ error: "agentId, orderId, and status are required" });
     }
 
-    // Validate orderId format (if using MongoDB ObjectId)
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: "Invalid orderId format" });
     }
 
-    // Validate status value
-   const allowedStatuses = [
-  'picked_up',   // Agent collected the order
-  'on_the_way',  // Agent started delivery
-  'arrived',     // Agent reached customer location
-  'delivered'    // Order handed over
-];
+    const allowedStatuses = ['picked_up', 'on_the_way', 'arrived', 'delivered'];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ error: "Invalid status value" });
     }
 
-    // Find the order
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // // Check if agent is assigned to this order
-    // if (order.assignedAgent.toString() !== agentId) {
-    //   return res.status(403).json({ error: "You are not assigned to this order" });
-    // }
-
-    // Update status
     order.orderStatus = status;
-          // Emit notification to all connected clients
-  io.emit("orderstatus", { message: "New Order Placed!",date:order });
     await order.save();
+
+    io.emit("orderstatus", { message: "Order status updated", order });
+
+    // 🎯 Use reusable function here
+    if (status === "delivered") {
+      await awardDeliveryPoints(agentId); // default 10 points
+    }
 
     return res.status(200).json({ message: "Order status updated successfully", order });
 
@@ -243,3 +233,5 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Server error while updating order status" });
   }
 };
+
+
