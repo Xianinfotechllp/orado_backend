@@ -54,22 +54,17 @@ app.set("io", io);
 
 
 const db = require("./config/dbConfig");
+// router imports
 const userRouter = require("./routes/userRoutes");
-
 const productRouter = require("./routes/productRoutesRoutes");
-
 const resturantRouter = require("./routes/restaurantRoutes"); 
 const locationRouter = require("./routes/locationRoutes")
-
-
 const agentRouter = require("./routes/agentRoutes")
 const offerRouter = require("./routes/offerRoutes"); 
-
 const orderRouter = require("./routes/orderRoutes");
-
 const couponRoutes = require("./routes/couponRoutes");
-
 const feedbackRoutes = require("./routes/feedbackRoutes"); 
+const cartRoutes = require("./routes/cartRoutes"); 
 
 
 
@@ -87,24 +82,11 @@ app.use("/restaurants",resturantRouter)
 app.use("/restaurants",offerRouter)
 app.use("/order",orderRouter)
 app.use("/coupon",couponRoutes)
-
-// {
-//   "userId": "6825a5545d887cc953bd60c0",         
-//   "orderId": "6825a7199f3329682fd6294b",
-//   "restaurantId": "6822e6600cd0390135d35483",
-//   "agentId": "AGENT_OBJECT_ID",
-//   "targetType": "restaurant",
-//   "rating": 5,
-//   "comment": "Fantastic food!"
-// }
-
-
 app.use("/resturants",resturantRouter)
 app.use("/location",locationRouter)
 app.use("/agent",agentRouter)
-
-
 app.use("/feedback",feedbackRoutes)
+app.use("/cart",cartRoutes)
 
 
 

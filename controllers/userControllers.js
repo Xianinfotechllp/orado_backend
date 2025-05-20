@@ -368,3 +368,42 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+// check for Gdpr
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Optional: Anonymize before deletion if logs/refs are required
+    // await User.findByIdAndUpdate(userId, {
+    //   name: "Deleted User",
+    //   email: `deleted_${userId}@example.com`,
+    //   phone: `deleted_${userId}`,
+    //   password: "",
+    //   address: {},
+    //   verification: {},
+    //   bankDetails: {},
+    //   gst: "",
+    //   fssai: "",
+    //   deviceTokens: [],
+    //   resetPasswordToken: undefined,
+    //   resetPasswordExpires: undefined,
+    // });
+
+    // Hard delete the user
+    await User.findByIdAndDelete(userId);
+
+    // TODO: Optionally delete or anonymize related data from other collections (e.g., Orders, Referrals, etc.)
+
+    res.json({ message: "User data permanently deleted as per GDPR compliance" });
+  } catch (error) {
+    console.error("Delete User Error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
