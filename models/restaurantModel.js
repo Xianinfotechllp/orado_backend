@@ -15,36 +15,49 @@ const restaurantSchema = new mongoose.Schema(
       city: String,
       state: String,
       zip: String,
-     
+
     },
-     location: {
-        type: { type: String, enum: ["Point"], default: "Point" },
-        coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
-      },
+    location: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+    },
     phone: { type: String, required: true },
     email: { type: String, required: true },
     // offers-added
     offers: [
-  {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Offer'
-  }
-]
-,
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Offer'
+      }
+    ]
+    ,
+    points: {
+      totalPoints: { type: Number, default: 0 },
+      lastAwardedDate: { type: Date },
+    },
+    pointsHistory: [
+      {
+        points: Number,
+        reason: String,
+        date: { type: Date, default: Date.now },
+        orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', default: null }
+      }
+    ]
+    ,
     openingHours: {
       startTime: { type: String, required: true },
       endTime: { type: String, required: true },
     },
 
     businessHours: {
-  type: Map,
-  of: {
-    startTime: { type: String }, // "HH:mm"
-    endTime: { type: String },
-    closed: { type: Boolean, default: false } // optional field to mark a day closed
-  },
-  default: {}
-},
+      type: Map,
+      of: {
+        startTime: { type: String }, // "HH:mm"
+        endTime: { type: String },
+        closed: { type: Boolean, default: false } // optional field to mark a day closed
+      },
+      default: {}
+    },
 
     categories: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
@@ -70,7 +83,7 @@ const restaurantSchema = new mongoose.Schema(
     canManageMenu: { type: Boolean, default: false },
   },
     kycDocuments: {
-      type: [String], 
+      type: [String],
       default: [],
     },
     rating: { type: Number, default: 0 },
