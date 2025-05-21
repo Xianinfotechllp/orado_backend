@@ -4,6 +4,8 @@ const socketIo = require('socket.io')
 const app = express();
 const http = require("http");
 const server = http.createServer(app);
+const cors = require('cors');
+
 const io = socketIo(server, {
   cors: { origin: "*" }
 });
@@ -66,6 +68,8 @@ const couponRoutes = require("./routes/couponRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes"); 
 const cartRoutes = require("./routes/cartRoutes"); 
 
+const chatRouter  = require("./routes/chatRoutes")
+
 
 
 dotenv.config();
@@ -74,6 +78,7 @@ db()
 
 
 app.use(express.json());
+app.use(cors());
 
 // routes using
 app.use("/user", userRouter);
@@ -82,6 +87,12 @@ app.use("/restaurants",resturantRouter)
 app.use("/restaurants",offerRouter)
 app.use("/order",orderRouter)
 app.use("/coupon",couponRoutes)
+
+app.use("/chat",chatRouter)
+
+
+
+
 app.use("/resturants",resturantRouter)
 app.use("/location",locationRouter)
 app.use("/agent",agentRouter)

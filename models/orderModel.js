@@ -39,7 +39,10 @@ const orderSchema = mongoose.Schema({
   paymentMethod: { type: String, enum: ['cash', 'online', 'wallet'] },
   paymentStatus: { type: String, enum: ['pending', 'completed', 'failed'] },
   customerReview: String,
+  customerReviewImages: [String],
   restaurantReview: String,
+  restaurantReviewImages: [String],
+
   cancellationReason: String,  // Store reason for cancellation
   debtCancellation: Boolean, // Flag for cancellation due to debt
   deliveryMode: { type: String, enum: ['contact', 'no_contact', 'do_not_disturb'] },
