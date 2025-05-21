@@ -261,42 +261,27 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     const { status } = req.body;
     const io = req.app.get('io');
 
-
     // Validate required fields
-
     if (!agentId || !orderId || !status) {
       return res.status(400).json({ error: "agentId, orderId, and status are required" });
     }
 
-
     // Validate orderId format
-
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: "Invalid orderId format" });
     }
 
-
     // Validate status
-
     const allowedStatuses = ['picked_up', 'on_the_way', 'arrived', 'delivered'];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ error: "Invalid status value" });
     }
 
+    // Find order
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
-
-
-    order.orderStatus = status;
-    await order.save();
-
-    io.emit("orderstatus", { message: "Order status updated", order });
-
-    // 🎯 Use reusable function here
-    if (status === "delivered") {
-      await awardDeliveryPoints(agentId); // default 10 points
 
     // Check if the agent updating the status is assigned to this order
     if (!order.assignedAgent || order.assignedAgent.toString() !== agentId) {
@@ -305,11 +290,15 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
     // Update status
     order.orderStatus = status;
+    await order.save();
 
     // Emit real-time notification to clients
     io.emit("orderstatus", { message: "Order status updated", order });
 
-    await order.save();
+    // Award points if delivered
+    if (status === "delivered") {
+      await awardDeliveryPoints(agentId); // assuming this is defined elsewhere
+    }
 
     return res.status(200).json({ message: "Order status updated successfully", order });
 
@@ -318,7 +307,6 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Server error while updating order status" });
   }
 };
-
 exports.toggleAvailability = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -345,3 +333,50 @@ exports.toggleAvailability = async (req, res) => {
 };
 
 
+exports.addAgentReview = async (req, res) => {
+  const { agentId } = req.params;
+  const { userId, orderId, rating, comment } = req.body;
+
+  try {
+    const order = await Order.findById(orderId);
+
+    // Check if order exists and is delivered
+    if (!order || order.orderStatus !== "delivered") {
+      return res.status(400).json({ message: "You can only leave a review after delivery is completed." });
+    }
+
+    // Optional: Check if the user leaving the review is the customer who made the order
+    if (order.customerId.toString() !== userId) {
+      return res.status(403).json({ message: "You are not allowed to review this order." });
+    }
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found." });
+    }
+
+    // Check for duplicate review on same order
+    const alreadyReviewed = agent.feedback.reviews.some(
+      review => review.orderId.toString() === orderId
+    );
+    if (alreadyReviewed) {
+      return res.status(400).json({ message: "You have already reviewed this order." });
+    }
+
+    // Add review
+    agent.feedback.reviews.push({ userId, orderId, rating, comment });
+
+    // Update average rating and total reviews
+    const allRatings = agent.feedback.reviews.map(r => r.rating);
+    agent.feedback.totalReviews = allRatings.length;
+    agent.feedback.averageRating = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
+
+    await agent.save();
+
+    res.status(200).json({ message: "Review added successfully!" });
+
+  } catch (error) {
+    console.error("Review Error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
