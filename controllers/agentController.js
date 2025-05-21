@@ -159,33 +159,43 @@ exports.loginAgent = async (req, res) => {
 
 
 
+
 exports.agentAcceptsOrder = async (req, res) => {
   try {
-    const agentId = req.params.agentId;
-    const { orderId } = req.body;
+    const agentId = req.body.agentId;
+    const { orderId } = req.params;
 
-    // Validate input
     if (!orderId) {
       return res.status(400).json({ error: 'Order ID is required' });
+    }
+    if (!agentId) {
+      return res.status(400).json({ message: "Agent ID is required", messageType: "failure" });
+    }
+
+    // Validate agent existence and active status
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    if (!agent.active) {
+      return res.status(403).json({ error: 'Agent is not active' });
     }
 
     // Fetch the order
     const order = await Order.findById(orderId);
-
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Ensure order is in 'accepted_by_restaurant' status
     if (order.orderStatus !== 'accepted_by_restaurant') {
       return res.status(400).json({
         error: `Cannot accept order. Current status is: ${order.orderStatus}`,
       });
     }
 
-    // Assign the agent and update order status
+    // Assign agent and update order status
     order.orderStatus = 'assigned_to_agent';
-    order.assignedAgent = agentId; // assuming this field exists in your schema
+    order.assignedAgent = agentId;
 
     await order.save();
 
@@ -245,20 +255,28 @@ exports.agentRejectsOrder = async (req, res) => {
 };
 
 
-
 exports.agentUpdatesOrderStatus = async (req, res) => {
   try {
     const { agentId, orderId } = req.params;
     const { status } = req.body;
     const io = req.app.get('io');
 
+
+    // Validate required fields
+
     if (!agentId || !orderId || !status) {
       return res.status(400).json({ error: "agentId, orderId, and status are required" });
     }
 
+
+    // Validate orderId format
+
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: "Invalid orderId format" });
     }
+
+
+    // Validate status
 
     const allowedStatuses = ['picked_up', 'on_the_way', 'arrived', 'delivered'];
     if (!allowedStatuses.includes(status)) {
@@ -270,6 +288,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
+
     order.orderStatus = status;
     await order.save();
 
@@ -278,6 +297,43 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     // 🎯 Use reusable function here
     if (status === "delivered") {
       await awardDeliveryPoints(agentId); // default 10 points
+
+    // Check if the agent updating the status is assigned to this order
+    if (!order.assignedAgent || order.assignedAgent.toString() !== agentId) {
+      return res.status(403).json({ error: "You are not assigned to this order" });
+    }
+
+    // Update status
+    order.orderStatus = status;
+
+    // Emit real-time notification to clients
+    io.emit("orderstatus", { message: "Order status updated", order });
+
+    await order.save();
+
+    return res.status(200).json({ message: "Order status updated successfully", order });
+
+  } catch (error) {
+    console.error("Error updating order status", error);
+    res.status(500).json({ error: "Server error while updating order status" });
+  }
+};
+
+exports.toggleAvailability = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.body;
+
+    if (!["Available", "Unavailable"].includes(status)) {
+      return res.status(400).json({ message: "Invalid availability status" });
+    }
+
+    // 1. Find the user by userId
+    const user = await User.findById(userId);
+
+    if (!user || !user.agentId) {
+      return res.status(404).json({ message: "Agent not linked to user or user not found" });
+
     }
 
     return res.status(200).json({ message: "Order status updated successfully", order });
@@ -287,3 +343,5 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Server error while updating order status" });
   }
 };
+
+
