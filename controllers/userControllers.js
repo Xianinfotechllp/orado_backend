@@ -3,11 +3,13 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const {sendEmail} = require("../utils/sendEmail")
-const{sendSms} = require("../utils/sendSms")
-  
+
 // Register user with validations, OTP generation and notifications
 exports.registerUser = async (req, res) => {
   try {
+
+
+
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
     const phoneRegex = /^\+91\d{10}$/;
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
@@ -112,14 +114,11 @@ exports.verifyOtp = async (req, res) => {
 
 
 
-
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password are required" });
+      return res.status(400).json({ message: "Email and password are required" });
     }
 
     const userExist = await User.findOne({ email });
@@ -138,16 +137,26 @@ exports.loginUser = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    // Create a safe user object without password
+    const user = {
+      _id: userExist._id,
+      name: userExist.name,
+      email: userExist.email,
+      role: userExist.role, // if you have roles like admin/customer etc.
+    };
+
     res.json({
       message: "Logged in successfully",
       token,
-      userId: userExist._id,
+      user,
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 exports.addAddress = async (req, res) => {

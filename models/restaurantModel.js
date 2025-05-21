@@ -65,6 +65,13 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "approved", "rejected"],
       default: "pending",
+    },  permissions: {
+    canAcceptOrders: { type: Boolean, default: false },
+    canManageMenu: { type: Boolean, default: false },
+  },
+    kycDocuments: {
+      type: [String], 
+      default: [],
     },
     rating: { type: Number, default: 0 },
     serviceAreas: [
@@ -91,5 +98,6 @@ const restaurantSchema = new mongoose.Schema(
 
 // ✅ Create geospatial indexes
 restaurantSchema.index({ location: "2dsphere" });
+restaurantSchema.index({ serviceAreas: "2dsphere" });
 
 module.exports = mongoose.model("Restaurant", restaurantSchema);

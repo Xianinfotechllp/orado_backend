@@ -1,6 +1,16 @@
+const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
 const Product = require("../models/productModel")
+const { uploadOnCloudinary } = require('../utils/cloudinary'); 
+const fs = require('fs');
+
+
+const firebaseAdmin = require('../config/firebaseAdmin')
+const Restaurant = require("../models/restaurantModel");
+const { sendPushNotification }  = require('../utils/sendPushNotification')
+
+
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } = req.body;
@@ -23,22 +33,24 @@ exports.createOrder = async (req, res) => {
       });
     }
 
+    // ✅ Check if restaurant exists
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
     // Extract product IDs from order items
     const productIds = orderItems.map(item => item.productId);
 
     // Fetch active products matching those IDs and restaurant
     const products = await Product.find({ _id: { $in: productIds }, restaurantId, active: true });
 
-    // Extract found product IDs as strings
     const foundIds = products.map(p => p._id.toString());
-
-    // Find missing product IDs by comparing with order items
     const missingIds = productIds.filter(id => !foundIds.includes(id));
 
     if (missingIds.length > 0) {
       const missingItems = orderItems.filter(item => missingIds.includes(item.productId));
       const missingNames = missingItems.map(item => item.name || "Unknown Product");
-
       return res.status(400).json({
         error: "Some ordered items are invalid or unavailable",
         missingProducts: missingNames,
@@ -60,7 +72,7 @@ exports.createOrder = async (req, res) => {
         now <= product.specialOffer.endDate
       ) {
         const discountAmount = (price * product.specialOffer.discount) / 100;
-        price = price - discountAmount;
+        price -= discountAmount;
       }
 
       totalAmount += price * (item.quantity || 1);
@@ -81,24 +93,29 @@ exports.createOrder = async (req, res) => {
       },
     };
 
-    const order = new Order(orderData);
-    const savedOrder = await order.save();
+    const newOrder = new Order(orderData);
+    const savedOrder = await newOrder.save();
+ // ✅ Send push notification if restaurant has device token
 
+    await sendPushNotification(restaurantId, "new order placed", "an new order placed by cusotmer")
+
+    // ✅ send realtime notification via Socket.IO
     io.to(restaurantId).emit("new-order", {
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
       orderItems: savedOrder.orderItems,
     });
 
-    return res.status(201).json(savedOrder);
+    return res.status(201).json({
+      message: "Order created successfully",
+      order: savedOrder,
+    });
 
   } catch (err) {
     console.error("createOrder error:", err);
     return res.status(500).json({ error: "Failed to create order", details: err.message });
   }
 };
-
-
 
 // Get Order by ID
 exports.getOrderById = async (req, res) => {
@@ -180,21 +197,48 @@ exports.cancelOrder = async (req, res) => {
 // Review Order
 exports.reviewOrder = async (req, res) => {
   const { customerReview, restaurantReview } = req.body;
+
   try {
+    const customerImageFiles = req.files['customerImages'] || [];
+    const restaurantImageFiles = req.files['restaurantImages'] || [];
+
+    // Upload customer images to Cloudinary
+    const customerImages = [];
+    for (const file of customerImageFiles) {
+      const result = await uploadOnCloudinary(file.path);
+      if (result?.secure_url) customerImages.push(result.secure_url);
+    }
+
+    // Upload restaurant images to Cloudinary
+    const restaurantImages = [];
+    for (const file of restaurantImageFiles) {
+      const result = await uploadOnCloudinary(file.path);
+      if (result?.secure_url) restaurantImages.push(result.secure_url);
+    }
+
+    // Update the order document
     const updated = await Order.findByIdAndUpdate(
       req.params.orderId,
       {
         customerReview: customerReview || "",
         restaurantReview: restaurantReview || "",
+        $push: {
+          customerReviewImages: { $each: customerImages },
+          restaurantReviewImages: { $each: restaurantImages },
+        },
       },
       { new: true }
     );
+
     if (!updated) return res.status(404).json({ error: "Order not found" });
+
     res.json(updated);
   } catch (err) {
+    console.error("Review submission failed:", err);
     res.status(500).json({ error: "Failed to submit review" });
   }
 };
+
 
 // Update Delivery Mode
 exports.updateDeliveryMode = async (req, res) => {
@@ -364,7 +408,6 @@ exports.getCustomerScheduledOrders = async (req, res) => {
 
 
 
-
 exports.merchantAcceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -378,28 +421,35 @@ exports.merchantAcceptOrder = async (req, res) => {
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
-
+    if (order.orderStatus === "cancelled") {
+      return res.status(400).json({ error: "Cannot accept a cancelled order" });
+    }
     // Prevent double accepting or invalid status transitions
     if (order.orderStatus === "accepted") {
       return res.status(400).json({ error: "Order is already accepted" });
     }
 
-    if (order.orderStatus === "cancelled") {
-      return res.status(400).json({ error: "Cannot accept a cancelled order" });
-    }
+   
 
     // Update status to 'accepted'
     order.orderStatus = "accepted";
     await order.save();
 
-    // Emit to restaurant room via Socket.IO
+    
+
+
+    
+
+    // Emit to  user  via Socket.IO
     const io = req.app.get("io");
     if (io) {
-      io.to(order.restaurantId.toString()).emit("order-accepted", {
-        orderId: order._id,
-        message: "Order has been accepted by the merchant"
+      io.to(order.customerId.toString()).emit("order-accepted", {
+        message: "Order status chhanged",
+        order
       });
     }
+
+    
 
     res.status(200).json({
       success: true,
@@ -511,3 +561,52 @@ exports.updateOrderStatus = async (req, res) => {
 };
 
 
+
+
+
+
+
+
+
+exports.getOrdersByMerchant = async (req, res) => {
+  try {
+    
+    const { restaurantId } = req.query;
+
+    if (!restaurantId) {
+      return res.status(400).json({ error: "restaurantId is required" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ error: "Invalid restaurantId format" });
+    }
+
+    const orders = await Order.find({ restaurantId })
+      .populate("customerId", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: "Orders fetched successfully",
+      totalOrders: orders.length,
+      orders,
+    });
+
+  } catch (err) {
+    console.error("getOrdersByMerchant error:", err);
+    return res.status(500).json({ error: "Failed to fetch orders", details: err.message });
+  }
+};
+
+
+
+  exports.getOrderPriceSummary = async() =>
+  {
+
+    try {
+      
+      
+    } catch (error) {
+      
+    }
+
+  }
