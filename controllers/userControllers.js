@@ -3,11 +3,13 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const {sendEmail} = require("../utils/sendEmail")
-const{sendSms} = require("../utils/sendSms")
-  
+
 // Register user with validations, OTP generation and notifications
 exports.registerUser = async (req, res) => {
   try {
+
+
+
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
     const phoneRegex = /^\+91\d{10}$/;
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;

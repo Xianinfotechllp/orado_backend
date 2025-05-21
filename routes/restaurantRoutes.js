@@ -4,7 +4,7 @@ const {createCategory,getAResturantCategories,editResturantCategory,deleteRestur
 
 const {upload} = require('../middlewares/multer')
 
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc}  = require('../controllers/restaurantController')
+const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu}  = require('../controllers/restaurantController')
 
 
 // restaurant routes
@@ -31,6 +31,9 @@ router.put('/categories/:categoryId', upload.single('images'), editResturantCate
 router.delete('/categories/:categoryId',deleteResturantCategory)
 
 
+//get restaurant menu
+
+router.get("/:restaurantId/menu",getRestaurantMenu)
 
 
 module.exports = router

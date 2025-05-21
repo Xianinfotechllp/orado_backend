@@ -6,6 +6,7 @@ const http = require("http");
 const server = http.createServer(app);
 const cors = require('cors');
 
+
 const io = socketIo(server, {
   cors: { origin: "*" }
 });
@@ -91,7 +92,6 @@ app.use("/restaurants",resturantRouter)
 app.use("/restaurants",offerRouter)
 app.use("/order",orderRouter)
 app.use("/coupon",couponRoutes)
-
 app.use("/chat",chatRouter)
 
 
@@ -114,3 +114,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+

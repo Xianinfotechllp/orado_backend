@@ -597,3 +597,16 @@ exports.getOrdersByMerchant = async (req, res) => {
   }
 };
 
+
+
+  exports.getOrderPriceSummary = async() =>
+  {
+
+    try {
+      
+      
+    } catch (error) {
+      
+    }
+
+  }
