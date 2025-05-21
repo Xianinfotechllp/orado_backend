@@ -20,8 +20,8 @@ router.post("/login",loginAgent)
 router.put('/:userId/availability', toggleAvailability);
 
 // delivery routes
-router.post('/:agentId/orders/accept',agentAcceptsOrder)
-router.post("/:agentId/orders/reject",agentRejectsOrder)
+router.post('/orders/:orderId/accept',agentAcceptsOrder)
+router.post("/orders/:orderId/accept",agentRejectsOrder)
 router.put("/:agentId/orders/:orderId/status",agentUpdatesOrderStatus)
 
     
