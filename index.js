@@ -70,6 +70,7 @@ const feedbackRoutes = require("./routes/feedbackRoutes");
 const cartRoutes = require("./routes/cartRoutes"); 
 
 const chatRouter  = require("./routes/chatRoutes")
+const faqRouter  = require("./routes/faqRoutes")
 
 
 
@@ -93,11 +94,11 @@ app.use("/chat",chatRouter)
 
 
 
-app.use("/resturants",resturantyRouter)
 app.use("/location",locationRouter)
 app.use("/agent",agentRouter)
 app.use("/feedback",feedbackRoutes)
 app.use("/cart",cartRoutes)
+app.use("/faq",faqRouter)
 
 
 
