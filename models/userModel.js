@@ -66,7 +66,13 @@ const userSchema = new mongoose.Schema(
 
     gst: String,
     fssai: String,
-
+  notificationPrefs: {
+    orderUpdates: { type: Boolean, default: true },
+    promotions: { type: Boolean, default: true },
+    walletCredits: { type: Boolean, default: true },
+    newFeatures: { type: Boolean, default: true },
+    serviceAlerts: { type: Boolean, default: true }
+  },
     fraudulent: { type: Boolean, default: false },
     codEnabled: { type: Boolean, default: false },
 
@@ -92,10 +98,14 @@ const userSchema = new mongoose.Schema(
     resetPasswordToken: String,
     resetPasswordExpires: Date,
 
+    
+
     loginAttempts: {
       count: { type: Number, default: 0 },
       lastAttempt: Date,
     },
+
+
   },
   { timestamps: true }
 );

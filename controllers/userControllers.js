@@ -409,3 +409,73 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+
+exports.updateNotificationPrefs = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const updates = req.body;
+
+    // Define allowed preference keys
+    const allowedKeys = ['orderUpdates', 'promotions', 'walletCredits', 'newFeatures', 'serviceAlerts'];
+
+    // Check if updates object contains at least one valid key
+    const hasValidKey = Object.keys(updates).some(key => allowedKeys.includes(key));
+    if (!hasValidKey) {
+      return res.status(400).json({ error: "No valid notification preference keys provided" });
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Update allowed preferences
+    for (const key of allowedKeys) {
+      if (updates.hasOwnProperty(key)) {
+        user.notificationPrefs[key] = updates[key];
+      }
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Notification preferences updated successfully",
+      notificationPrefs: user.notificationPrefs
+    });
+
+  } catch (error) {
+    console.error("Error updating notification preferences:", error);
+    res.status(500).json({ error: "Server error while updating notification preferences" });
+  }
+};
+exports.getNotificationPrefs = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // If notificationPrefs is undefined/null, optionally initialize defaults
+    if (!user.notificationPrefs) {
+      user.notificationPrefs = {
+        orderUpdates: true,
+        promotions: true,
+        walletCredits: true,
+        newFeatures: true,
+        serviceAlerts: true
+      };
+      await user.save();
+    }
+
+    return res.status(200).json({
+      message: "Notification preferences fetched successfully",
+      notificationPrefs: user.notificationPrefs
+    });
+
+  } catch (error) {
+    console.error("Error fetching notification preferences:", error);
+    res.status(500).json({ error: "Server error while fetching notification preferences" });
+  }
+};
