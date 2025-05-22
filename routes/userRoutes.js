@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
+
 const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll} = require("../controllers/userControllers");
+
+
 const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
 const {protect} = require('../middlewares/authMiddleware')
 const {addAgentReview} = require('../controllers/agentController')
@@ -23,12 +26,15 @@ router.post("/reset-password/:token", protect, checkRole('customer'), resetPassw
 router.post("/logout", protect, checkRole('customer'), logoutUser);
 router.post("/logout-all", protect, checkRole('customer'), logoutAll);
 
+// GDPR-delete
+router.delete("/delete/:userId",deleteUser)
+
+
 
 // post agent review
 router.post("/:agentId/review", protect, checkRole('customer'), addAgentReview);
 
-
-/// thsi new
+// / thsi new
 
 
 module.exports = router;

@@ -34,12 +34,17 @@ const agentSchema = new mongoose.Schema(
       surge: { type: Number, default: 0 },
       incentives: { type: Number, default: 0 },
     },
+    points: {
+      totalPoints: { type: Number, default: 0 },
+      lastAwardedDate: { type: Date },
+    },
+
     deliveryStatus: {
       currentOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" }, // current order they are delivering
       status: { type: String, enum: ["Assigned", "In Progress", "Completed", "Cancelled"], default: "Assigned" },
       estimatedDeliveryTime: { type: Date }, // estimated time of arrival
-      location: { 
-        latitude: { type: Number }, 
+      location: {
+        latitude: { type: Number },
         longitude: { type: Number }
       }, // current location of the agent
       accuracy: { type: Number }, // accuracy of the GPS location (in meters)

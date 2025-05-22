@@ -28,12 +28,16 @@ router.put("/bank-details", protect, checkRole('agent'), updateAgentBankDetails)
 router.put('/:userId/availability', protect, checkRole('agent'), toggleAvailability);
 
 // delivery routes
-router.post('/:agentId/orders/accept', protect, checkRole('agent'), agentAcceptsOrder)
-router.post("/:agentId/orders/reject", protect, checkRole('agent'), agentRejectsOrder)
-router.put("/:agentId/orders/:orderId/status", protect, checkRole('agent'), agentUpdatesOrderStatus)
+
+
 
 // agent reviews
 router.get("/:agentId/reviews", getAgentReviews);
+
+router.post('/orders/:orderId/accept',agentAcceptsOrder)
+router.post("/orders/:orderId/accept",agentRejectsOrder)
+router.put("/:agentId/orders/:orderId/status",agentUpdatesOrderStatus)
+
 
     
 

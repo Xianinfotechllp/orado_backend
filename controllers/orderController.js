@@ -7,7 +7,8 @@ const fs = require('fs');
 const Permission = require('../models/restaurantPermissionModel');
 const firebaseAdmin = require('../config/firebaseAdmin')
 const Restaurant = require("../models/restaurantModel");
-const { sendPushNotification }  = require('../utils/sendPushNotification')
+const { sendPushNotification }  = require('../utils/sendPushNotification');
+const { awardDeliveryPoints, awardPointsToRestaurant } = require("../utils/awardPoints");
 
 
 exports.createOrder = async (req, res) => {
@@ -533,7 +534,7 @@ exports.merchantRejectOrder = async (req, res) => {
   }
 };
 
-// Update Order Status (Merchant)
+// Update Order Status (Merchant) agent
 exports.updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
   const { newStatus } = req.body;
@@ -542,12 +543,15 @@ exports.updateOrderStatus = async (req, res) => {
     'accepted_by_restaurant',
     'rejected_by_restaurant',
     'preparing',
-    'ready'
+    'ready',
   ];
 
-  if (!merchantAllowedStatuses.includes(newStatus)) {
+  // Optionally allow 'completed' for the system or other roles
+  const allowedStatuses = [...merchantAllowedStatuses, 'completed'];
+
+  if (!allowedStatuses.includes(newStatus)) {
     return res.status(400).json({
-      error: `Invalid status. Merchants can only update status to: ${merchantAllowedStatuses.join(', ')}`
+      error: `Invalid status. Allowed statuses: ${allowedStatuses.join(', ')}`,
     });
   }
 
@@ -560,20 +564,44 @@ exports.updateOrderStatus = async (req, res) => {
     order.orderStatus = newStatus;
     await order.save();
 
+    // Award points only when status is 'completed'
+    if (newStatus === 'completed') {
+      // Award delivery points to agent
+      if (order.agentId) {
+        try {
+          await awardDeliveryPoints(order.agentId, 10); // 10 points per delivery
+        } catch (err) {
+          console.error('Failed to award delivery points:', err);
+        }
+      }
+
+      // Award milestone points to restaurant
+      if (order.restaurantId) {
+        // Example: award 10 points every 5 completed orders
+        const completedOrdersCount = await Order.countDocuments({
+          restaurantId: order.restaurantId,
+          orderStatus: 'completed',
+        });
+
+        if (completedOrdersCount % 5 === 0) {
+          try {
+            await awardPointsToRestaurant(order.restaurantId, 10, 'Milestone: 5 deliveries', order._id);
+          } catch (err) {
+            console.error('Failed to award restaurant points:', err);
+          }
+        }
+      }
+    }
 
     res.status(200).json({
       message: 'Order status updated successfully',
-      order
+      order,
     });
   } catch (error) {
     console.error('Error updating order status:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
-
-
-
 
 
 
@@ -608,3 +636,16 @@ exports.getOrdersByMerchant = async (req, res) => {
   }
 };
 
+
+
+  exports.getOrderPriceSummary = async() =>
+  {
+
+    try {
+      
+      
+    } catch (error) {
+      
+    }
+
+  }

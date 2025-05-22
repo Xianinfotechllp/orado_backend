@@ -4,13 +4,17 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const {sendEmail} = require("../utils/sendEmail")
+
 const{sendSms} = require("../utils/sendSms")
 const crypto = require("crypto");
 
-  
+
 // Register user with validations, OTP generation and notifications
 exports.registerUser = async (req, res) => {
   try {
+
+
+
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
     const phoneRegex = /^\+91\d{10}$/;
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
@@ -412,6 +416,45 @@ exports.resetPassword = async (req, res) => {
     res.json({ message: "Password reset successful" });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+// check for Gdpr
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Optional: Anonymize before deletion if logs/refs are required
+    // await User.findByIdAndUpdate(userId, {
+    //   name: "Deleted User",
+    //   email: `deleted_${userId}@example.com`,
+    //   phone: `deleted_${userId}`,
+    //   password: "",
+    //   address: {},
+    //   verification: {},
+    //   bankDetails: {},
+    //   gst: "",
+    //   fssai: "",
+    //   deviceTokens: [],
+    //   resetPasswordToken: undefined,
+    //   resetPasswordExpires: undefined,
+    // });
+
+    // Hard delete the user
+    await User.findByIdAndDelete(userId);
+
+    // TODO: Optionally delete or anonymize related data from other collections (e.g., Orders, Referrals, etc.)
+
+    res.json({ message: "User data permanently deleted as per GDPR compliance" });
+  } catch (error) {
+    console.error("Delete User Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };

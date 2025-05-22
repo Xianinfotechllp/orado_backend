@@ -5,8 +5,6 @@ const Session = require("../models/session");
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose')
-const { uploadOnCloudinary } = require('../utils/cloudinary');
-const fs = require('fs');
 
 exports.registerAgent = async (req, res) => {
   try {
@@ -199,31 +197,40 @@ exports.logoutAgent = async (req, res) => {
 
 exports.agentAcceptsOrder = async (req, res) => {
   try {
-    const agentId = req.params.agentId;
-    const { orderId } = req.body;
+    const agentId = req.body.agentId;
+    const { orderId } = req.params;
 
-    // Validate input
     if (!orderId) {
       return res.status(400).json({ error: 'Order ID is required' });
+    }
+    if (!agentId) {
+      return res.status(400).json({ message: "Agent ID is required", messageType: "failure" });
+    }
+
+    // Validate agent existence and active status
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    if (!agent.active) {
+      return res.status(403).json({ error: 'Agent is not active' });
     }
 
     // Fetch the order
     const order = await Order.findById(orderId);
-
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Ensure order is in 'accepted_by_restaurant' status
     if (order.orderStatus !== 'accepted_by_restaurant') {
       return res.status(400).json({
         error: `Cannot accept order. Current status is: ${order.orderStatus}`,
       });
     }
 
-    // Assign the agent and update order status
+    // Assign agent and update order status
     order.orderStatus = 'assigned_to_agent';
-    order.assignedAgent = agentId; // assuming this field exists in your schema
+    order.assignedAgent = agentId;
 
     await order.save();
 
@@ -282,51 +289,51 @@ exports.agentRejectsOrder = async (req, res) => {
   }
 };
 
+
 exports.agentUpdatesOrderStatus = async (req, res) => {
   try {
     const { agentId, orderId } = req.params;
     const { status } = req.body;
-
     const io = req.app.get('io');
 
-       console.log(agentId, orderId, status)
-    // Check if agentId, orderId, and status are provided
+    // Validate required fields
     if (!agentId || !orderId || !status) {
       return res.status(400).json({ error: "agentId, orderId, and status are required" });
     }
 
-    // Validate orderId format (if using MongoDB ObjectId)
+    // Validate orderId format
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: "Invalid orderId format" });
     }
 
-    // Validate status value
-   const allowedStatuses = [
-  'picked_up',   // Agent collected the order
-  'on_the_way',  // Agent started delivery
-  'arrived',     // Agent reached customer location
-  'delivered'    // Order handed over
-];
+    // Validate status
+    const allowedStatuses = ['picked_up', 'on_the_way', 'arrived', 'delivered'];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ error: "Invalid status value" });
     }
 
-    // Find the order
+    // Find order
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // // Check if agent is assigned to this order
-    // if (order.assignedAgent.toString() !== agentId) {
-    //   return res.status(403).json({ error: "You are not assigned to this order" });
-    // }
+    // Check if the agent updating the status is assigned to this order
+    if (!order.assignedAgent || order.assignedAgent.toString() !== agentId) {
+      return res.status(403).json({ error: "You are not assigned to this order" });
+    }
 
     // Update status
     order.orderStatus = status;
-          // Emit notification to all connected clients
-  io.emit("orderstatus", { message: "New Order Placed!",date:order });
     await order.save();
+
+    // Emit real-time notification to clients
+    io.emit("orderstatus", { message: "Order status updated", order });
+
+    // Award points if delivered
+    if (status === "delivered") {
+      await awardDeliveryPoints(agentId); // assuming this is defined elsewhere
+    }
 
     return res.status(200).json({ message: "Order status updated successfully", order });
 
@@ -335,8 +342,6 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Server error while updating order status" });
   }
 };
-
-
 exports.toggleAvailability = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -351,30 +356,17 @@ exports.toggleAvailability = async (req, res) => {
 
     if (!user || !user.agentId) {
       return res.status(404).json({ message: "Agent not linked to user or user not found" });
+
     }
 
-    // 2. Update the agent's availability
-    const agent = await Agent.findByIdAndUpdate(
-      user.agentId,
-      { availabilityStatus: status },
-      { new: true }
-    );
+    return res.status(200).json({ message: "Order status updated successfully", order });
 
-    if (!agent) {
-      return res.status(404).json({ message: "Agent record not found" });
-    }
-
-    res.json({
-      message: "Availability status updated",
-      availabilityStatus: agent.availabilityStatus,
-    });
   } catch (error) {
-    console.error("Availability toggle error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Error updating order status", error);
+    res.status(500).json({ error: "Server error while updating order status" });
   }
 };
 
-// agent reviews by user
 
 exports.addAgentReview = async (req, res) => {
   const { agentId } = req.params;
@@ -420,6 +412,7 @@ exports.addAgentReview = async (req, res) => {
 
   } catch (error) {
     console.error("Review Error:", error);
+
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -491,3 +484,8 @@ exports.updateAgentBankDetails = async (req, res) => {
     return res.status(500).json({ message: "Server error." });
   }
 };
+
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+

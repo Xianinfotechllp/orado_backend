@@ -1,7 +1,13 @@
 const Restaurant = require("../models/restaurantModel")
+
 const Permission = require("../models/restaurantPermissionModel");
+
+const Product = require("../models/productModel")
+const Category = require("../models/categoryModel")
+
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary'); 
+
 
 exports.createRestaurant = async (req, res) => {
   try {
@@ -15,8 +21,14 @@ exports.createRestaurant = async (req, res) => {
       foodType,
       merchantSearchName,
       minOrderAmount,
+
       location,
       paymentMethods
+
+      paymentMethods,
+      location,
+      serviceAreas
+
     } = req.body;
 
 
@@ -48,6 +60,7 @@ exports.createRestaurant = async (req, res) => {
       paymentMethods,
       location,
       images: imageUrls,
+      serviceAreas
     });
 
     await newRestaurant.save();
@@ -329,66 +342,126 @@ exports.getKyc = async (req, res) => {
 
 
 
+
 exports.addServiceArea = async (req, res) => {
-
-  
-try {
-
-     const { restaurantId } = req.params;
-      const { serviceAreas } = req.body;
-        if (!Array.isArray(serviceAreas) || serviceAreas.length === 0) {
+  try {
+    const { restaurantId } = req.params;
+    const { serviceAreas } = req.body;
+   console.log(restaurantId)
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
-        message: 'serviceAreas must be a non-empty array of GeoJSON Polygons',
-        messageType: 'failure',
+        message: "Invalid restaurant ID",
+        messageType: "failure",
       });
     }
 
-       // Basic validation of each polygon
+    
+
+    if (!Array.isArray(serviceAreas) || serviceAreas.length === 0) {
+      return res.status(400).json({
+        message: "serviceAreas must be a non-empty array of GeoJSON Polygons",
+        messageType: "failure",
+      });
+    }
+
+    // Validate each polygon
     for (const area of serviceAreas) {
       if (
         !area.type ||
-        area.type !== 'Polygon' ||
+        area.type !== "Polygon" ||
         !Array.isArray(area.coordinates) ||
         area.coordinates.length === 0
       ) {
         return res.status(400).json({
-          message: 'Each serviceArea must be a valid GeoJSON Polygon with coordinates',
-          messageType: 'failure',
+          message: "Each serviceArea must be a valid GeoJSON Polygon with coordinates",
+          messageType: "failure",
         });
       }
     }
 
+    // Cast restaurantId to ObjectId
+    const restaurantObjectId =  new mongoose.Types.ObjectId(restaurantId);
 
-      const restaurant = await Restaurant.findById(restaurantId);
+    const restaurant = await Restaurant.findById(restaurantObjectId);
     if (!restaurant) {
       return res.status(404).json({
-        message: 'Restaurant not found',
-        messageType: 'failure',
+        message: "Restaurant not found",
+        messageType: "failure",
       });
     }
 
-
-     restaurant.serviceAreas = serviceAreas;
+    restaurant.serviceAreas = serviceAreas;
     await restaurant.save();
+
     return res.status(200).json({
-      message: 'Service areas updated successfully',
-      messageType: 'success',
+      message: "Service areas updated successfully",
+      messageType: "success",
       data: restaurant.serviceAreas,
     });
-    
   } catch (error) {
-    
-    
-console.error('Error updating serviceAreas:', error);
+    console.error("Error updating serviceAreas:", error);
     return res.status(500).json({
-      message: 'Server error',
-      messageType: 'failure',
+      message: "Server error",
+      messageType: "failure",
+    });
+  }
+};
+
+
+exports.getRestaurantMenu  = async(req,res) =>
+{
+const { restaurantId } = req.params;
+
+
+
+  try {
+    // Fetch all active categories for this restaurant
+    const categories = await Category.find({ restaurantId, active: true });
+
+    if (!categories.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'No categories found for this restaurant.'
+      });
+    }
+
+    // Fetch products for each category
+    const menu = await Promise.all(
+      categories.map(async (category) => {
+        const products = await Product.find({
+          restaurantId,
+          categoryId: category._id,
+          active: true
+        }) // populating addOns if you have it
+        // exclude extra fields if needed
+
+        return {
+          categoryId: category._id,
+          categoryName: category.name,
+          description: category.description,
+          images: category.images,
+          items: products
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      restaurantId,
+      menu
+    });
+
+  } catch (error) {
+    console.error('Error fetching menu:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch restaurant menu'
     });
   }
 
 
+}
 
-  }
 
     
      

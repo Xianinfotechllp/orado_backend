@@ -5,7 +5,7 @@ const categoriesSchema = mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Restaurant",
   },
-  active: Boolean,
+  active: {type:Boolean,default:true},
   autoOnOff: Boolean,
   description: String,
   images: [String],

@@ -1,5 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const {getNearbyRestaurants} = require('../controllers/locationControllers')
-router.get("/nearby-restaurants",getNearbyRestaurants)
+const {getRestaurantsInServiceArea} = require('../controllers/locationControllers')
+router.get("/nearby-restaurants",getRestaurantsInServiceArea)
 module.exports = router;

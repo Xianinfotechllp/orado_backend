@@ -2,6 +2,7 @@ const Feedback = require('../models/feedbackModel');
 const Order = require('../models/orderModel');
 const Restaurant = require('../models/restaurantModel');
 const Agent = require('../models/agentModel');
+const { awardPointsToRestaurant, awardDeliveryPoints } = require('../utils/awardPoints');
 
 
 
@@ -9,7 +10,8 @@ const Agent = require('../models/agentModel');
 // currently using userid-from body-not using authentication
 exports.createFeedback = async (req, res) => {
   try {
-    const { userId, orderId, restaurantId, agentId, targetType, rating, comment } = req.body;
+    const { orderId, restaurantId, agentId, targetType, rating, comment } = req.body;
+    const userId = req.user._id; // Use authenticated user
 
     if (!['order', 'restaurant', 'agent'].includes(targetType)) {
       return res.status(400).json({ message: 'Invalid targetType' });
@@ -31,13 +33,31 @@ exports.createFeedback = async (req, res) => {
 
     await feedback.save();
 
+    // Award points for positive feedback (rating >= 4)
+    if (targetType === 'restaurant' && rating >= 4 && restaurantId && orderId) {
+      try {
+        await awardPointsToRestaurant(restaurantId, 5, 'Positive Feedback', orderId);
+      } catch (error) {
+        console.error('Error awarding points to restaurant:', error);
+      }
+    }
+
+    // Optionally, award points to agent for positive feedback
+    if (targetType === 'agent' && rating >= 4 && agentId && orderId) {
+      try {
+        await awardDeliveryPoints(agentId, 5, 'Positive Feedback', orderId);
+      } catch (error) {
+        console.error('Error awarding points to agent:', error);
+      }
+    }
+
     return res.status(201).json({ message: 'Feedback submitted', feedback });
+
   } catch (error) {
     console.error("Feedback Error:", error);
     return res.status(500).json({ message: 'Server error', error });
   }
 };
-
 
 // 2. Get Feedbacks (by target type and ID)
 exports.getFeedbacks = async (req, res) => {
@@ -127,3 +147,4 @@ exports.deleteFeedback = async (req, res) => {
     return res.status(500).json({ message: 'Failed to delete feedback', error });
   }
 };
+
