@@ -1,34 +1,51 @@
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
-const Product = require("../models/productModel")
-const { uploadOnCloudinary } = require('../utils/cloudinary'); 
-const fs = require('fs');
+const Product = require("../models/productModel");
 
+const { uploadOnCloudinary } = require("../utils/cloudinary");
+const { haversineDistance } = require("../utils/distanceCalculator");
+const {deliveryFeeCalculator} = require("../utils/deliveryFeeCalculator")
+const fs = require("fs");
 
-const firebaseAdmin = require('../config/firebaseAdmin')
+const firebaseAdmin = require("../config/firebaseAdmin");
 const Restaurant = require("../models/restaurantModel");
-const { sendPushNotification }  = require('../utils/sendPushNotification');
-const { awardDeliveryPoints, awardPointsToRestaurant } = require("../utils/awardPoints");
-
+const { sendPushNotification } = require("../utils/sendPushNotification");
+const {
+  awardDeliveryPoints,
+  awardPointsToRestaurant,
+} = require("../utils/awardPoints");
 
 exports.createOrder = async (req, res) => {
   try {
-    const { customerId, restaurantId, orderItems, paymentMethod, location } = req.body;
+    const { customerId, restaurantId, orderItems, paymentMethod, location } =
+      req.body;
 
-    if (!restaurantId || !orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
-      return res.status(400).json({ error: "restaurantId and orderItems are required" });
+    if (
+      !restaurantId ||
+      !orderItems ||
+      !Array.isArray(orderItems) ||
+      orderItems.length === 0
+    ) {
+      return res
+        .status(400)
+        .json({ error: "restaurantId and orderItems are required" });
     }
 
     // Validate location
-    if (!location || !Array.isArray(location.coordinates) || location.coordinates.length !== 2) {
+    if (
+      !location ||
+      !Array.isArray(location.coordinates) ||
+      location.coordinates.length !== 2
+    ) {
       return res.status(400).json({
-        error: "Valid location coordinates are required in [longitude, latitude] format",
+        error:
+          "Valid location coordinates are required in [longitude, latitude] format",
       });
     }
 
     const [longitude, latitude] = location.coordinates;
-    if (typeof longitude !== 'number' || typeof latitude !== 'number') {
+    if (typeof longitude !== "number" || typeof latitude !== "number") {
       return res.status(400).json({
         error: "Coordinates must be numbers in [longitude, latitude] format",
       });
@@ -41,17 +58,25 @@ exports.createOrder = async (req, res) => {
     }
 
     // Extract product IDs from order items
-    const productIds = orderItems.map(item => item.productId);
+    const productIds = orderItems.map((item) => item.productId);
 
     // Fetch active products matching those IDs and restaurant
-    const products = await Product.find({ _id: { $in: productIds }, restaurantId, active: true });
+    const products = await Product.find({
+      _id: { $in: productIds },
+      restaurantId,
+      active: true,
+    });
 
-    const foundIds = products.map(p => p._id.toString());
-    const missingIds = productIds.filter(id => !foundIds.includes(id));
+    const foundIds = products.map((p) => p._id.toString());
+    const missingIds = productIds.filter((id) => !foundIds.includes(id));
 
     if (missingIds.length > 0) {
-      const missingItems = orderItems.filter(item => missingIds.includes(item.productId));
-      const missingNames = missingItems.map(item => item.name || "Unknown Product");
+      const missingItems = orderItems.filter((item) =>
+        missingIds.includes(item.productId)
+      );
+      const missingNames = missingItems.map(
+        (item) => item.name || "Unknown Product"
+      );
       return res.status(400).json({
         error: "Some ordered items are invalid or unavailable",
         missingProducts: missingNames,
@@ -63,7 +88,7 @@ exports.createOrder = async (req, res) => {
     const now = new Date();
 
     for (const item of orderItems) {
-      const product = products.find(p => p._id.toString() === item.productId);
+      const product = products.find((p) => p._id.toString() === item.productId);
       let price = product.price;
 
       if (
@@ -96,9 +121,13 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order(orderData);
     const savedOrder = await newOrder.save();
- // ✅ Send push notification if restaurant has device token
+    // ✅ Send push notification if restaurant has device token
 
-    await sendPushNotification(restaurantId, "new order placed", "an new order placed by cusotmer")
+    await sendPushNotification(
+      restaurantId,
+      "new order placed",
+      "an new order placed by cusotmer"
+    );
 
     // ✅ send realtime notification via Socket.IO
     io.to(restaurantId).emit("new-order", {
@@ -111,17 +140,20 @@ exports.createOrder = async (req, res) => {
       message: "Order created successfully",
       order: savedOrder,
     });
-
   } catch (err) {
     console.error("createOrder error:", err);
-    return res.status(500).json({ error: "Failed to create order", details: err.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to create order", details: err.message });
   }
 };
 
 // Get Order by ID
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.orderId).populate("customerId restaurantId orderItems.productId");
+    const order = await Order.findById(req.params.orderId).populate(
+      "customerId restaurantId orderItems.productId"
+    );
 
     if (!order) return res.status(404).json({ error: "Order not found" });
 
@@ -200,8 +232,8 @@ exports.reviewOrder = async (req, res) => {
   const { customerReview, restaurantReview } = req.body;
 
   try {
-    const customerImageFiles = req.files['customerImages'] || [];
-    const restaurantImageFiles = req.files['restaurantImages'] || [];
+    const customerImageFiles = req.files["customerImages"] || [];
+    const restaurantImageFiles = req.files["restaurantImages"] || [];
 
     // Upload customer images to Cloudinary
     const customerImages = [];
@@ -239,7 +271,6 @@ exports.reviewOrder = async (req, res) => {
     res.status(500).json({ error: "Failed to submit review" });
   }
 };
-
 
 // Update Delivery Mode
 exports.updateDeliveryMode = async (req, res) => {
@@ -354,7 +385,9 @@ exports.getCustomerOrderStatus = async (req, res) => {
 
     res.json(orders);
   } catch (error) {
-    res.status(500).json({ message: "Server error while fetching order status" });
+    res
+      .status(500)
+      .json({ message: "Server error while fetching order status" });
   }
 };
 
@@ -364,7 +397,7 @@ exports.getGuestOrders = async (req, res) => {
     const orders = await Order.find({ customerId: null });
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch guest orders' });
+    res.status(500).json({ error: "Failed to fetch guest orders" });
   }
 };
 
@@ -407,8 +440,6 @@ exports.getCustomerScheduledOrders = async (req, res) => {
   }
 };
 
-
-
 exports.merchantAcceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -430,44 +461,32 @@ exports.merchantAcceptOrder = async (req, res) => {
       return res.status(400).json({ error: "Order is already accepted" });
     }
 
-   
-
     // Update status to 'accepted'
     order.orderStatus = "accepted";
     await order.save();
-
-    
-
-
-    
 
     // Emit to  user  via Socket.IO
     const io = req.app.get("io");
     if (io) {
       io.to(order.customerId.toString()).emit("order-accepted", {
         message: "Order status chhanged",
-        order
+        order,
       });
     }
-
-    
 
     res.status(200).json({
       success: true,
       message: "Order accepted successfully",
-      order
+      order,
     });
-
   } catch (error) {
     console.error("merchantAcceptOrder error:", error);
     res.status(500).json({
       error: "Failed to accept order",
-      details: error.message
+      details: error.message,
     });
   }
 };
-
-
 
 exports.merchantRejectOrder = async (req, res) => {
   try {
@@ -504,21 +523,20 @@ exports.merchantRejectOrder = async (req, res) => {
       io.to(order.restaurantId.toString()).emit("order-rejected", {
         orderId: order._id,
         message: "Order has been rejected by the merchant",
-        reason: order.rejectionReason
+        reason: order.rejectionReason,
       });
     }
 
     res.status(200).json({
       success: true,
       message: "Order rejected successfully",
-      order
+      order,
     });
-
   } catch (error) {
     console.error("merchantRejectOrder error:", error);
     res.status(500).json({
       error: "Failed to reject order",
-      details: error.message
+      details: error.message,
     });
   }
 };
@@ -529,38 +547,38 @@ exports.updateOrderStatus = async (req, res) => {
   const { newStatus } = req.body;
 
   const merchantAllowedStatuses = [
-    'accepted_by_restaurant',
-    'rejected_by_restaurant',
-    'preparing',
-    'ready',
+    "accepted_by_restaurant",
+    "rejected_by_restaurant",
+    "preparing",
+    "ready",
   ];
 
   // Optionally allow 'completed' for the system or other roles
-  const allowedStatuses = [...merchantAllowedStatuses, 'completed'];
+  const allowedStatuses = [...merchantAllowedStatuses, "completed"];
 
   if (!allowedStatuses.includes(newStatus)) {
     return res.status(400).json({
-      error: `Invalid status. Allowed statuses: ${allowedStatuses.join(', ')}`,
+      error: `Invalid status. Allowed statuses: ${allowedStatuses.join(", ")}`,
     });
   }
 
   try {
     const order = await Order.findById(orderId);
     if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
+      return res.status(404).json({ error: "Order not found" });
     }
 
     order.orderStatus = newStatus;
     await order.save();
 
     // Award points only when status is 'completed'
-    if (newStatus === 'completed') {
+    if (newStatus === "completed") {
       // Award delivery points to agent
       if (order.agentId) {
         try {
           await awardDeliveryPoints(order.agentId, 10); // 10 points per delivery
         } catch (err) {
-          console.error('Failed to award delivery points:', err);
+          console.error("Failed to award delivery points:", err);
         }
       }
 
@@ -569,36 +587,36 @@ exports.updateOrderStatus = async (req, res) => {
         // Example: award 10 points every 5 completed orders
         const completedOrdersCount = await Order.countDocuments({
           restaurantId: order.restaurantId,
-          orderStatus: 'completed',
+          orderStatus: "completed",
         });
 
         if (completedOrdersCount % 5 === 0) {
           try {
-            await awardPointsToRestaurant(order.restaurantId, 10, 'Milestone: 5 deliveries', order._id);
+            await awardPointsToRestaurant(
+              order.restaurantId,
+              10,
+              "Milestone: 5 deliveries",
+              order._id
+            );
           } catch (err) {
-            console.error('Failed to award restaurant points:', err);
+            console.error("Failed to award restaurant points:", err);
           }
         }
       }
     }
 
     res.status(200).json({
-      message: 'Order status updated successfully',
+      message: "Order status updated successfully",
       order,
     });
   } catch (error) {
-    console.error('Error updating order status:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error updating order status:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
-
-
-
-
 exports.getOrdersByMerchant = async (req, res) => {
   try {
-    
     const { restaurantId } = req.query;
 
     if (!restaurantId) {
@@ -618,23 +636,106 @@ exports.getOrdersByMerchant = async (req, res) => {
       totalOrders: orders.length,
       orders,
     });
-
   } catch (err) {
     console.error("getOrdersByMerchant error:", err);
-    return res.status(500).json({ error: "Failed to fetch orders", details: err.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch orders", details: err.message });
   }
 };
 
+// Sample coupons object — replace with DB lookup later
+const coupons = {
+  SAVE10: { type: "percentage", value: 10 },
+  FLAT50: { type: "flat", value: 50 },
+};
 
+const TAX_PERCENTAGE = 8; // example 8%
 
-  exports.getOrderPriceSummary = async() =>
-  {
+exports.getOrderPriceSummary = async (req, res) => {
+  try {
+    const {
+      restaurantId,
+      cart,
+      deliveryAddress,
+      coupon: couponCode,
+    } = req.body;
 
-    try {
-      
-      
-    } catch (error) {
-      
+    if (!restaurantId || !cart || !deliveryAddress) {
+      return res.status(400).json({
+        error: "restaurantId, cart, and deliveryAddress are required",
+      });
     }
 
+    if (!Array.isArray(cart) || cart.length === 0) {
+      return res.status(400).json({ error: "Cart must be a non-empty array" });
+    }
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
+    // Subtotal calculation
+    let subtotal = 0;
+    for (const item of cart) {
+      if (!item.price || !item.quantity) {
+        return res.status(400).json({
+          error: "Each cart item must have price and quantity",
+        });
+      }
+      subtotal += item.price * item.quantity;
+    }
+
+    // Distance calculation
+    const restaurantCoords = restaurant.location.coordinates
+    const userCoords = deliveryAddress.coordinates
+
+    const distanceKm = haversineDistance(restaurantCoords, userCoords);
+
+    // Delivery Fee
+    const deliveryFee = deliveryFeeCalculator({
+      distanceKm,
+      orderAmount: subtotal,
+    });
+
+    // Coupon Discount
+    let discount = 0;
+    if (couponCode) {
+      const coupon = coupons[couponCode.toUpperCase()];
+      if (!coupon) {
+        return res.status(400).json({ error: "Invalid coupon code" });
+      }
+      if (coupon.type === "percentage") {
+        discount = (subtotal * coupon.value) / 100;
+      } else if (coupon.type === "flat") {
+        discount = coupon.value;
+      }
+    }
+
+    // Tax calculation
+    const taxableAmount = Math.max(subtotal - discount, 0);
+    const tax = (taxableAmount * TAX_PERCENTAGE) / 100;
+
+    // Final total
+    const total = taxableAmount + tax + deliveryFee;
+
+    // Final response
+    return res.status(200).json({
+      message: "Order price summary calculated successfully",
+      billSummary: {
+        subtotal: subtotal.toFixed(2),
+        discount: discount.toFixed(2),
+        tax: tax.toFixed(2),
+        deliveryFee: deliveryFee.toFixed(2),
+        total: total.toFixed(2),
+     
+      },
+    });
+  } catch (error) {
+    console.error("Error calculating order price summary:", error);
+    return res.status(500).json({
+      error: "Server error while calculating order price summary",
+    });
   }
+};

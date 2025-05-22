@@ -20,7 +20,8 @@ const {
   rescheduleOrder,
   merchantAcceptOrder,
   merchantRejectOrder,
-  getOrdersByMerchant
+  getOrdersByMerchant,
+  getOrderPriceSummary
  
   
 } = require('../controllers/orderController');
@@ -66,6 +67,8 @@ router.put('/:orderId/merchant-reject',merchantRejectOrder)
 router.get('/restaurant/:restaurantId', getOrdersByMerchant);
 
 
+//bill summary 
+router.post("/order/pricesummary",getOrderPriceSummary)
 
 
 module.exports = router;

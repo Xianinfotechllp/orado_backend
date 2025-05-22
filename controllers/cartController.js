@@ -1,54 +1,90 @@
-const Cart = require('../models/cart');
+const Cart = require('../models/cartModel');
 const Product = require('../models/productModel');
 
 // Add item to cart
 exports.addToCart = async (req, res) => {
   try {
-    const { userId, productId, quantity } = req.body;
+    const {
+      userId,
+      productId,
+      quantity,
+      restaurantId,
+      selectedOptions,
+      specialInstructions
+    } = req.body;
 
-    if (!userId || !productId || !quantity) {
-      return res.status(400).json({ message: "Missing required fields" });
+    if (!userId || !productId || !quantity || !restaurantId) {
+      return res.status(400).json({
+        message: "Missing required fields: userId, productId, quantity, or restaurantId."
+      });
     }
 
-    const product = await Product.findById(productId);
-    if (!product || !product.active) {
-      return res.status(404).json({ message: "Product not found or inactive" });
+    // Validate product existence and status
+    const product = await Product.findOne({ _id: productId, active: true });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found or inactive." });
     }
 
     const price = product.price;
 
-    let cart = await Cart.findOne({ user: userId });
+    // Find existing cart for the user
+    let cart = await Cart.findOne({ userId });
 
     if (!cart) {
+      // Create new cart if none exists
       cart = new Cart({
-        user: userId,
-        items: [{ product: productId, quantity, priceAtPurchase: price }],
-        totalPrice: price * quantity,
-        totalQuantity: quantity
+        userId,
+        restaurantId,
+        items: [
+          {
+            ItemId: productId,
+            quantity,
+            selectedOptions: selectedOptions || [],
+            specialInstructions: specialInstructions || "",
+            priceAtTimeOfAddition: price
+          }
+        ]
       });
     } else {
-      const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
-
-      if (itemIndex > -1) {
-        // Update quantity
-        cart.items[itemIndex].quantity += quantity;
-      } else {
-        // Add new item
-        cart.items.push({ product: productId, quantity, priceAtPurchase: price });
+      // If cart exists, check if it's for the same restaurant
+      if (cart.restaurantId.toString() !== restaurantId) {
+        // If different, clear previous cart and start new one
+        cart.items = [];
+        cart.restaurantId = restaurantId;
       }
 
-      // Recalculate totals
-      cart.totalQuantity += quantity;
-      cart.totalPrice += price * quantity;
+      // Check if product already exists in cart
+      const existingItemIndex = cart.items.findIndex(
+        item => item.ItemId.toString() === productId
+      );
+
+      if (existingItemIndex > -1) {
+        // If exists, just increase quantity
+        cart.items[existingItemIndex].quantity += quantity;
+      } else {
+        // If not, add new item with options and instructions
+        cart.items.push({
+          ItemId: productId,
+          quantity,
+          selectedOptions: selectedOptions || [],
+          specialInstructions: specialInstructions || "",
+          priceAtTimeOfAddition: price
+        });
+      }
     }
 
-    cart.lastUpdated = new Date();
+    // Update timestamp
+    cart.updatedAt = new Date();
+
     await cart.save();
 
-    res.status(200).json({ message: 'Item added to cart', cart });
+    res.status(200).json({
+      message: "Item added to cart successfully.",
+      cart
+    });
   } catch (error) {
-    console.error("Add to Cart Error:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error adding to cart:", error);
+    res.status(500).json({ message: "Something went wrong while adding to cart." });
   }
 };
 
@@ -57,7 +93,7 @@ exports.getCart = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const cart = await Cart.findOne({ user: userId }).populate('items.product');
+    const cart = await Cart.findOne({ userId: userId });
     if (!cart) {
       return res.status(200).json({ message: "Cart is empty", cart: { items: [] } });
     }
