@@ -1,6 +1,6 @@
 const cloudinary = require('cloudinary').v2;
 const fs = require('fs');
-const path = require('path'); // 🧠 THIS LINE WAS MISSING
+const path = require('path');
 
 cloudinary.config({ 
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
@@ -12,22 +12,29 @@ const uploadOnCloudinary = async (localFilePath) => {
   try {
     if (!localFilePath) return null;
 
-    const ext = path.extname(localFilePath).toLowerCase(); // 🧠 Now this works
-
+    const ext = path.extname(localFilePath).toLowerCase();
     const resourceType = ['.pdf', '.docx', '.xlsx', '.csv', '.zip'].includes(ext)
       ? 'raw'
       : 'auto';
-
 
     const response = await cloudinary.uploader.upload(localFilePath, {
       resource_type: resourceType
     });
 
-    fs.unlinkSync(localFilePath); // clean up local file
+    // ✅ Safe delete
+    if (fs.existsSync(localFilePath)) {
+      fs.unlink(localFilePath, err => {
+        if (err) console.error("Failed to delete file:", err);
+      });
+    }
+
     return response;
   } catch (error) {
+    // ✅ Handle deletion even in error case
     if (fs.existsSync(localFilePath)) {
-      fs.unlinkSync(localFilePath); 
+      fs.unlink(localFilePath, err => {
+        if (err) console.error("Cleanup failed:", err);
+      });
     }
     console.error("Cloudinary upload error:", error);
     return null;

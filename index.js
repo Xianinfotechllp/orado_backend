@@ -72,6 +72,7 @@ const cartRoutes = require("./routes/cartRoutes");
 const chatRouter  = require("./routes/chatRoutes")
 const faqRouter  = require("./routes/faqRoutes")
 
+const adninRouter = require("./routes/adminRoutes");
 
 
 dotenv.config();
@@ -83,6 +84,8 @@ app.use(express.json());
 app.use(cors());
 
 // routes using
+app.use("/admin", adninRouter);
+
 app.use("/user", userRouter);
 app.use("/restaurants",productRouter);
 app.use("/restaurants",resturantRouter)

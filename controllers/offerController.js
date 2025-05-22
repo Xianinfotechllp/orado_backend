@@ -1,7 +1,10 @@
 const Offer = require('../models/offer');
 const Restaurant = require('../models/restaurantModel');
+const { uploadOnCloudinary } = require('../utils/cloudinary'); 
+const fs = require('fs');
 
 // Create Offer
+
 exports.createOffer = async (req, res) => {
   try {
     const { restaurantId } = req.params;
@@ -17,31 +20,26 @@ exports.createOffer = async (req, res) => {
       endDate,
       minOrderAmount,
       maxDiscount,
-      imageUrl,
       location
     } = req.body;
 
-    // Basic required field validation
+    // Validate required fields
     if (!title || !code || !type || !target || !discountType || discountValue === undefined || !startDate || !endDate) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // Check discount value
     if (discountValue < 0) {
       return res.status(400).json({ message: 'Discount value must be non-negative' });
     }
 
-    // Check date range
     if (new Date(startDate) >= new Date(endDate)) {
       return res.status(400).json({ message: 'startDate must be before endDate' });
     }
 
-    // Validate discount type
     if (!['percentage', 'fixed'].includes(discountType)) {
       return res.status(400).json({ message: 'Invalid discountType' });
     }
 
-    // Validate type and target enums
     const validTypes = ['flash', 'discount', 'coupon', 'custom'];
     const validTargets = ['all', 'specific_users', 'specific_merchants', 'location'];
     if (!validTypes.includes(type)) {
@@ -51,16 +49,23 @@ exports.createOffer = async (req, res) => {
       return res.status(400).json({ message: 'Invalid offer target' });
     }
 
-    // Check for duplicate code
     const existing = await Offer.findOne({ code: code.toUpperCase() });
     if (existing) {
       return res.status(400).json({ message: 'Offer code already exists' });
     }
 
-    // Check if restaurant exists
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found' });
+    }
+
+    let imageUrl = "";
+    if (req.file) {
+      const result = await uploadOnCloudinary(req.file.path, 'offers');
+      imageUrl = result.secure_url;
+
+      // Clean up local file after upload
+      fs.unlinkSync(req.file.path);
     }
 
     const offer = new Offer({
@@ -94,6 +99,7 @@ exports.createOffer = async (req, res) => {
     res.status(500).json({ message: 'Server error while creating offer', error: error.message });
   }
 };
+
 
 // Update Offer
 exports.updateOffer = async (req, res) => {

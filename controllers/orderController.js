@@ -4,8 +4,7 @@ const Order = require("../models/orderModel");
 const Product = require("../models/productModel")
 const { uploadOnCloudinary } = require('../utils/cloudinary'); 
 const fs = require('fs');
-
-
+const Permission = require('../models/restaurantPermissionModel');
 const firebaseAdmin = require('../config/firebaseAdmin')
 const Restaurant = require("../models/restaurantModel");
 const { sendPushNotification }  = require('../utils/sendPushNotification');
@@ -96,6 +95,24 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order(orderData);
     const savedOrder = await newOrder.save();
+
+    //  Check permission for auto-accept
+    const permission = await Permission.findOne({ restaurantId });
+    const canAccept = permission?.permissions?.canAcceptOrder ?? false;
+    if (!canAccept) {
+      // Auto-accept order
+      savedOrder.orderStatus = "accepted_by_restaurant";
+      savedOrder.autoAccepted = true;
+      await savedOrder.save();
+
+      // Notify customer
+      if (io) {
+        io.to(customerId?.toString()).emit("order-accepted", {
+          message: "Order auto-accepted",
+          order: savedOrder
+        });
+      }
+    }
  // ✅ Send push notification if restaurant has device token
 
     await sendPushNotification(restaurantId, "new order placed", "an new order placed by cusotmer")
@@ -182,7 +199,7 @@ exports.cancelOrder = async (req, res) => {
     const updated = await Order.findByIdAndUpdate(
       req.params.orderId,
       {
-        orderStatus: "cancelled",
+        orderStatus: "cancelled_by_customer",
         cancellationReason: reason || "",
         debtCancellation: debtCancellation || false,
       },
@@ -412,8 +429,10 @@ exports.getCustomerScheduledOrders = async (req, res) => {
 exports.merchantAcceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
-
-    // Validate orderId format
+    const restaurant = await Restaurant.findOne({ ownerId: req.user._id });
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
     if (!orderId || orderId.length !== 24) {
       return res.status(400).json({ error: "Invalid order ID format" });
     }
@@ -422,35 +441,27 @@ exports.merchantAcceptOrder = async (req, res) => {
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
-    if (order.orderStatus === "cancelled") {
+
+    if (order.orderStatus === "cancelled_by_customer") {
       return res.status(400).json({ error: "Cannot accept a cancelled order" });
     }
-    // Prevent double accepting or invalid status transitions
-    if (order.orderStatus === "accepted") {
+
+    if (order.orderStatus === "accepted_by_restaurant") {
       return res.status(400).json({ error: "Order is already accepted" });
     }
 
-   
-
-    // Update status to 'accepted'
-    order.orderStatus = "accepted";
+    
+    // Manual accept
+    order.orderStatus = "accepted_by_restaurant";
     await order.save();
 
-    
-
-
-    
-
-    // Emit to  user  via Socket.IO
     const io = req.app.get("io");
     if (io) {
       io.to(order.customerId.toString()).emit("order-accepted", {
-        message: "Order status chhanged",
+        message: "Order manually accepted",
         order
       });
     }
-
-    
 
     res.status(200).json({
       success: true,
@@ -485,16 +496,16 @@ exports.merchantRejectOrder = async (req, res) => {
     }
 
     // Prevent rejecting completed or already cancelled orders
-    if (order.orderStatus === "completed") {
+    if (order.orderStatus === "ready") {
       return res.status(400).json({ error: "Cannot reject a completed order" });
     }
 
-    if (order.orderStatus === "cancelled") {
+    if (order.orderStatus === "cancelled_by_customer") {
       return res.status(400).json({ error: "Order is already cancelled" });
     }
 
     // Update order status to 'cancelled'
-    order.orderStatus = "cancelled";
+    order.orderStatus = "rejected_by_restaurant";
     order.rejectionReason = rejectionReason || "Rejected by merchant";
     await order.save();
 
