@@ -1,4 +1,5 @@
 const Restaurant = require("../models/restaurantModel")
+const Permission = require("../models/restaurantPermissionModel");
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary'); 
 
@@ -14,6 +15,7 @@ exports.createRestaurant = async (req, res) => {
       foodType,
       merchantSearchName,
       minOrderAmount,
+      location,
       paymentMethods
     } = req.body;
 
@@ -49,9 +51,23 @@ exports.createRestaurant = async (req, res) => {
     });
 
     await newRestaurant.save();
+
+    const defaultPermissions = new Permission({
+      restaurantId: newRestaurant._id,
+      permissions: {
+        canManageMenu: false,
+        canAcceptOrder: false,
+        canRejectOrder: false,
+        canManageOffers: false,
+        canViewReports: false
+      }
+    });
+
+    await defaultPermissions.save();
     res.status(201).json({
       message: "Restaurant created successfully.",
       restaurant: newRestaurant,
+      permissions: defaultPermissions.permissions
     });
   } catch (error) {
     console.error(error);
@@ -110,7 +126,6 @@ exports.updateRestaurant = async (req, res) => {
       }
     }
 
-    // 🖼️ Image replacement (optional: delete old ones)
     if (req.files && req.files.length > 0) {
       const uploads = await Promise.all(
         req.files.map(file => uploadOnCloudinary(file.path))
@@ -138,31 +153,36 @@ exports.updateRestaurant = async (req, res) => {
 
 
 exports.deleteRestaurant = async (req, res) => {
-
   try {
-     const { restaurantId } = req.params;
-      if (!restaurantId) {
+    const { restaurantId } = req.params;
+
+    if (!restaurantId) {
       return res.status(400).json({ message: 'restaurantId is required.' });
     }
+
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ message: 'Invalid restaurantId format.' });
     }
-        const restaurant = await Restaurant.findOne({ _id: restaurantId });
-           if (!restaurant) {
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found.' });
     }
 
+    // Delete the restaurant
     await restaurant.deleteOne();
-    res.status(200).json({ message: 'Restaurant deleted successfully.' });
 
-    
+    //  Also delete the associated permission
+    await Permission.deleteOne({ restaurantId });
+
+    res.status(200).json({ message: 'Restaurant and its permissions deleted successfully.' });
+
   } catch (error) {
-
-       console.error(error);
+    console.error('Error deleting restaurant:', error);
     res.status(500).json({ message: 'Server error.' });
-    
   }
-}
+};
+
 
 exports.getRestaurantById = async (req, res) => {
  

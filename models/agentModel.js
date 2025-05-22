@@ -8,11 +8,16 @@ const agentSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     profilePicture: { type: String }, // URL to the profile picture
     bankAccountDetails: {
-      accountNumber: { type: String, required: true },
-      bankName: { type: String, required: true },
-      accountHolderName: { type: String, required: true },
-      ifscCode: { type: String, required: true },
+      accountNumber: { type: String },
+      bankName: { type: String },
+      accountHolderName: { type: String },
+      ifscCode: { type: String },
     },
+    bankDetailsProvided: {
+      type: Boolean,
+      default: false,
+    },
+
     payoutDetails: {
       totalEarnings: { type: Number, default: 0 },
       tips: { type: Number, default: 0 },

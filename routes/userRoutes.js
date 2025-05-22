@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword} = require("../controllers/userControllers");
+const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll} = require("../controllers/userControllers");
 const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
-const {protectUser} = require('../middlewares/authMiddleware')
+const {protect} = require('../middlewares/authMiddleware')
 const {addAgentReview} = require('../controllers/agentController')
+const {protect, checkRole} = require('../middlewares/authMiddleware')
 
 // Routes
 router.post("/register", registerUser);
@@ -12,16 +13,19 @@ router.post("/verify-otp",verifyOtp);
 
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
-router.post("/address",addAddress)
-router.put("/address/:addressId",updateAddressById)
-router.delete("/delete/:addressId ",deleteAddressById)
+router.post("/address", protect, checkRole('customer'), addAddress)
+router.put("/address/:addressId", protect, checkRole('customer'), updateAddressById)
+router.delete("/delete/:addressId ", protect, checkRole('customer'), deleteAddressById)
 
-router.post("/forgot-password",forgotPassword)
-router.post("/reset-password/:token",resetPassword)
+router.post("/forgot-password", protect, checkRole('customer'), forgotPassword)
+router.post("/reset-password/:token", protect, checkRole('customer'), resetPassword)
+
+router.post("/logout", protect, checkRole('customer'), logoutUser);
+router.post("/logout-all", protect, checkRole('customer'), logoutAll);
 
 
 // post agent review
-router.post("/:agentId/review", protectUser, addAgentReview);
+router.post("/:agentId/review", protect, checkRole('customer'), addAgentReview);
 
 
 /// thsi new
