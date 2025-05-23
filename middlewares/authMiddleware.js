@@ -68,31 +68,29 @@ exports.checkRole = (...allowedRoles) => {
 };
 
 
-exports.checkPermission = (requiredPermission) => {
+exports.checkPermission = (...requiredPermissions) => {
   return (req, res, next) => {
     const user = req.user;
-    if (!user) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
 
-    // SuperAdmins get everything by default
-    if (user.isSuperAdmin) {
-      return next();
-    }
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (user.isSuperAdmin) return next();
 
-    // “admin” must have the permission in their adminPermissions array
     if (
       user.userType === "admin" &&
       Array.isArray(user.adminPermissions) &&
-      user.adminPermissions.includes(requiredPermission)
+      requiredPermissions.every(p => user.adminPermissions.includes(p))
     ) {
       return next();
     }
 
-    // Otherwise, forbidden
-    return res.status(403).json({ message: "Forbidden: insufficient permissions" });
+    return res.status(403).json({
+      message: `Forbidden: Missing required permissions.`,
+      required: requiredPermissions,
+      current: user.adminPermissions,
+    });
   };
 };
+
 
 // for restaurant permissions
 

@@ -485,3 +485,74 @@ exports.updateAgentBankDetails = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+// request for permission
+
+exports.requestPermission = async (req, res) => {
+  const { permission } = req.body;
+  const agentId = req.user.id; 
+
+  const validPermissions = [
+    "canChangeMaxActiveOrders",
+    "canChangeCODAmount",
+    "canAcceptOrRejectOrders"
+  ];
+
+  if (!validPermissions.includes(permission)) {
+    return res.status(400).json({ error: "Invalid permission requested." });
+  }
+
+  const agent = await Agent.findById(agentId);
+
+  const existingRequest = agent.permissionRequests.find(
+    (req) => req.permission === permission && req.status === "Pending"
+  );
+
+  if (existingRequest) {
+    return res.status(400).json({ error: "You already have a pending request for this permission." });
+  }
+
+  agent.permissionRequests.push({ permission });
+  await agent.save();
+
+  res.status(200).json({ message: "Permission request submitted." });
+};
+
+// get  permission requests of agent
+
+exports.getMyPermissionRequests = async (req, res) => {
+  const agent = await Agent.findById(req.user.id).select("permissionRequests");
+  res.json(agent.permissionRequests);
+};
+
+
+// activate unlocked permissions
+exports.activateUnlockedPermissions = async (req, res) => {
+  const agentId = req.user.id;
+  const agent = await Agent.findById(agentId);
+
+  if (!agent) return res.status(404).json({ error: "Agent not found." });
+
+  let updated = false;
+
+  if (agent.canChangeMaxActiveOrders && agent.maxActiveOrders < 5) {
+    agent.maxActiveOrders = 5;
+    updated = true;
+  }
+
+  if (agent.canChangeCODAmount && agent.maxCODAmount < 3000) {
+    agent.maxCODAmount = 3000;
+    updated = true;
+  }
+
+  if (!updated) {
+    return res.status(400).json({ message: "No eligible changes or already upgraded." });
+  }
+
+  await agent.save();
+  res.status(200).json({
+    message: "Your values have been upgraded based on your permissions.",
+    maxActiveOrders: agent.maxActiveOrders,
+    maxCODAmount: agent.maxCODAmount,
+  });
+};

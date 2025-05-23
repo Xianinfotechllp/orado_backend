@@ -17,7 +17,6 @@ const agentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
     payoutDetails: {
       totalEarnings: { type: Number, default: 0 },
       tips: { type: Number, default: 0 },
@@ -83,23 +82,58 @@ const agentSchema = new mongoose.Schema(
       insurance: { type: String },
     },
     feedback: {
-    averageRating: { type: Number, default: 0, min: 0, max: 5 },
-    totalReviews: { type: Number, default: 0 },
-    reviews: [
+      averageRating: { type: Number, default: 0, min: 0, max: 5 },
+      totalReviews: { type: Number, default: 0 },
+      reviews: [
+        {
+          userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+          orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", required: true },
+          rating: { type: Number, required: true, min: 1, max: 5 },
+          comment: { type: String },
+          createdAt: { type: Date, default: Date.now }
+        }
+      ]
+    },
+    permissions: {
+      canAcceptOrRejectOrders: { type: Boolean, default: false },
+      maxActiveOrders: { type: Number, default: 3 },
+      maxCODAmount: { type: Number, default: 1000 },
+      canChangeMaxActiveOrders: { type: Boolean, default: false },
+      canChangeCODAmount: { type: Boolean, default: false },
+    },
+    permissionRequests: [
       {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", required: true },
-        rating: { type: Number, required: true, min: 1, max: 5 },
-        comment: { type: String },
-        createdAt: { type: Date, default: Date.now }
+        permissionType: {
+          type: String,
+          enum: ["canAcceptOrRejectOrders", "canChangeMaxActiveOrders", "canChangeCODAmount"],
+          required: true
+        },
+        requestedAt: { type: Date, default: Date.now },
+        status: { type: String, enum: ["Pending", "Approved", "Rejected"], default: "Pending" },
+        responseDate: { type: Date },
+        adminComment: { type: String } // Optional: for feedback
       }
-    ]
-  },
+    ],
+    codTracking: {
+      currentCODHolding: { type: Number, default: 0 }, // how much cash the agent is currently holding
+      lastUpdated: { type: Date, default: Date.now },  // useful for audits or resets
+      dailyCollected: { type: Number, default: 0 },    // reset daily for reporting or limits
+    },
+    cashDropLogs: [
+      {
+        amount: { type: Number, required: true },
+        droppedAt: { type: Date, default: Date.now },
+        method: { type: String, enum: ["Bank", "Online"], default: "Online" },
+        notes: { type: String }
+      }
+    ],
+
  
     availabilityStatus: { type: String, enum: ["Available", "Unavailable"], default: "Available" },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   },
+  
   { timestamps: true }
 );
 

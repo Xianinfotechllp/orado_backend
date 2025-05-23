@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, toggleAvailability, getAgentReviews, updateAgentBankDetails, logoutAgent
+const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, toggleAvailability, getAgentReviews, updateAgentBankDetails, logoutAgent, requestPermission, activateUnlockedPermissions
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole } = require('../middlewares/authMiddleware');
@@ -38,8 +38,18 @@ router.post('/orders/:orderId/accept',agentAcceptsOrder)
 router.post("/orders/:orderId/accept",agentRejectsOrder)
 router.put("/:agentId/orders/:orderId/status",agentUpdatesOrderStatus)
 
+// request permission
+router.post("/request-permission", protect, checkRole('agent'), requestPermission);
 
-    
+// get agent permission requests
+router.get("/my-permission-requests", protect, checkRole('agent'), getMyPermissionRequests);
+
+// activate unlocked permissions
+router.post('/activate-unlocked-perks', protect, checkRole('agent'), activateUnlockedPermissions);
+
+
+
+
 
 
 module.exports = router;

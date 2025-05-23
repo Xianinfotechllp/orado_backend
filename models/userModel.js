@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // 🔥Super Admin  Flag
+    // Super Admin  Flag
     isSuperAdmin: { type: Boolean, default: false },
 
     //  Admin Permission System
@@ -70,21 +70,6 @@ const userSchema = new mongoose.Schema(
       accountNumber: String,
       ifscCode: String,
       accountHolderName: String,
-    },
-
-    merchantApplication: {
-      aadhaarCard: { type: String },
-      aadhaarNumber: { type: String },
-      fssaiLicense: { type: String },
-      fssaiNumber: { type: String },
-      gstCertificate: { type: String },
-      gstNumber: { type: String },
-      submittedAt: { type: Date },
-      status: {
-        type: String,
-        enum: ["none", "pending", "approved", "rejected"],
-        default: "none"
-      }
     },
 
     fraudulent: { type: Boolean, default: false },
