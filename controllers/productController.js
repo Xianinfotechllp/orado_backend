@@ -11,6 +11,7 @@ const { uploadOnCloudinary } = require('../utils/cloudinary');
 exports.createProduct = async (req, res) => {
   try {
     const { restaurantId } = req.params;
+     
 
     if (!restaurantId?.trim()) {
       return res.status(400).json({ error: 'Restaurant ID is required in params' });

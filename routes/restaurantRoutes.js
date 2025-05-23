@@ -56,5 +56,11 @@ router.delete('/categories/:categoryId', protect, checkRole('merchant'), deleteR
 
 router.get("/:restaurantId/menu",getRestaurantMenu)
 
+// get restaurant earnigs
+router.get("/:restaurantId/earnigs",getRestaurantEarningSummary)
+
+// restaurant order stauts update 
+// router.get("/orders/:id/status",)
+
 
 module.exports = router

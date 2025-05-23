@@ -45,9 +45,21 @@ const agentSchema = new mongoose.Schema(
       location: {
         latitude: { type: Number },
         longitude: { type: Number }
-      }, // current location of the agent
+      }, 
       accuracy: { type: Number }, // accuracy of the GPS location (in meters)
     },
+
+     location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      required: true
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      required: true
+    }
+  },
     leaveStatus: {
       leaveApplied: { type: Boolean, default: false },
       leaveStartDate: { type: Date },
@@ -136,5 +148,5 @@ const agentSchema = new mongoose.Schema(
   
   { timestamps: true }
 );
-
+agentSchema.index({ location: "2dsphere" });
 module.exports = mongoose.model("Agent", agentSchema);

@@ -1,7 +1,7 @@
 const Restaurant = require("../models/restaurantModel")
-
+const RestaurantEarning = require('../models/RestaurantEarningModel');
 const Permission = require("../models/restaurantPermissionModel");
-
+const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
 const Category = require("../models/categoryModel")
 
@@ -518,9 +518,64 @@ exports.getAllApprovedRestaurants = async (req, res) => {
 
 
 
+exports.updateRestaurantOrderStatus = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    // Validate order exists
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Update order status
+    order.status = status;
+
+    // If restaurant provides estimated prep time, update it
+   
+
+    await order.save();
+
+    res.status(200).json({
+      message: "Order status updated successfully",
+      order
+    });
+  } catch (error) {
+    console.error("Error updating order status:", error);
+    res.status(500).json({
+      message: "Failed to update order status",
+      error: error.message
+    });
+  }
+};
     
      
 
- 
+ exports.getRestaurantEarningSummary = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
 
+    // Find all earnings for the restaurant
+    const totalEarnings = await RestaurantEarning.find({ restaurantId: restaurantId });
+
+    // Calculate totals manually since find() returns array of docs
+    const summary = totalEarnings.reduce(
+      (acc, curr) => {
+        acc.totalAmount += curr.totalOrderAmount || 0;
+        acc.totalRevenue += curr.revenueShareAmount || 0;
+        return acc;
+      },
+      { totalAmount: 0, totalRevenue: 0 }
+    );
+
+    res.status(200).json({
+      success: true,
+      summary,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to fetch earning summary' });
+  }
+};
 

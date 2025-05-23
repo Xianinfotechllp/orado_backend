@@ -1,18 +1,19 @@
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
-
+const Cart = require("../models/cartModel");
 const Product = require("../models/productModel");
-
+const { calculateOrderCost } = require("../services/orderCostCalculator");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const { haversineDistance } = require("../utils/distanceCalculator");
-const {deliveryFeeCalculator} = require("../utils/deliveryFeeCalculator")
+const { deliveryFeeCalculator } = require("../utils/deliveryFeeCalculator");
 const fs = require("fs");
 
 const firebaseAdmin = require("../config/firebaseAdmin");
-;
-const Permission = require('../models/restaurantPermissionModel');
-
+const {
+  findAndAssignNearestAgent,
+} = require("../services/findAndAssignNearestAgent");
+const Permission = require("../models/restaurantPermissionModel");
 
 const Restaurant = require("../models/restaurantModel");
 const { sendPushNotification } = require("../utils/sendPushNotification");
@@ -127,7 +128,6 @@ exports.createOrder = async (req, res) => {
     const newOrder = new Order(orderData);
     const savedOrder = await newOrder.save();
 
-
     //  Check permission for auto-accept
     const permission = await Permission.findOne({ restaurantId });
     const canAccept = permission?.permissions?.canAcceptOrder ?? false;
@@ -141,12 +141,11 @@ exports.createOrder = async (req, res) => {
       if (io) {
         io.to(customerId?.toString()).emit("order-accepted", {
           message: "Order auto-accepted",
-          order: savedOrder
+          order: savedOrder,
         });
       }
     }
- // ✅ Send push notification if restaurant has device token
-
+    // ✅ Send push notification if restaurant has device token
 
     await sendPushNotification(
       restaurantId,
@@ -170,6 +169,103 @@ exports.createOrder = async (req, res) => {
     return res
       .status(500)
       .json({ error: "Failed to create order", details: err.message });
+  }
+};
+
+exports.placeOrder = async (req, res) => {
+  try {
+    const {
+      longitude,
+      latitude,
+      cartId,
+      userId,
+      paymentMethod,
+      couponCode,
+      instructions,
+      tipAmount = 0,
+    } = req.body;
+
+    if (!cartId || !userId || !paymentMethod || !longitude || !latitude) {
+      return res.status(400).json({ error: "Required fields are missing" });
+    }
+
+    const cart = await Cart.findOne({ _id: cartId, userId });
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found" });
+    }
+
+    const restaurant = await Restaurant.findById(cart.restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
+    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+
+    // Calculate cost summary
+    const billSummary = calculateOrderCost({
+      cartProducts: cart.products,
+      restaurant,
+      userCoords,
+      couponCode,
+    });
+
+    const orderItems = cart.products.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      price: item.price,
+      name: item.name,
+      totalPrice: item.price * item.quantity,
+    }));
+
+    // Create order object
+    const newOrder = new Order({
+      customerId: userId,
+      restaurantId: cart.restaurantId,
+      orderItems,
+      paymentMethod,
+      orderStatus: "pending",
+      location: { type: "Point", coordinates: userCoords },
+      subtotal: billSummary.subtotal,
+      tax: billSummary.tax,
+      discountAmount: billSummary.discount,
+      deliveryCharge: billSummary.deliveryFee,
+      surgeCharge: 0,
+      tipAmount,
+      totalAmount: billSummary.total + tipAmount,
+      distanceKm: billSummary.distanceKm,
+      couponCode,
+      instructions,
+    });
+
+    const savedOrder = await newOrder.save();
+    if (restaurant.permissions.canAcceptRejectOrders) {
+      console.log("Notify restaurant for order acceptance");
+    } else {
+      // Auto-assign delivery agent immediately
+      const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
+        longitude,
+        latitude,
+      });
+
+      if (assignedAgent) {
+        console.log("Order auto-assigned to:", assignedAgent.fullName);
+      } else {
+        console.log("No available agent found for auto-assignment.");
+      }
+    }
+
+    // // Clear cart
+    // await Cart.findByIdAndDelete(cartId);
+
+    return res.status(201).json({
+      message: "Order placed successfully",
+      orderId: savedOrder._id,
+      totalAmount: savedOrder.totalAmount,
+      billSummary,
+    });
+  } catch (err) {
+    console.error("Error placing order:", err);
+    res.status(500).json({ error: "Failed to place order" });
   }
 };
 
@@ -201,7 +297,19 @@ exports.getOrdersByCustomer = async (req, res) => {
 // Get Orders by Agent
 exports.getOrdersByAgent = async (req, res) => {
   try {
-    const orders = await Order.find({ assignedAgent: req.params.agentId });
+  const orders = await Order.find(
+  { assignedAgent: req.params.agentId },
+  "status totalAmount location" // <-- only these fields from Order itself
+)
+  .populate({
+    path: "restaurantId",
+    select: "name location address"
+  })
+  .populate({
+    path: "customerId",
+    select: "name phone"
+  })
+  .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
@@ -513,7 +621,6 @@ exports.merchantAcceptOrder = async (req, res) => {
       message: "Order accepted successfully",
       order,
     });
-
   } catch (error) {
     console.error("merchantAcceptOrder error:", error);
     res.status(500).json({
@@ -652,7 +759,7 @@ exports.updateOrderStatus = async (req, res) => {
 
 exports.getOrdersByMerchant = async (req, res) => {
   try {
-    const { restaurantId } = req.query;
+    const { restaurantId } = req.params;
 
     if (!restaurantId) {
       return res.status(400).json({ error: "restaurantId is required" });
@@ -689,88 +796,26 @@ const TAX_PERCENTAGE = 8; // example 8%
 
 exports.getOrderPriceSummary = async (req, res) => {
   try {
-    const {
-      restaurantId,
-      cart,
-      deliveryAddress,
-      coupon: couponCode,
-    } = req.body;
+    const { longitude, latitude, couponCode, cartId, userId } = req.body;
 
-    if (!restaurantId || !cart || !deliveryAddress) {
-      return res.status(400).json({
-        error: "restaurantId, cart, and deliveryAddress are required",
-      });
-    }
+    const cart = await Cart.findOne({ _id: cartId, userId });
+    const restaurant = await Restaurant.findById(cart.restaurantId);
 
-    if (!Array.isArray(cart) || cart.length === 0) {
-      return res.status(400).json({ error: "Cart must be a non-empty array" });
-    }
+    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
 
-    const restaurant = await Restaurant.findById(restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ error: "Restaurant not found" });
-    }
-
-    // Subtotal calculation
-    let subtotal = 0;
-    for (const item of cart) {
-      if (!item.price || !item.quantity) {
-        return res.status(400).json({
-          error: "Each cart item must have price and quantity",
-        });
-      }
-      subtotal += item.price * item.quantity;
-    }
-
-    // Distance calculation
-    const restaurantCoords = restaurant.location.coordinates
-    const userCoords = deliveryAddress.coordinates
-
-    const distanceKm = haversineDistance(restaurantCoords, userCoords);
-
-    // Delivery Fee
-    const deliveryFee = deliveryFeeCalculator({
-      distanceKm,
-      orderAmount: subtotal,
+    const costSummary = calculateOrderCost({
+      cartProducts: cart.products,
+      restaurant,
+      userCoords,
+      couponCode,
     });
 
-    // Coupon Discount
-    let discount = 0;
-    if (couponCode) {
-      const coupon = coupons[couponCode.toUpperCase()];
-      if (!coupon) {
-        return res.status(400).json({ error: "Invalid coupon code" });
-      }
-      if (coupon.type === "percentage") {
-        discount = (subtotal * coupon.value) / 100;
-      } else if (coupon.type === "flat") {
-        discount = coupon.value;
-      }
-    }
-
-    // Tax calculation
-    const taxableAmount = Math.max(subtotal - discount, 0);
-    const tax = (taxableAmount * TAX_PERCENTAGE) / 100;
-
-    // Final total
-    const total = taxableAmount + tax + deliveryFee;
-
-    // Final response
     return res.status(200).json({
-      message: "Order price summary calculated successfully",
-      billSummary: {
-        subtotal: subtotal.toFixed(2),
-        discount: discount.toFixed(2),
-        tax: tax.toFixed(2),
-        deliveryFee: deliveryFee.toFixed(2),
-        total: total.toFixed(2),
-     
-      },
+      message: "Bill summary calculated successfully",
+      billSummary: costSummary,
     });
-  } catch (error) {
-    console.error("Error calculating order price summary:", error);
-    return res.status(500).json({
-      error: "Server error while calculating order price summary",
-    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };

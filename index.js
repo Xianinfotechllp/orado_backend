@@ -97,6 +97,9 @@ app.use("/chat",chatRouter)
 
 
 
+
+app.use("/resturants",resturantRouter)
+
 app.use("/location",locationRouter)
 app.use("/agent",agentRouter)
 app.use("/feedback",feedbackRoutes)

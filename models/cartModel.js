@@ -1,71 +1,51 @@
-const mongoose = require('mongoose');
+const  mongoose = require('mongoose');
 
-const CartSchema = new mongoose.Schema({
+const cartProductSchema = new mongoose.Schema({
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+    required: true
+  },
+  name: String,
+  price: Number,
+  quantity: {
+    type: Number,
+    default: 1
+  },
+  total: Number  // price * quantity
+});
+
+const cartSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    unique: true  // one cart per user
   },
   restaurantId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Restaurant',
-    required: true
+    ref: 'Restaurant'
   },
-  items: [
-    {
-      ItemId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'MenuItem',
-        required: true
-      },
-      quantity: {
-        type: Number,
-        default: 1
-      },
-      selectedOptions: [
-        {
-          optionName: {
-            type: String
-          },
-          choiceName: {
-            type: String
-          },
-          choicePrice: {
-            type: Number,
-            default: 0
-          }
-        }
-      ],
-      specialInstructions: {
-        type: String
-      },
-      priceAtTimeOfAddition: {
-        type: Number,
-       
-      }
-    }
-  ],
-  promoCode: {
-    type: String
-  },
+  products: [cartProductSchema],  // renamed from 'items'
   deliveryFee: {
     type: Number,
     default: 0
   },
-  tax: {
+  offerCode: {
+    type: String
+  },
+  offerDiscount: {
     type: Number,
     default: 0
   },
-  estimatedDeliveryTime: {
-    type: Date
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  totalPrice: {
+    type: Number,
+    default: 0
   },
   updatedAt: {
-    type: Date
+    type: Date,
+    default: Date.now
   }
 });
 
-module.exports = mongoose.model('Cart', CartSchema);
+module.exports = mongoose.model('Cart', cartSchema);

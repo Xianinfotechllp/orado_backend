@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, toggleAvailability, getAgentReviews, updateAgentBankDetails, logoutAgent, requestPermission, activateUnlockedPermissions
+const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, toggleAvailability, getAgentReviews, updateAgentBankDetails, logoutAgent, requestPermission, activateUnlockedPermissions, getAgentEarnings
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole } = require('../middlewares/authMiddleware');
@@ -48,8 +48,10 @@ router.get("/my-permission-requests", protect, checkRole('agent'), getMyPermissi
 router.post('/activate-unlocked-perks', protect, checkRole('agent'), activateUnlockedPermissions);
 
 
+//get agent earnigs
+router.get("/agent-earnings/:agentId",getAgentEarnings)
 
-
+    
 
 
 module.exports = router;

@@ -76,9 +76,22 @@ const product = new mongoose.Schema({
   reorderLevel: {
     type: Number,
     default: 0
+  },
+  revenueShare: {
+  type: {
+    type: String,
+    enum: ['percentage', 'fixed'],
+
+    default: 'percentage'
+  },
+  value: {
+    type: Number,
+ 
+    default: 10 // default 10% if percentage type
   }
+}
 }, {
   timestamps: true
 });
 
-module.exports = mongoose.model('product', product);
+module.exports = mongoose.model('Product', product);
