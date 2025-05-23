@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll ,deleteUser} = require("../controllers/userControllers");
+const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll ,deleteUser, getMyReferrals} = require("../controllers/userControllers");
 
 
 const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
@@ -34,7 +34,7 @@ router.delete("/delete/:userId",deleteUser)
 // post agent review
 router.post("/:agentId/review", protect, checkRole('customer'), addAgentReview);
 
-// / thsi new
-
+//  thsi new
+router.get("/refferal/:userId",getMyReferrals)
 
 module.exports = router;

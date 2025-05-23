@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const {sendEmail} = require("../utils/sendEmail")
-
+const mongoose=require("mongoose")
 const{sendSms} = require("../utils/sendSms")
 const crypto = require("crypto");
 
@@ -50,7 +50,7 @@ exports.registerUser = async (req, res) => {
     const emailOtp = otpGenerator(6);
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    await sendEmail(email, 'OTP Verification', `Your OTP is ${emailOtp}`);
+    // await sendEmail(email, 'OTP Verification', `Your OTP is ${emailOtp}`);
     // await sendSms(phone, `Hi, your OTP is ${phoneOtp}`);
 
     const newUser = new User({
@@ -471,11 +471,26 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
+
 exports.getMyReferrals = async (req, res) => {
+  const { userId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ message: "Invalid userId format" });
+  }
+
   try {
-    const referrals = await User.find({ referredBy: req.user._id }).select("name email createdAt");
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ Find users who were referred by this user via ObjectId
+    const referrals = await User.find({ referredBy: user._id }).select("name email createdAt");
+
     res.json(referrals);
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch referrals" });
+    console.error("Error fetching referrals:", err.message);
+    res.status(500).json({ message: "Failed to fetch referrals", error: err.message });
   }
 };
