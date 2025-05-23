@@ -1,6 +1,8 @@
 const Agent = require('../models/agentModel');
+const AgentEarning = require("../models/AgentEarningModel")
 const Order = require('../models/orderModel');
 const User = require("../models/userModel");
+const Session = require("../models/session");
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose')
@@ -14,10 +16,12 @@ exports.registerAgent = async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    const phoneRegex = /^[6-9]\d{9}$/;
+    const phoneRegex = /^(\+91)?[6-9]\d{9}$/;
+
     if (!phoneRegex.test(phone)) {
-      return res.status(400).json({ message: "Invalid phone number" });
+      return res.status(400).json({ message: "Invalid phone number format. Must be a 10-digit Indian number, with or without +91" });
     }
+
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -110,7 +114,7 @@ exports.loginAgent = async (req, res) => {
     }
 
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-    const isPhone = /^[6-9]\d{9}$/.test(identifier);
+    const isPhone = /^(\+91)?[6-9]\d{9}$/.test(identifier);
 
     if (!isEmail && !isPhone) {
       return res.status(400).json({ message: "Invalid phone/email format" });
@@ -139,6 +143,27 @@ exports.loginAgent = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    // Max 1 sessions limit
+    const MAX_SESSIONS = 1;
+    const existingSessions = await Session.find({ userId: user._id }).sort({ createdAt: 1 });
+
+    if (existingSessions.length >= MAX_SESSIONS) {
+      const oldestSession = existingSessions[0];
+      await Session.findByIdAndDelete(oldestSession._id); // Kick out oldest session
+    }
+
+    // Optional: track device + IP info
+    const userAgent = req.headers["user-agent"] || "Unknown Device";
+    const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
+
+    await Session.create({
+      userId: user._id,
+      token,
+      userAgent,
+      ip,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
     res.status(200).json({
       message: "Login successful",
       token,
@@ -156,6 +181,17 @@ exports.loginAgent = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+// Logout user by deleting session
+
+exports.logoutAgent = async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(400).json({ message: "Token required" });
+
+  await Session.findOneAndDelete({ token });
+  res.json({ message: "Logged out successfully" });
+};
+
 
 
 
@@ -297,7 +333,10 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
     // Award points if delivered
     if (status === "delivered") {
-      await awardDeliveryPoints(agentId); // assuming this is defined elsewhere
+      // await awardDeliveryPoints(agentId); // assuming this is defined elsewhere
+        const addEarngis = new AgentEarning({agentId:agentId,orderId:orderId,amount:order.deliveryCharge,type:"delivery_fee"})
+        await addEarngis.save()
+
     }
 
     return res.status(200).json({ message: "Order status updated successfully", order });
@@ -377,6 +416,89 @@ exports.addAgentReview = async (req, res) => {
 
   } catch (error) {
     console.error("Review Error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
+
+    res.status(500).json({ message: "Internal server error" });
+  }
 };
+
+
+// getReviews
+
+exports.getAgentReviews = async (req, res) => {
+  const { agentId } = req.params;
+
+  try {
+    const agent = await Agent.findById(agentId)
+      .select('feedback.reviews feedback.averageRating feedback.totalReviews')
+      .populate('feedback.reviews.userId', 'name') // Optional: reviewer name
+      .populate('feedback.reviews.orderId', 'orderTime'); // Optional: order info
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found." });
+    }
+
+    // Sort reviews by createdAt DESC (latest first)
+    const sortedReviews = [...agent.feedback.reviews].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    res.status(200).json({
+      averageRating: agent.feedback.averageRating,
+      totalReviews: agent.feedback.totalReviews,
+      reviews: sortedReviews
+    });
+
+  } catch (error) {
+    console.error("Fetch Agent Reviews Error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+exports.updateAgentBankDetails = async (req, res) => {
+  try {
+    const agentId = req.user.agentId;
+    const { accountHolderName, accountNumber, ifscCode, bankName } = req.body;
+
+    // Basic validation
+    if (!accountHolderName || !accountNumber || !ifscCode || !bankName) {
+      return res.status(400).json({ message: "All bank details are required." });
+    }
+
+    // Find the agent
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found." });
+    }
+
+    // Update bank details and flag
+    agent.bankAccountDetails = {
+      accountHolderName,
+      accountNumber,
+      ifscCode,
+      bankName,
+    };
+    agent.bankDetailsProvided = true;
+
+    await agent.save();
+
+    return res.status(200).json({ message: "Bank details updated successfully." });
+
+  } catch (error) {
+    console.error("Error updating bank details:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+exports.getAgentEarnings = async (req,res)  => {
+  const { agentId } = req.params;
+  try {
+        const earnings = await AgentEarning.find({ agentId }).sort({ createdAt: -1 }); 
+         res.json({hi:"334"})
+    
+  } catch (error) {
+    console.log(error)
+  }
+
+}

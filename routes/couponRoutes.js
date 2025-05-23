@@ -8,14 +8,15 @@ const {
   validateCoupon,
   markCouponAsUsed
 } = require('../controllers/couponController');
+const { protect, checkRole } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
-router.post('/create', createCoupon);
-router.get('/', getAllCoupons);
-router.get('/:code', getCouponByCode);
-router.put('/:couponId', updateCoupon);
-router.delete('/:couponId', deleteCoupon);
+router.post('/create', protect, checkRole('merchant', 'admin', 'superAdmin'), createCoupon);
+router.get('/', protect, checkRole('customer', 'merchant', 'admin', 'superAdmin'), getAllCoupons);
+router.get('/:code', protect, checkRole('customer', 'merchant', 'admin', 'superAdmin'), getCouponByCode);
+router.put('/:couponId', protect, checkRole('merchant', 'admin', 'superAdmin'), updateCoupon);
+router.delete('/:couponId', protect, checkRole('merchant', 'admin', 'superAdmin'), deleteCoupon);
 
 // Validation
 router.post('/validate', validateCoupon);

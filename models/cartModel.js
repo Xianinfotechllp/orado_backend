@@ -1,23 +1,51 @@
-const mongoose = require("mongoose");
+const  mongoose = require('mongoose');
 
-const categorySchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    restaurantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Restaurant", // Reference to Restaurant model
-      required: true,
-    },
-    active: { type: Boolean, default: true }, // Control category visibility
-    autoOnOff: { type: Boolean, default: true }, // Auto toggle based on restaurant hours
-    description: { type: String, required: true }, // Category description
-    images: [String], // Array of image URLs for the category
+const cartProductSchema = new mongoose.Schema({
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+    required: true
   },
-  { timestamps: true }
-);
+  name: String,
+  price: Number,
+  quantity: {
+    type: Number,
+    default: 1
+  },
+  total: Number  // price * quantity
+});
 
+const cartSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    unique: true  // one cart per user
+  },
+  restaurantId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Restaurant'
+  },
+  products: [cartProductSchema],  // renamed from 'items'
+  deliveryFee: {
+    type: Number,
+    default: 0
+  },
+  offerCode: {
+    type: String
+  },
+  offerDiscount: {
+    type: Number,
+    default: 0
+  },
+  totalPrice: {
+    type: Number,
+    default: 0
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
 
-categorySchema.index({ restaurantId: 1 });
-categorySchema.index({ active: 1 });
-
-module.exports = mongoose.model("Category", categorySchema);
+module.exports = mongoose.model('Cart', cartSchema);

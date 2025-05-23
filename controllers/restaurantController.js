@@ -1,6 +1,10 @@
 const Restaurant = require("../models/restaurantModel")
+
+const Permission = require("../models/restaurantPermissionModel");
+const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
 const Category = require("../models/categoryModel")
+
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary'); 
 
@@ -17,9 +21,14 @@ exports.createRestaurant = async (req, res) => {
       foodType,
       merchantSearchName,
       minOrderAmount,
-      paymentMethods,
+
       location,
-      serviceAreas
+      paymentMethods
+
+    
+   
+
+
     } = req.body;
 
 
@@ -55,9 +64,23 @@ exports.createRestaurant = async (req, res) => {
     });
 
     await newRestaurant.save();
+
+    const defaultPermissions = new Permission({
+      restaurantId: newRestaurant._id,
+      permissions: {
+        canManageMenu: false,
+        canAcceptOrder: false,
+        canRejectOrder: false,
+        canManageOffers: false,
+        canViewReports: false
+      }
+    });
+
+    await defaultPermissions.save();
     res.status(201).json({
       message: "Restaurant created successfully.",
       restaurant: newRestaurant,
+      permissions: defaultPermissions.permissions
     });
   } catch (error) {
     console.error(error);
@@ -116,7 +139,6 @@ exports.updateRestaurant = async (req, res) => {
       }
     }
 
-    // 🖼️ Image replacement (optional: delete old ones)
     if (req.files && req.files.length > 0) {
       const uploads = await Promise.all(
         req.files.map(file => uploadOnCloudinary(file.path))
@@ -144,31 +166,36 @@ exports.updateRestaurant = async (req, res) => {
 
 
 exports.deleteRestaurant = async (req, res) => {
-
   try {
-     const { restaurantId } = req.params;
-      if (!restaurantId) {
+    const { restaurantId } = req.params;
+
+    if (!restaurantId) {
       return res.status(400).json({ message: 'restaurantId is required.' });
     }
+
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ message: 'Invalid restaurantId format.' });
     }
-        const restaurant = await Restaurant.findOne({ _id: restaurantId });
-           if (!restaurant) {
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found.' });
     }
 
+    // Delete the restaurant
     await restaurant.deleteOne();
-    res.status(200).json({ message: 'Restaurant deleted successfully.' });
 
-    
+    //  Also delete the associated permission
+    await Permission.deleteOne({ restaurantId });
+
+    res.status(200).json({ message: 'Restaurant and its permissions deleted successfully.' });
+
   } catch (error) {
-
-       console.error(error);
+    console.error('Error deleting restaurant:', error);
     res.status(500).json({ message: 'Server error.' });
-    
   }
-}
+};
+
 
 exports.getRestaurantById = async (req, res) => {
  
@@ -436,6 +463,37 @@ const { restaurantId } = req.params;
 }
 
 
+exports.updateRestaurantOrderStatus = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    // Validate order exists
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Update order status
+    order.status = status;
+
+    // If restaurant provides estimated prep time, update it
+   
+
+    await order.save();
+
+    res.status(200).json({
+      message: "Order status updated successfully",
+      order
+    });
+  } catch (error) {
+    console.error("Error updating order status:", error);
+    res.status(500).json({
+      message: "Failed to update order status",
+      error: error.message
+    });
+  }
+};
     
      
 

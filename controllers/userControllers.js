@@ -1,8 +1,13 @@
 const User = require("../models/userModel");
+const Session = require("../models/session");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const {sendEmail} = require("../utils/sendEmail")
+
+const{sendSms} = require("../utils/sendSms")
+const crypto = require("crypto");
+
 
 // Register user with validations, OTP generation and notifications
 exports.registerUser = async (req, res) => {
@@ -114,9 +119,12 @@ exports.verifyOtp = async (req, res) => {
 
 
 
+// Login user with JWT token generation and session management
+
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
     }
@@ -137,12 +145,33 @@ exports.loginUser = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    // Create a safe user object without password
+    // Limit to 3 active sessions
+    const MAX_SESSIONS = 3;
+    const existingSessions = await Session.find({ userId: userExist._id }).sort({ createdAt: 1 });
+
+    if (existingSessions.length >= MAX_SESSIONS) {
+      const oldestSession = existingSessions[0];
+      await Session.findByIdAndDelete(oldestSession._id); // Kick the oldest session out
+    }
+
+    // Get device + IP info 
+    const userAgent = req.headers["user-agent"] || "Unknown Device";
+    const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
+
+    // Save new session in DB
+    await Session.create({
+      userId: userExist._id,
+      token,
+      userAgent,
+      ip,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
     const user = {
       _id: userExist._id,
       name: userExist.name,
       email: userExist.email,
-      role: userExist.role, // if you have roles like admin/customer etc.
+      role: userExist.role,
     };
 
     res.json({
@@ -152,10 +181,29 @@ exports.loginUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Login error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+// Logout user by deleting session
+
+exports.logoutUser = async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(400).json({ message: "Token required" });
+
+  await Session.findOneAndDelete({ token });
+  res.json({ message: "Logged out successfully" });
+};
+
+// logout from all devices
+
+exports.logoutAll = async (req, res) => {
+  await Session.deleteMany({ userId: req.user._id });
+  res.json({ message: "Logged out from all sessions" });
+};
+
 
 
 
@@ -329,11 +377,11 @@ exports.forgotPassword = async (req, res) => {
     const resetUrl = `http://localhost:5000/reset-password/${resetToken}`;
 
     // Send email (implement sendEmail yourself or use nodemailer)
-    await sendEmail({
-      to: user.email,
-      subject: "Password Reset Request",
-      text: `You requested a password reset. Click here to reset: ${resetUrl}`,
-    });
+    await sendEmail(
+      user.email,
+      "Password Reset Request",
+      `You requested a password reset. Click here to reset: ${resetUrl}`,
+    );
 
     res.json({ message: "Password reset email sent" });
   } catch (error) {
@@ -357,8 +405,9 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
     // Update user password and clear reset token fields
-    user.password = newPassword; // hash password as per your setup
+    user.password = hashedPassword; 
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
 

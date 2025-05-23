@@ -1,34 +1,57 @@
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
-const Product = require("../models/productModel")
-const { uploadOnCloudinary } = require('../utils/cloudinary'); 
-const fs = require('fs');
+const Cart = require("../models/cartModel");
+const Product = require("../models/productModel");
+const { calculateOrderCost } = require("../services/orderCostCalculator");
+const { uploadOnCloudinary } = require("../utils/cloudinary");
+const { haversineDistance } = require("../utils/distanceCalculator");
+const { deliveryFeeCalculator } = require("../utils/deliveryFeeCalculator");
+const fs = require("fs");
 
+const firebaseAdmin = require("../config/firebaseAdmin");
+const {
+  findAndAssignNearestAgent,
+} = require("../services/findAndAssignNearestAgent");
+const Permission = require("../models/restaurantPermissionModel");
 
-const firebaseAdmin = require('../config/firebaseAdmin')
 const Restaurant = require("../models/restaurantModel");
-const { sendPushNotification }  = require('../utils/sendPushNotification');
-const { awardDeliveryPoints, awardPointsToRestaurant } = require("../utils/awardPoints");
-
+const { sendPushNotification } = require("../utils/sendPushNotification");
+const {
+  awardDeliveryPoints,
+  awardPointsToRestaurant,
+} = require("../utils/awardPoints");
 
 exports.createOrder = async (req, res) => {
   try {
-    const { customerId, restaurantId, orderItems, paymentMethod, location } = req.body;
+    const { customerId, restaurantId, orderItems, paymentMethod, location } =
+      req.body;
 
-    if (!restaurantId || !orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
-      return res.status(400).json({ error: "restaurantId and orderItems are required" });
+    if (
+      !restaurantId ||
+      !orderItems ||
+      !Array.isArray(orderItems) ||
+      orderItems.length === 0
+    ) {
+      return res
+        .status(400)
+        .json({ error: "restaurantId and orderItems are required" });
     }
 
     // Validate location
-    if (!location || !Array.isArray(location.coordinates) || location.coordinates.length !== 2) {
+    if (
+      !location ||
+      !Array.isArray(location.coordinates) ||
+      location.coordinates.length !== 2
+    ) {
       return res.status(400).json({
-        error: "Valid location coordinates are required in [longitude, latitude] format",
+        error:
+          "Valid location coordinates are required in [longitude, latitude] format",
       });
     }
 
     const [longitude, latitude] = location.coordinates;
-    if (typeof longitude !== 'number' || typeof latitude !== 'number') {
+    if (typeof longitude !== "number" || typeof latitude !== "number") {
       return res.status(400).json({
         error: "Coordinates must be numbers in [longitude, latitude] format",
       });
@@ -41,17 +64,25 @@ exports.createOrder = async (req, res) => {
     }
 
     // Extract product IDs from order items
-    const productIds = orderItems.map(item => item.productId);
+    const productIds = orderItems.map((item) => item.productId);
 
     // Fetch active products matching those IDs and restaurant
-    const products = await Product.find({ _id: { $in: productIds }, restaurantId, active: true });
+    const products = await Product.find({
+      _id: { $in: productIds },
+      restaurantId,
+      active: true,
+    });
 
-    const foundIds = products.map(p => p._id.toString());
-    const missingIds = productIds.filter(id => !foundIds.includes(id));
+    const foundIds = products.map((p) => p._id.toString());
+    const missingIds = productIds.filter((id) => !foundIds.includes(id));
 
     if (missingIds.length > 0) {
-      const missingItems = orderItems.filter(item => missingIds.includes(item.productId));
-      const missingNames = missingItems.map(item => item.name || "Unknown Product");
+      const missingItems = orderItems.filter((item) =>
+        missingIds.includes(item.productId)
+      );
+      const missingNames = missingItems.map(
+        (item) => item.name || "Unknown Product"
+      );
       return res.status(400).json({
         error: "Some ordered items are invalid or unavailable",
         missingProducts: missingNames,
@@ -63,7 +94,7 @@ exports.createOrder = async (req, res) => {
     const now = new Date();
 
     for (const item of orderItems) {
-      const product = products.find(p => p._id.toString() === item.productId);
+      const product = products.find((p) => p._id.toString() === item.productId);
       let price = product.price;
 
       if (
@@ -96,9 +127,31 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order(orderData);
     const savedOrder = await newOrder.save();
- // ✅ Send push notification if restaurant has device token
 
-    await sendPushNotification(restaurantId, "new order placed", "an new order placed by cusotmer")
+    //  Check permission for auto-accept
+    const permission = await Permission.findOne({ restaurantId });
+    const canAccept = permission?.permissions?.canAcceptOrder ?? false;
+    if (!canAccept) {
+      // Auto-accept order
+      savedOrder.orderStatus = "accepted_by_restaurant";
+      savedOrder.autoAccepted = true;
+      await savedOrder.save();
+
+      // Notify customer
+      if (io) {
+        io.to(customerId?.toString()).emit("order-accepted", {
+          message: "Order auto-accepted",
+          order: savedOrder,
+        });
+      }
+    }
+    // ✅ Send push notification if restaurant has device token
+
+    await sendPushNotification(
+      restaurantId,
+      "new order placed",
+      "an new order placed by cusotmer"
+    );
 
     // ✅ send realtime notification via Socket.IO
     io.to(restaurantId).emit("new-order", {
@@ -111,17 +164,117 @@ exports.createOrder = async (req, res) => {
       message: "Order created successfully",
       order: savedOrder,
     });
-
   } catch (err) {
     console.error("createOrder error:", err);
-    return res.status(500).json({ error: "Failed to create order", details: err.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to create order", details: err.message });
+  }
+};
+
+exports.placeOrder = async (req, res) => {
+  try {
+    const {
+      longitude,
+      latitude,
+      cartId,
+      userId,
+      paymentMethod,
+      couponCode,
+      instructions,
+      tipAmount = 0,
+    } = req.body;
+
+    if (!cartId || !userId || !paymentMethod || !longitude || !latitude) {
+      return res.status(400).json({ error: "Required fields are missing" });
+    }
+
+    const cart = await Cart.findOne({ _id: cartId, userId });
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found" });
+    }
+
+    const restaurant = await Restaurant.findById(cart.restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
+    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+
+    // Calculate cost summary
+    const billSummary = calculateOrderCost({
+      cartProducts: cart.products,
+      restaurant,
+      userCoords,
+      couponCode,
+    });
+
+    const orderItems = cart.products.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      price: item.price,
+      name: item.name,
+      totalPrice: item.price * item.quantity,
+    }));
+
+    // Create order object
+    const newOrder = new Order({
+      customerId: userId,
+      restaurantId: cart.restaurantId,
+      orderItems,
+      paymentMethod,
+      orderStatus: "pending",
+      location: { type: "Point", coordinates: userCoords },
+      subtotal: billSummary.subtotal,
+      tax: billSummary.tax,
+      discountAmount: billSummary.discount,
+      deliveryCharge: billSummary.deliveryFee,
+      surgeCharge: 0,
+      tipAmount,
+      totalAmount: billSummary.total + tipAmount,
+      distanceKm: billSummary.distanceKm,
+      couponCode,
+      instructions,
+    });
+
+    const savedOrder = await newOrder.save();
+    if (restaurant.permissions.canAcceptRejectOrders) {
+      console.log("Notify restaurant for order acceptance");
+    } else {
+      // Auto-assign delivery agent immediately
+      const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
+        longitude,
+        latitude,
+      });
+
+      if (assignedAgent) {
+        console.log("Order auto-assigned to:", assignedAgent.fullName);
+      } else {
+        console.log("No available agent found for auto-assignment.");
+      }
+    }
+
+    // // Clear cart
+    // await Cart.findByIdAndDelete(cartId);
+
+    return res.status(201).json({
+      message: "Order placed successfully",
+      orderId: savedOrder._id,
+      totalAmount: savedOrder.totalAmount,
+      billSummary,
+    });
+  } catch (err) {
+    console.error("Error placing order:", err);
+    res.status(500).json({ error: "Failed to place order" });
   }
 };
 
 // Get Order by ID
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.orderId).populate("customerId restaurantId orderItems.productId");
+    const order = await Order.findById(req.params.orderId).populate(
+      "customerId restaurantId orderItems.productId"
+    );
 
     if (!order) return res.status(404).json({ error: "Order not found" });
 
@@ -144,7 +297,19 @@ exports.getOrdersByCustomer = async (req, res) => {
 // Get Orders by Agent
 exports.getOrdersByAgent = async (req, res) => {
   try {
-    const orders = await Order.find({ assignedAgent: req.params.agentId });
+  const orders = await Order.find(
+  { assignedAgent: req.params.agentId },
+  "status totalAmount location" // <-- only these fields from Order itself
+)
+  .populate({
+    path: "restaurantId",
+    select: "name location address"
+  })
+  .populate({
+    path: "customerId",
+    select: "name phone"
+  })
+  .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
@@ -182,7 +347,7 @@ exports.cancelOrder = async (req, res) => {
     const updated = await Order.findByIdAndUpdate(
       req.params.orderId,
       {
-        orderStatus: "cancelled",
+        orderStatus: "cancelled_by_customer",
         cancellationReason: reason || "",
         debtCancellation: debtCancellation || false,
       },
@@ -200,8 +365,8 @@ exports.reviewOrder = async (req, res) => {
   const { customerReview, restaurantReview } = req.body;
 
   try {
-    const customerImageFiles = req.files['customerImages'] || [];
-    const restaurantImageFiles = req.files['restaurantImages'] || [];
+    const customerImageFiles = req.files["customerImages"] || [];
+    const restaurantImageFiles = req.files["restaurantImages"] || [];
 
     // Upload customer images to Cloudinary
     const customerImages = [];
@@ -239,7 +404,6 @@ exports.reviewOrder = async (req, res) => {
     res.status(500).json({ error: "Failed to submit review" });
   }
 };
-
 
 // Update Delivery Mode
 exports.updateDeliveryMode = async (req, res) => {
@@ -354,7 +518,9 @@ exports.getCustomerOrderStatus = async (req, res) => {
 
     res.json(orders);
   } catch (error) {
-    res.status(500).json({ message: "Server error while fetching order status" });
+    res
+      .status(500)
+      .json({ message: "Server error while fetching order status" });
   }
 };
 
@@ -364,7 +530,7 @@ exports.getGuestOrders = async (req, res) => {
     const orders = await Order.find({ customerId: null });
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch guest orders' });
+    res.status(500).json({ error: "Failed to fetch guest orders" });
   }
 };
 
@@ -406,68 +572,63 @@ exports.getCustomerScheduledOrders = async (req, res) => {
     });
   }
 };
-
-
-
 exports.merchantAcceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
+
+    // Validate restaurant for this merchant
+    const restaurant = await Restaurant.findOne({ ownerId: req.user._id });
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
 
     // Validate orderId format
     if (!orderId || orderId.length !== 24) {
       return res.status(400).json({ error: "Invalid order ID format" });
     }
 
+    // Fetch order
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
-    if (order.orderStatus === "cancelled") {
+
+    // Validate order status
+    if (order.orderStatus === "cancelled_by_customer") {
       return res.status(400).json({ error: "Cannot accept a cancelled order" });
     }
-    // Prevent double accepting or invalid status transitions
-    if (order.orderStatus === "accepted") {
+
+    if (order.orderStatus === "accepted_by_restaurant") {
       return res.status(400).json({ error: "Order is already accepted" });
     }
 
-   
-
-    // Update status to 'accepted'
-    order.orderStatus = "accepted";
+    // ✅ Update status to 'accepted_by_restaurant'
+    order.orderStatus = "accepted_by_restaurant";
     await order.save();
 
-    
-
-
-    
-
-    // Emit to  user  via Socket.IO
+    // ✅ Emit to customer via Socket.IO
     const io = req.app.get("io");
     if (io) {
       io.to(order.customerId.toString()).emit("order-accepted", {
-        message: "Order status chhanged",
-        order
+        message: "Your order has been accepted by the restaurant",
+        order,
       });
     }
 
-    
-
+    // ✅ Respond to merchant
     res.status(200).json({
       success: true,
       message: "Order accepted successfully",
-      order
+      order,
     });
-
   } catch (error) {
     console.error("merchantAcceptOrder error:", error);
     res.status(500).json({
       error: "Failed to accept order",
-      details: error.message
+      details: error.message,
     });
   }
 };
-
-
 
 exports.merchantRejectOrder = async (req, res) => {
   try {
@@ -485,16 +646,16 @@ exports.merchantRejectOrder = async (req, res) => {
     }
 
     // Prevent rejecting completed or already cancelled orders
-    if (order.orderStatus === "completed") {
+    if (order.orderStatus === "ready") {
       return res.status(400).json({ error: "Cannot reject a completed order" });
     }
 
-    if (order.orderStatus === "cancelled") {
+    if (order.orderStatus === "cancelled_by_customer") {
       return res.status(400).json({ error: "Order is already cancelled" });
     }
 
     // Update order status to 'cancelled'
-    order.orderStatus = "cancelled";
+    order.orderStatus = "rejected_by_restaurant";
     order.rejectionReason = rejectionReason || "Rejected by merchant";
     await order.save();
 
@@ -504,21 +665,20 @@ exports.merchantRejectOrder = async (req, res) => {
       io.to(order.restaurantId.toString()).emit("order-rejected", {
         orderId: order._id,
         message: "Order has been rejected by the merchant",
-        reason: order.rejectionReason
+        reason: order.rejectionReason,
       });
     }
 
     res.status(200).json({
       success: true,
       message: "Order rejected successfully",
-      order
+      order,
     });
-
   } catch (error) {
     console.error("merchantRejectOrder error:", error);
     res.status(500).json({
       error: "Failed to reject order",
-      details: error.message
+      details: error.message,
     });
   }
 };
@@ -529,38 +689,38 @@ exports.updateOrderStatus = async (req, res) => {
   const { newStatus } = req.body;
 
   const merchantAllowedStatuses = [
-    'accepted_by_restaurant',
-    'rejected_by_restaurant',
-    'preparing',
-    'ready',
+    "accepted_by_restaurant",
+    "rejected_by_restaurant",
+    "preparing",
+    "ready",
   ];
 
   // Optionally allow 'completed' for the system or other roles
-  const allowedStatuses = [...merchantAllowedStatuses, 'completed'];
+  const allowedStatuses = [...merchantAllowedStatuses, "completed"];
 
   if (!allowedStatuses.includes(newStatus)) {
     return res.status(400).json({
-      error: `Invalid status. Allowed statuses: ${allowedStatuses.join(', ')}`,
+      error: `Invalid status. Allowed statuses: ${allowedStatuses.join(", ")}`,
     });
   }
 
   try {
     const order = await Order.findById(orderId);
     if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
+      return res.status(404).json({ error: "Order not found" });
     }
 
     order.orderStatus = newStatus;
     await order.save();
 
     // Award points only when status is 'completed'
-    if (newStatus === 'completed') {
+    if (newStatus === "completed") {
       // Award delivery points to agent
       if (order.agentId) {
         try {
           await awardDeliveryPoints(order.agentId, 10); // 10 points per delivery
         } catch (err) {
-          console.error('Failed to award delivery points:', err);
+          console.error("Failed to award delivery points:", err);
         }
       }
 
@@ -569,37 +729,37 @@ exports.updateOrderStatus = async (req, res) => {
         // Example: award 10 points every 5 completed orders
         const completedOrdersCount = await Order.countDocuments({
           restaurantId: order.restaurantId,
-          orderStatus: 'completed',
+          orderStatus: "completed",
         });
 
         if (completedOrdersCount % 5 === 0) {
           try {
-            await awardPointsToRestaurant(order.restaurantId, 10, 'Milestone: 5 deliveries', order._id);
+            await awardPointsToRestaurant(
+              order.restaurantId,
+              10,
+              "Milestone: 5 deliveries",
+              order._id
+            );
           } catch (err) {
-            console.error('Failed to award restaurant points:', err);
+            console.error("Failed to award restaurant points:", err);
           }
         }
       }
     }
 
     res.status(200).json({
-      message: 'Order status updated successfully',
+      message: "Order status updated successfully",
       order,
     });
   } catch (error) {
-    console.error('Error updating order status:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error updating order status:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
-
-
-
-
 exports.getOrdersByMerchant = async (req, res) => {
   try {
-    
-    const { restaurantId } = req.query;
+    const { restaurantId } = req.params;
 
     if (!restaurantId) {
       return res.status(400).json({ error: "restaurantId is required" });
@@ -618,23 +778,44 @@ exports.getOrdersByMerchant = async (req, res) => {
       totalOrders: orders.length,
       orders,
     });
-
   } catch (err) {
     console.error("getOrdersByMerchant error:", err);
-    return res.status(500).json({ error: "Failed to fetch orders", details: err.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch orders", details: err.message });
   }
 };
 
+// Sample coupons object — replace with DB lookup later
+const coupons = {
+  SAVE10: { type: "percentage", value: 10 },
+  FLAT50: { type: "flat", value: 50 },
+};
 
+const TAX_PERCENTAGE = 8; // example 8%
 
-  exports.getOrderPriceSummary = async() =>
-  {
+exports.getOrderPriceSummary = async (req, res) => {
+  try {
+    const { longitude, latitude, couponCode, cartId, userId } = req.body;
 
-    try {
-      
-      
-    } catch (error) {
-      
-    }
+    const cart = await Cart.findOne({ _id: cartId, userId });
+    const restaurant = await Restaurant.findById(cart.restaurantId);
 
+    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+
+    const costSummary = calculateOrderCost({
+      cartProducts: cart.products,
+      restaurant,
+      userCoords,
+      couponCode,
+    });
+
+    return res.status(200).json({
+      message: "Bill summary calculated successfully",
+      billSummary: costSummary,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
+};

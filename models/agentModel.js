@@ -8,11 +8,16 @@ const agentSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     profilePicture: { type: String }, // URL to the profile picture
     bankAccountDetails: {
-      accountNumber: { type: String, required: true },
-      bankName: { type: String, required: true },
-      accountHolderName: { type: String, required: true },
-      ifscCode: { type: String, required: true },
+      accountNumber: { type: String },
+      bankName: { type: String },
+      accountHolderName: { type: String },
+      ifscCode: { type: String },
     },
+    bankDetailsProvided: {
+      type: Boolean,
+      default: false,
+    },
+
     payoutDetails: {
       totalEarnings: { type: Number, default: 0 },
       tips: { type: Number, default: 0 },
@@ -41,9 +46,21 @@ const agentSchema = new mongoose.Schema(
       location: {
         latitude: { type: Number },
         longitude: { type: Number }
-      }, // current location of the agent
+      }, 
       accuracy: { type: Number }, // accuracy of the GPS location (in meters)
     },
+
+     location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      required: true
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      required: true
+    }
+  },
     leaveStatus: {
       leaveApplied: { type: Boolean, default: false },
       leaveStartDate: { type: Date },
@@ -97,5 +114,5 @@ const agentSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
+agentSchema.index({ location: "2dsphere" });
 module.exports = mongoose.model("Agent", agentSchema);

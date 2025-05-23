@@ -20,11 +20,14 @@ const {
   rescheduleOrder,
   merchantAcceptOrder,
   merchantRejectOrder,
-  getOrdersByMerchant
+  getOrdersByMerchant,
+  getOrderPriceSummary,
+  placeOrder
  
   
 } = require('../controllers/orderController');
 const { upload } = require('../middlewares/multer');
+const { protect, checkRole, checkRestaurantPermission } = require('../middlewares/authMiddleware');
 
 // orders
 router.post('/create', createOrder); // Create new order
@@ -56,16 +59,22 @@ router.post('/:orderId/apply-discount', applyDiscount);
 
 //-ordershedules-//
 router.get('/admin/scheduled-orders', getScheduledOrders);
-router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders);
+router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders); 
 // router.put('/reschedule/:orderId', rescheduleOrder);
 
 //merchants actins
 
-router.put('/:orderId/merchant-accept',merchantAcceptOrder);
-router.put('/:orderId/merchant-reject',merchantRejectOrder)
-router.get('/restaurant/:restaurantId', getOrdersByMerchant);
+router.put('/:orderId/merchant-accept', protect, checkRole('merchant'), checkRestaurantPermission('canAcceptOrder', true), merchantAcceptOrder);
+router.put('/:orderId/merchant-reject', protect, checkRole('merchant'), checkRestaurantPermission('canRejectOrder', true), merchantRejectOrder)
+router.get('/restaurant/:restaurantId', protect, checkRole('merchant'), getOrdersByMerchant);
 
 
 
+//bill summary 
+router.post("/order/pricesummary",getOrderPriceSummary)
+
+
+//place order 
+router.post("/order/place-order",placeOrder)
 
 module.exports = router;

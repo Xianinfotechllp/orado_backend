@@ -81,5 +81,10 @@ pids/
 
 # firebase config
 /config/orado-1eb0c-firebase-adminsdk-fbsvc-700cb01560.json
+
+#createsuperadmin
+createSuperAdmin.js
+
 config/orado-1eb0c-firebase-adminsdk-fbsvc-700cb01560.json
 /config/orado-1eb0c-firebase-adminsdk-fbsvc-700cb01560.jsongit rm --cached config/orado-1eb0c-firebase-adminsdk-fbsvc-700cb01560.json
+
