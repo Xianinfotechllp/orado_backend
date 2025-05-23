@@ -20,13 +20,13 @@ router.post(
   ]),
   registerMerchant
 );
+const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu,getRestaurantEarningSummary}  = require('../controllers/restaurantController')
 router.post("/login", loginMerchant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
 router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
 
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu}  = require('../controllers/restaurantController')
 
 
 // restaurant routes
@@ -56,6 +56,9 @@ router.delete('/categories/:categoryId', protect, checkRole('merchant'), deleteR
 //get restaurant menu
 
 router.get("/:restaurantId/menu",getRestaurantMenu)
+
+// get restaurant earnigs
+router.get("/:restaurantId/earnigs",getRestaurantEarningSummary)
 
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)

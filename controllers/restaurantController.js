@@ -1,5 +1,5 @@
 const Restaurant = require("../models/restaurantModel")
-
+const RestaurantEarning = require('../models/RestaurantEarningModel');
 const Permission = require("../models/restaurantPermissionModel");
 const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
@@ -497,6 +497,30 @@ exports.updateRestaurantOrderStatus = async (req, res) => {
     
      
 
- 
+ exports.getRestaurantEarningSummary = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
 
+    // Find all earnings for the restaurant
+    const totalEarnings = await RestaurantEarning.find({ restaurantId: restaurantId });
+
+    // Calculate totals manually since find() returns array of docs
+    const summary = totalEarnings.reduce(
+      (acc, curr) => {
+        acc.totalAmount += curr.totalOrderAmount || 0;
+        acc.totalRevenue += curr.revenueShareAmount || 0;
+        return acc;
+      },
+      { totalAmount: 0, totalRevenue: 0 }
+    );
+
+    res.status(200).json({
+      success: true,
+      summary,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to fetch earning summary' });
+  }
+};
 

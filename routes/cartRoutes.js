@@ -7,7 +7,7 @@ router.get('/:userId', getCart);
 router.put('/update', updateCartItem);
 router.delete('/remove', removeFromCart);
 router.delete('/clear/:userId', clearCart);
-router.post("/multiple",addMultipleToCart)
+
 
 
 

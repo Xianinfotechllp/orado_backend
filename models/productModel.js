@@ -81,12 +81,12 @@ const product = new mongoose.Schema({
   type: {
     type: String,
     enum: ['percentage', 'fixed'],
-    required: true,
+
     default: 'percentage'
   },
   value: {
     type: Number,
-    required: true,
+ 
     default: 10 // default 10% if percentage type
   }
 }

@@ -40,7 +40,8 @@ router.post("/orders/:orderId/accept",agentRejectsOrder)
 router.put("/:agentId/orders/:orderId/status",agentUpdatesOrderStatus)
 
 //get agent earnigs
-router.get("/agent-earnings/:agentId/earnings",getAgentEarnings)
+router.get("/agent-earnings/:agentId",getAgentEarnings)
+
     
 
 
