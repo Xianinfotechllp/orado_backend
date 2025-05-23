@@ -19,7 +19,7 @@ exports.registerUser = async (req, res) => {
     const phoneRegex = /^\+91\d{10}$/;
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
 
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password,referralCode } = req.body;
 
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ message: "All fields are required" });
@@ -64,6 +64,18 @@ exports.registerUser = async (req, res) => {
         otpExpiry,
       },
     });
+     // ✅ Referral Logic (Minimal Addition)
+    if (referralCode) {
+      const referrer = await User.findOne({ referralCode });
+      if (referrer) {
+        newUser.referredBy = referrer._id;
+        newUser.referralLevel = (referrer.referralLevel || 1) + 1;
+
+        // 💰 Award bonus to referrer
+        referrer.walletBalance += 100;
+        await referrer.save();
+      }
+    }
 
     await newUser.save();
 
@@ -456,5 +468,14 @@ exports.deleteUser = async (req, res) => {
   } catch (error) {
     console.error("Delete User Error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getMyReferrals = async (req, res) => {
+  try {
+    const referrals = await User.find({ referredBy: req.user._id }).select("name email createdAt");
+    res.json(referrals);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch referrals" });
   }
 };

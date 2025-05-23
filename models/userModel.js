@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const shortid = require("shortid");
 
 const userSchema = new mongoose.Schema(
   {
@@ -13,6 +14,22 @@ const userSchema = new mongoose.Schema(
       default: "customer",
       required: true,
     },
+    // for-refferal
+    referralCode: {
+      type: String,
+      unique: true, // each user has a unique code to refer others
+    },
+
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User", // reference to the user who referred this one
+    },
+
+    referralLevel: {
+      type: Number,
+      default: 1 // optional: track hierarchy level if you want MLM-style depth
+    },
+
 
     // 🔥Super Admin  Flag
     isSuperAdmin: { type: Boolean, default: false },
@@ -119,5 +136,15 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ✅ Referral Code Auto-Generation Middleware
+userSchema.pre("save", function (next) {
+  if (!this.referralCode) {
+    this.referralCode = shortid.generate().toUpperCase();
+  }
+  next();
+});
+
+
 
 module.exports = mongoose.model("User", userSchema);
