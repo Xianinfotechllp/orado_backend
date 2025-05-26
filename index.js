@@ -74,6 +74,8 @@ const faqRouter  = require("./routes/faqRoutes")
 
 const adninRouter = require("./routes/adminRoutes");
 
+const ticketRouter = require("./routes/ticketRoutes");
+
 
 dotenv.config();
 db()
@@ -102,6 +104,7 @@ app.use("/agent",agentRouter)
 app.use("/feedback",feedbackRoutes)
 app.use("/cart",cartRoutes)
 app.use("/faq",faqRouter)
+app.use("/ticket",ticketRouter)
 
 
 
