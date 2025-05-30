@@ -410,12 +410,7 @@ exports.addServiceArea = async (req, res) => {
 
 exports.getRestaurantMenu = async (req, res) => {
   const { restaurantId } = req.params;
-  const {
-    categoryLimit = 5,    // limit number of categories fetched
-    productPage = 1,      // pagination page for products inside each category
-    productLimit = 10     // how many products per category page
-  } = req.query;
-
+console.log("hi")
   try {
     // Validate restaurantId
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
@@ -426,9 +421,8 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Fetch limited active categories for this restaurant
-    const categories = await Category.find({ restaurantId, active: true })
-      .limit(parseInt(categoryLimit));
+    // Fetch all active categories for this restaurant
+    const categories = await Category.find({ restaurantId, active: true });
 
     if (!categories.length) {
       return res.status(404).json({
@@ -438,30 +432,20 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Fetch paginated products for each category (exclude sensitive fields)
+    // Fetch all products for each category (no pagination)
     const menu = await Promise.all(
       categories.map(async (category) => {
-        const totalProducts = await Product.countDocuments({
-          restaurantId,
-          categoryId: category._id,
-        });
-
         const products = await Product.find({
           restaurantId,
           categoryId: category._id,
-        })
-          .select('-revenueShare -costPrice -profitMargin')
-          .skip((parseInt(productPage) - 1) * parseInt(productLimit))
-          .limit(parseInt(productLimit));
+        }).select('-revenueShare -costPrice -profitMargin');
 
         return {
           categoryId: category._id,
           categoryName: category.name,
           description: category.description,
           images: category.images,
-          totalProducts,
-          productPage: parseInt(productPage),
-          totalProductPages: Math.ceil(totalProducts / productLimit),
+          totalProducts: products.length,
           items: products
         };
       })
