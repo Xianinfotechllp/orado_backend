@@ -73,6 +73,7 @@ const chatRouter  = require("./routes/chatRoutes")
 const faqRouter  = require("./routes/faqRoutes")
 
 const adninRouter = require("./routes/adminRoutes");
+const shopRouter = require("./routes/shopRotes")
 
 
 dotenv.config();

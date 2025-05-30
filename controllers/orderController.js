@@ -798,10 +798,27 @@ exports.getOrderPriceSummary = async (req, res) => {
   try {
     const { longitude, latitude, couponCode, cartId, userId } = req.body;
 
+    if (!cartId || !userId) {
+      return res.status(400).json({ error: "cartId and userId are required" });
+    }
+
     const cart = await Cart.findOne({ _id: cartId, userId });
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found for this user" });
+    }
+
+    if (!cart.products || cart.products.length === 0) {
+      return res.status(400).json({ error: "Cart is empty" });
+    }
+
     const restaurant = await Restaurant.findById(cart.restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+
+    // Optional: Validate userCoords are valid numbers here
 
     const costSummary = calculateOrderCost({
       cartProducts: cart.products,

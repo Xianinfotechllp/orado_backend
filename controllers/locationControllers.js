@@ -4,6 +4,27 @@
 const Restaurant = require("../models/restaurantModel");
 const mongoose = require('mongoose');
 const Category = require('../models/categoryModel');
+// Haversine formula to calculate distance between two coordinates in km
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c;
+  return d;
+}
+
+function deg2rad(deg) {
+  return deg * (Math.PI / 180);
+}
+
+
+
+
 exports.getRestaurantsInServiceArea = async (req, res) => {
   try {
     const { latitude, longitude } = req.query;
@@ -42,7 +63,7 @@ exports.getRestaurantsInServiceArea = async (req, res) => {
     res.status(200).json({
       message: "Restaurants in your service area fetched successfully.",
       count: restaurants.length,
-      restaurants,
+      data:restaurants,
     });
   } catch (error) {
     console.error(error);
@@ -151,13 +172,6 @@ exports.getNearbyCategories = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
 exports.getRestaurantsByLocationAndCategory = async (req, res) => {
   try {
     const { latitude, longitude, distance = 5000, categoryId } = req.query;
@@ -253,6 +267,80 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
       message: "Server error while fetching restaurants.",
       messageType: "error",
       statusCode: 500,
+    });
+  }
+};
+
+
+exports.getRecommendedRestaurants = async (req, res) => {
+  try {
+    const { latitude, longitude, maxDistance = 5000, minOrderAmount = 0 } = req.query;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "Latitude and longitude are required.",
+      });
+    }
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const dist = parseInt(maxDistance, 10);
+    const minOrder = parseInt(minOrderAmount, 10);
+
+    if (isNaN(lat) || lat < -90 || lat > 90 || isNaN(lng) || lng < -180 || lng > 180) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "Invalid latitude or longitude values.",
+      });
+    }
+
+    if (isNaN(dist) || dist <= 0) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "maxDistance must be a positive number (meters).",
+      });
+    }
+
+    // Fetch restaurants sorted by rating within maxDistance
+    const restaurants = await Restaurant.find({
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+          $maxDistance: dist,
+        },
+      },
+      minOrderAmount: { $gte: minOrder },
+      active: true
+    })
+      .sort({ rating: -1 })
+      .limit(20)
+      .select("name address minOrderAmount foodType phone rating images location"); // 👈 excluded here
+
+    if (restaurants.length === 0) {
+      return res.status(200).json({
+        messageType: "success",
+        message: "No recommended restaurants found in your area.",
+        count: 0,
+        data: [],
+      });
+    }
+
+    return res.status(200).json({
+      messageType: "success",
+      message: "Recommended restaurants fetched successfully.",
+      count: restaurants.length,
+      data: restaurants,
+    });
+
+  } catch (error) {
+    console.error('Error fetching recommended restaurants:', error);
+    return res.status(500).json({
+      messageType: "failure",
+      message: "Server error while fetching recommended restaurants.",
     });
   }
 };

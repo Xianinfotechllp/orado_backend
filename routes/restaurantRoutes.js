@@ -33,7 +33,10 @@ router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
 router.post("/", upload.array('images', 1), protect, checkRole('merchant'), createRestaurant);
 router.put("/:restaurantId", upload.array('images', 1), protect, checkRole('merchant'), updateRestaurant);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
-router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)
+// router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)
+
+router.get("/:restaurantId",getRestaurantById)
+
 router.put("/:restaurantId/business-hours", protect, checkRole('merchant'), updateBusinessHours)
 
 

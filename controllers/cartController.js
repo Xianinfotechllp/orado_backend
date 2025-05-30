@@ -8,83 +8,78 @@ exports.addToCart = async (req, res) => {
   try {
     const { userId, restaurantId, products } = req.body;
 
-    // Basic validations
-    if (!userId) {
-      return res.status(400).json({ message: "userId is required" });
-    }
-    if (!restaurantId) {
-      return res.status(400).json({ message: "restaurantId is required" });
-    }
+    // ✅ Basic validations
+    if (!userId) return res.status(400).json({ message: "userId is required" });
+    if (!restaurantId) return res.status(400).json({ message: "restaurantId is required" });
     if (!products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ message: "products must be a non-empty array" });
     }
 
+    // ✅ Find existing cart or create new
     let cart = await Cart.findOne({ userId });
 
     if (!cart) {
-      // No cart, create new one
       cart = new Cart({
         userId,
         restaurantId,
         products: []
       });
     } else {
-      // Cart exists
+      // If cart exists, but for a different restaurant, reset it
       if (cart.restaurantId.toString() !== restaurantId) {
-        // Different restaurant, replace cart products and restaurantId
         cart.products = [];
         cart.restaurantId = restaurantId;
       }
     }
 
+    // ✅ Loop through products and add/update them
     for (const prod of products) {
-      if (!prod.productId) {
-        // skip invalid product item without productId
-        continue;
-      }
-      const productData = await Product.findById(prod.productId);
-      if (!productData) continue; // skip invalid products
+      if (!prod.productId) continue;
 
-      // Confirm product belongs to the requested restaurant
-      if (productData.restaurantId.toString() !== restaurantId) {
-        // skip products from different restaurant
-        continue;
-      }
+      const productData = await Product.findById(prod.productId);
+      if (!productData) continue;
+
+      // Skip products from different restaurant
+      if (productData.restaurantId.toString() !== restaurantId) continue;
 
       const index = cart.products.findIndex(p => p.productId.toString() === prod.productId);
-      const qtyToAdd = (prod.quantity && prod.quantity > 0) ? prod.quantity : 1;
+      const newQty = (prod.quantity && prod.quantity > 0) ? prod.quantity : 1;
       const price = productData.price;
 
       if (index > -1) {
-        cart.products[index].quantity += qtyToAdd;
-        cart.products[index].total = cart.products[index].quantity * price;
+        // ✅ Replace quantity with newQty and update total
+        cart.products[index].quantity = newQty;
+        cart.products[index].total = newQty * price;
       } else {
+        // ✅ Add new product to cart
         cart.products.push({
           productId: prod.productId,
           name: productData.name,
           price,
-          quantity: qtyToAdd,
-          total: price * qtyToAdd
+          quantity: newQty,
+          total: price * newQty
         });
       }
     }
 
-    // If no products were added (all invalid/skipped), return error
+    // ✅ Check if any products remain in cart
     if (cart.products.length === 0) {
       return res.status(400).json({ message: "No valid products found to add to cart" });
     }
 
-    // Recalculate totalPrice
+    // ✅ Recalculate total cart price
     cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
 
+    // ✅ Save cart
     await cart.save();
-    res.status(200).json({ message: 'Cart updated', cart });
+
+    res.status(200).json({ message: 'Cart updated successfully', cart });
+
   } catch (err) {
-    console.error(err);
+    console.error("Error updating cart:", err);
     res.status(500).json({ message: 'Server error' });
   }
 };
-
 
 
 // Get user's cart
