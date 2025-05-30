@@ -465,6 +465,60 @@ const { restaurantId } = req.params;
 
     
      
+exports.getRecommendations = async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: "Latitude and longitude are required" });
+    }
+
+    const point = {
+      type: "Point",
+      coordinates: [parseFloat(lng), parseFloat(lat)],
+    };
+
+    // First: Find by $near
+    const nearRestaurants = await Restaurant.find({
+      location: {
+        $near: {
+          $geometry: point,
+          $maxDistance: 5000, // within 5km
+        },
+      },
+      active: true,
+    }).select("name banners rating foodType categories offers");
+
+    // Second: Find by serviceAreas
+    const serviceAreaRestaurants = await Restaurant.find({
+      serviceAreas: {
+        $geoIntersects: {
+          $geometry: point,
+        },
+      },
+      active: true,
+    }).select("name banners rating foodType categories offers");
+
+    // Merge and remove duplicates
+    const restaurantMap = new Map();
+    [...nearRestaurants, ...serviceAreaRestaurants].forEach(r => {
+      restaurantMap.set(r._id.toString(), r);
+    });
+    const restaurants = Array.from(restaurantMap.values());
+
+    // Get top food items
+    const restaurantIds = restaurants.map(r => r._id);
+    const foodItems = await Product.find({
+      restaurantId: { $in: restaurantIds },
+    }).sort({ rating: -1 }).limit(10);
+
+    res.status(200).json({
+      recommendedRestaurants: restaurants,
+      popularFoodItems: foodItems,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+};
 
  
 
