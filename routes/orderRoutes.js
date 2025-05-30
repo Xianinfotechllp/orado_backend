@@ -21,7 +21,8 @@ const {
   merchantAcceptOrder,
   merchantRejectOrder,
   getOrdersByMerchant,
-  getOrderPriceSummary
+  getOrderPriceSummary,
+  placeOrder
  
   
 } = require('../controllers/orderController');
@@ -65,10 +66,17 @@ router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders)
 
 router.put('/:orderId/merchant-accept', protect, checkRole('merchant'), checkRestaurantPermission('canAcceptOrder', true), merchantAcceptOrder);
 router.put('/:orderId/merchant-reject', protect, checkRole('merchant'), checkRestaurantPermission('canRejectOrder', true), merchantRejectOrder)
-router.get('/restaurant/:restaurantId', protect, checkRole('merchant'), getOrdersByMerchant);
+// router.get('/restaurant/:restaurantId', protect, checkRole('merchant'), getOrdersByMerchant);
+router.get('/restaurant/:restaurantId', getOrdersByMerchant);
+
+
+
 
 //bill summary 
 router.post("/order/pricesummary",getOrderPriceSummary)
 
+
+//place order 
+router.post("/order/place-order",placeOrder)
 
 module.exports = router;

@@ -73,6 +73,7 @@ const chatRouter  = require("./routes/chatRoutes")
 const faqRouter  = require("./routes/faqRoutes")
 
 const adninRouter = require("./routes/adminRoutes");
+const shopRouter = require("./routes/shopRotes")
 
 
 dotenv.config();
@@ -93,9 +94,6 @@ app.use("/restaurants",offerRouter)
 app.use("/order",orderRouter)
 app.use("/coupon",couponRoutes)
 app.use("/chat",chatRouter)
-
-
-
 
 app.use("/location",locationRouter)
 app.use("/agent",agentRouter)

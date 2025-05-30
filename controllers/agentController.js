@@ -1,11 +1,12 @@
 const Agent = require('../models/agentModel');
+const AgentEarning = require("../models/AgentEarningModel")
 const Order = require('../models/orderModel');
 const User = require("../models/userModel");
 const Session = require("../models/session");
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose')
-
+const {addAgentEarnings,addRestaurantEarnings} = require("../services/earningService")
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -289,7 +290,6 @@ exports.agentRejectsOrder = async (req, res) => {
   }
 };
 
-
 exports.agentUpdatesOrderStatus = async (req, res) => {
   try {
     const { agentId, orderId } = req.params;
@@ -301,39 +301,46 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
       return res.status(400).json({ error: "agentId, orderId, and status are required" });
     }
 
-    // Validate orderId format
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: "Invalid orderId format" });
     }
 
-    // Validate status
     const allowedStatuses = ['picked_up', 'on_the_way', 'arrived', 'delivered'];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ error: "Invalid status value" });
     }
 
-    // Find order
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Check if the agent updating the status is assigned to this order
     if (!order.assignedAgent || order.assignedAgent.toString() !== agentId) {
       return res.status(403).json({ error: "You are not assigned to this order" });
     }
 
-    // Update status
     order.orderStatus = status;
     await order.save();
 
-    // Emit real-time notification to clients
     io.emit("orderstatus", { message: "Order status updated", order });
 
-    // Award points if delivered
+    // Award earnings if delivered
     if (status === "delivered") {
-      await awardDeliveryPoints(agentId); // assuming this is defined elsewhere
-    }
+         
+
+    await addAgentEarnings({
+    agentId,
+    orderId,
+    amount: order.deliveryCharge,
+    type: "delivery_fee",
+    remarks: "Delivery fee for order"
+  });
+
+  await addRestaurantEarnings(orderId)
+
+
+
+    } 
 
     return res.status(200).json({ message: "Order status updated successfully", order });
 
@@ -485,3 +492,31 @@ exports.updateAgentBankDetails = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+exports.getAgentEarnings = async (req,res)  => {
+  const { agentId } = req.params;
+  try {
+        const earnings = await AgentEarning.find({ agentId }).sort({ createdAt: -1 }); 
+       const totalEarnings = earnings.reduce((acc, earning) => acc + earning.amount, 0);
+ const breakdown = {
+      delivery_fee: 0,
+      incentive: 0,
+      penalty: 0,
+      other: 0
+    };
+
+    earnings.forEach(earning => {
+      breakdown[earning.type] += earning.amount;
+    });
+         res.json({
+      totalEarnings,
+      breakdown
+    });
+    
+  } catch (error) {
+console.error("Error fetching agent earnings:", error);
+    res.status(500).json({ message: "Failed to fetch agent earnings" });
+  }
+
+}

@@ -72,20 +72,8 @@ const userSchema = new mongoose.Schema(
       accountHolderName: String,
     },
 
-    merchantApplication: {
-      aadhaarCard: { type: String },
-      aadhaarNumber: { type: String },
-      fssaiLicense: { type: String },
-      fssaiNumber: { type: String },
-      gstCertificate: { type: String },
-      gstNumber: { type: String },
-      submittedAt: { type: Date },
-      status: {
-        type: String,
-        enum: ["none", "pending", "approved", "rejected"],
-        default: "none"
-      }
-    },
+    gst: String,
+    fssai: String,
 
     fraudulent: { type: Boolean, default: false },
     codEnabled: { type: Boolean, default: false },
@@ -112,10 +100,14 @@ const userSchema = new mongoose.Schema(
     resetPasswordToken: String,
     resetPasswordExpires: Date,
 
+    
+
     loginAttempts: {
       count: { type: Number, default: 0 },
       lastAttempt: Date,
     },
+
+
   },
   { timestamps: true }
 );

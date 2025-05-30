@@ -1,93 +1,73 @@
-const Cart = require('../models/cartModel');
+const Cart = require("../models/cartModel")
 const Product = require('../models/productModel');
+const { calculateOrderCost } = require("../services/orderCostCalculator");
 
-// Add item to cart
-exports.addToCart = async (req, res) => {
+const mongoose = require('mongoose')
+exports.addToCart = async (req,res) => {
+  const {userId, restaurantId, products } = req.body
+  console.log(userId, restaurantId, products )
   try {
-    const {
-      userId,
-      productId,
-      quantity,
-      restaurantId,
-      selectedOptions,
-      specialInstructions
-    } = req.body;
-
-    if (!userId || !productId || !quantity || !restaurantId) {
-      return res.status(400).json({
-        message: "Missing required fields: userId, productId, quantity, or restaurantId."
-      });
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw { status: 400, message: "Invalid userId format" };
+    }
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      throw { status: 400, message: "Invalid restaurantId format" };
+    }
+    if (!products || !Array.isArray(products) || products.length === 0) {
+      throw { status: 400, message: "Products must be a non-empty array" };
     }
 
-    // Validate product existence and status
-    const product = await Product.findOne({ _id: productId, active: true });
-    if (!product) {
-      return res.status(404).json({ message: "Product not found or inactive." });
-    }
-
-    const price = product.price;
-
-    // Find existing cart for the user
     let cart = await Cart.findOne({ userId });
 
     if (!cart) {
-      // Create new cart if none exists
       cart = new Cart({
         userId,
         restaurantId,
-        items: [
-          {
-            ItemId: productId,
-            quantity,
-            selectedOptions: selectedOptions || [],
-            specialInstructions: specialInstructions || "",
-            priceAtTimeOfAddition: price
-          }
-        ]
+        products: []
       });
-    } else {
-      // If cart exists, check if it's for the same restaurant
-      if (cart.restaurantId.toString() !== restaurantId) {
-        // If different, clear previous cart and start new one
-        cart.items = [];
-        cart.restaurantId = restaurantId;
-      }
+    } else if (cart.restaurantId.toString() !== restaurantId) {
+      cart.products = [];
+      cart.restaurantId = restaurantId;
+    }
 
-      // Check if product already exists in cart
-      const existingItemIndex = cart.items.findIndex(
-        item => item.ItemId.toString() === productId
-      );
+    for (const prod of products) {
+      if (!prod.productId || !mongoose.Types.ObjectId.isValid(prod.productId)) continue;
 
-      if (existingItemIndex > -1) {
-        // If exists, just increase quantity
-        cart.items[existingItemIndex].quantity += quantity;
+      const productData = await Product.findById(prod.productId);
+      if (!productData || productData.restaurantId.toString() !== restaurantId) continue;
+
+      const index = cart.products.findIndex(p => p.productId.toString() === prod.productId);
+      const newQty = (prod.quantity && prod.quantity > 0) ? prod.quantity : 1;
+      const price = productData.price;
+
+      if (index > -1) {
+        cart.products[index].quantity = newQty;
+        cart.products[index].total = newQty * price;
       } else {
-        // If not, add new item with options and instructions
-        cart.items.push({
-          ItemId: productId,
-          quantity,
-          selectedOptions: selectedOptions || [],
-          specialInstructions: specialInstructions || "",
-          priceAtTimeOfAddition: price
+        cart.products.push({
+          productId: prod.productId,
+          name: productData.name,
+          price,
+          quantity: newQty,
+          total: price * newQty
         });
       }
     }
 
-    // Update timestamp
-    cart.updatedAt = new Date();
+    if (cart.products.length === 0) {
+      throw { status: 400, message: "No valid products found to add to cart" };
+    }
 
+    cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
     await cart.save();
 
-    res.status(200).json({
-      message: "Item added to cart successfully.",
-      cart
-    });
+    return { message: "Cart updated successfully", cart };
   } catch (error) {
-    console.error("Error adding to cart:", error);
-    res.status(500).json({ message: "Something went wrong while adding to cart." });
+    console.error("Error inside addToCart service:", error);
+    // rethrow error so the controller can catch it
+    throw error;
   }
 };
-
 // Get user's cart
 exports.getCart = async (req, res) => {
   try {
