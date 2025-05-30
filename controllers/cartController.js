@@ -2,20 +2,21 @@ const Cart = require("../models/cartModel")
 const Product = require('../models/productModel');
 const { calculateOrderCost } = require("../services/orderCostCalculator");
 
-
-
-exports.addToCart = async (req, res) => {
+const mongoose = require('mongoose')
+exports.addToCart = async (req,res) => {
+  const {userId, restaurantId, products } = req.body
+  console.log(userId, restaurantId, products )
   try {
-    const { userId, restaurantId, products } = req.body;
-
-    // ✅ Basic validations
-    if (!userId) return res.status(400).json({ message: "userId is required" });
-    if (!restaurantId) return res.status(400).json({ message: "restaurantId is required" });
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw { status: 400, message: "Invalid userId format" };
+    }
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      throw { status: 400, message: "Invalid restaurantId format" };
+    }
     if (!products || !Array.isArray(products) || products.length === 0) {
-      return res.status(400).json({ message: "products must be a non-empty array" });
+      throw { status: 400, message: "Products must be a non-empty array" };
     }
 
-    // ✅ Find existing cart or create new
     let cart = await Cart.findOne({ userId });
 
     if (!cart) {
@@ -24,34 +25,25 @@ exports.addToCart = async (req, res) => {
         restaurantId,
         products: []
       });
-    } else {
-      // If cart exists, but for a different restaurant, reset it
-      if (cart.restaurantId.toString() !== restaurantId) {
-        cart.products = [];
-        cart.restaurantId = restaurantId;
-      }
+    } else if (cart.restaurantId.toString() !== restaurantId) {
+      cart.products = [];
+      cart.restaurantId = restaurantId;
     }
 
-    // ✅ Loop through products and add/update them
     for (const prod of products) {
-      if (!prod.productId) continue;
+      if (!prod.productId || !mongoose.Types.ObjectId.isValid(prod.productId)) continue;
 
       const productData = await Product.findById(prod.productId);
-      if (!productData) continue;
-
-      // Skip products from different restaurant
-      if (productData.restaurantId.toString() !== restaurantId) continue;
+      if (!productData || productData.restaurantId.toString() !== restaurantId) continue;
 
       const index = cart.products.findIndex(p => p.productId.toString() === prod.productId);
       const newQty = (prod.quantity && prod.quantity > 0) ? prod.quantity : 1;
       const price = productData.price;
 
       if (index > -1) {
-        // ✅ Replace quantity with newQty and update total
         cart.products[index].quantity = newQty;
         cart.products[index].total = newQty * price;
       } else {
-        // ✅ Add new product to cart
         cart.products.push({
           productId: prod.productId,
           name: productData.name,
@@ -62,26 +54,20 @@ exports.addToCart = async (req, res) => {
       }
     }
 
-    // ✅ Check if any products remain in cart
     if (cart.products.length === 0) {
-      return res.status(400).json({ message: "No valid products found to add to cart" });
+      throw { status: 400, message: "No valid products found to add to cart" };
     }
 
-    // ✅ Recalculate total cart price
     cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
-
-    // ✅ Save cart
     await cart.save();
 
-    res.status(200).json({ message: 'Cart updated successfully', cart });
-
-  } catch (err) {
-    console.error("Error updating cart:", err);
-    res.status(500).json({ message: 'Server error' });
+    return { message: "Cart updated successfully", cart };
+  } catch (error) {
+    console.error("Error inside addToCart service:", error);
+    // rethrow error so the controller can catch it
+    throw error;
   }
 };
-
-
 // Get user's cart
 exports.getCart = async (req, res) => {
   try {

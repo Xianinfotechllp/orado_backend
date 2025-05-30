@@ -1,46 +1,28 @@
-const mongoose = require('mongoose');
-
-const cartItemSchema = new mongoose.Schema({
-  product: {
+const CartSchema = new mongoose.Schema({
+  userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'product',
-    required: true
-  },
-  quantity: {
-    type: Number,
+    ref: 'User',
     required: true,
-    min: [1, 'Quantity must be at least 1']
+    unique: true  // enforce one cart per user
   },
-  priceAtPurchase: {
-    type: Number,
+  restaurantId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Restaurant',
     required: true
-  }
+  },
+  products: [
+    {
+      productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+      name: String,
+      price: Number,
+      quantity: Number,
+      total: Number
+    }
+  ],
+  totalPrice: Number
 });
 
-const cartSchema = new mongoose.Schema(
-  {
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      unique: true
-    },
-    items: [cartItemSchema],
-    totalPrice: {
-      type: Number,
-      required: true,
-      default: 0
-    },
-    totalQuantity: {
-      type: Number,
-      default: 0
-    },
-    lastUpdated: {
-      type: Date,
-      default: Date.now
-    }
-  },
-  { timestamps: true }
-);
+// 👉 Make sure unique index is sparse
+CartSchema.index({ userId: 1 }, { unique: true, sparse: true });
 
-module.exports = mongoose.model('Cart', cartSchema);
+module.exports = mongoose.model('Cart', CartSchema);

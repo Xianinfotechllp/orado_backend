@@ -409,10 +409,15 @@ exports.addServiceArea = async (req, res) => {
 
 exports.getRestaurantMenu = async (req, res) => {
   const { restaurantId } = req.params;
+  const { page = 1, limit = 10, categoryLimit } = req.query;  // Added categoryLimit
 
   try {
-    // Fetch all active categories for this restaurant
-    const categories = await Category.find({ restaurantId, active: true });
+    // Optionally limit number of categories if categoryLimit is provided
+    const categoryQuery = Category.find({ restaurantId, active: true });
+    if (categoryLimit) {
+      categoryQuery.limit(parseInt(categoryLimit));
+    }
+    const categories = await categoryQuery;
 
     if (!categories.length) {
       return res.status(404).json({
@@ -422,19 +427,29 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Fetch products for each category (exclude sensitive fields)
     const menu = await Promise.all(
       categories.map(async (category) => {
         const products = await Product.find({
           restaurantId,
           categoryId: category._id,
-        }).select('-revenueShare -costPrice -profitMargin'); // exclude fields here
+        })
+          .select('-revenueShare -costPrice -profitMargin')
+          .skip((page - 1) * limit)
+          .limit(parseInt(limit));
+
+        const totalProducts = await Product.countDocuments({
+          restaurantId,
+          categoryId: category._id,
+        });
 
         return {
           categoryId: category._id,
           categoryName: category.name,
           description: category.description,
           images: category.images,
+          totalProducts,
+          page: parseInt(page),
+          totalPages: Math.ceil(totalProducts / limit),
           items: products
         };
       })
@@ -443,7 +458,11 @@ exports.getRestaurantMenu = async (req, res) => {
     res.status(200).json({
       message: 'Menu fetched successfully',
       messageType: 'success',
-      data: menu
+      data: {
+        totalCategories: categories.length,
+        page: parseInt(page),
+        categories: menu
+      }
     });
 
   } catch (error) {
@@ -455,7 +474,6 @@ exports.getRestaurantMenu = async (req, res) => {
     });
   }
 };
-
 
 exports.updateRestaurantOrderStatus = async (req, res) => {
   try {
