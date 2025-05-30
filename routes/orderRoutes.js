@@ -73,10 +73,10 @@ router.get('/restaurant/:restaurantId', getOrdersByMerchant);
 
 
 //bill summary 
-router.post("/order/pricesummary",getOrderPriceSummary)
+router.post("/pricesummary",getOrderPriceSummary)
 
 
 //place order 
-router.post("/order/place-order",placeOrder)
+router.post("/place-order",placeOrder)
 
 module.exports = router;

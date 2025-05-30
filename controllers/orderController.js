@@ -802,7 +802,7 @@ exports.getOrderPriceSummary = async (req, res) => {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
 
-    const cart = await Cart.findOne({ _id: cartId, userId });
+    const cart = await Cart.findOne({ _id: cartId, user:userId });
     if (!cart) {
       return res.status(404).json({ error: "Cart not found for this user" });
     }
@@ -829,7 +829,7 @@ exports.getOrderPriceSummary = async (req, res) => {
 
     return res.status(200).json({
       message: "Bill summary calculated successfully",
-      billSummary: costSummary,
+      data: costSummary,
     });
   } catch (err) {
     console.error(err);
