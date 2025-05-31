@@ -139,7 +139,7 @@ exports.createOrder = async (req, res) => {
 
       // Notify customer
       if (io) {
-        io.to(customerId?.toString()).emit("order-accepted", {
+        io.to(`user_${customerId?.toString()}`).emit("order-accepted", {
           message: "Order auto-accepted",
           order: savedOrder,
         });
@@ -153,8 +153,8 @@ exports.createOrder = async (req, res) => {
       "an new order placed by cusotmer"
     );
 
-    // ✅ send realtime notification via Socket.IO
-    io.to(restaurantId).emit("new-order", {
+    //  send realtime notification via Socket.IO
+    io.to(`restaurant_${restaurantId}`).emit("new-order", {
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
       orderItems: savedOrder.orderItems,
@@ -238,30 +238,67 @@ exports.placeOrder = async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
-    if (restaurant.permissions.canAcceptRejectOrders) {
-      console.log("Notify restaurant for order acceptance");
-    } else {
-      // Auto-assign delivery agent immediately
-      const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
-        longitude,
-        latitude,
-      });
 
-      if (assignedAgent) {
-        console.log("Order auto-assigned to:", assignedAgent.fullName);
+    // Auto-assign delivery agent
+    const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
+      longitude,
+      latitude,
+    });
+
+    if (assignedAgent) {
+      const updateData = {
+        assignedAgent: assignedAgent._id,
+      };
+
+      if (assignedAgent.permissions.canAcceptOrRejectOrders) {
+        updateData.orderStatus = "pending_agent_acceptance";
+        console.log("Order sent to agent for acceptance:", assignedAgent.fullName);
+
+        // Send push notification to agent for acceptance
+        await sendPushNotification(assignedAgent.userId, "New Delivery Request", "You have a new delivery request. Please accept it.");
       } else {
-        console.log("No available agent found for auto-assignment.");
-      }
-    }
+        updateData.orderStatus = "assigned_to_agent";
+        console.log("Order auto-assigned to:", assignedAgent.fullName);
 
-    // // Clear cart
-    // await Cart.findByIdAndDelete(cartId);
+        // Emit socket event to start live tracking immediately
+        const io = req.app.get("io");
+        io.to(`agent_${assignedAgent._id.toString()}`).emit("startDeliveryTracking", {
+          orderId: savedOrder._id,
+          customerId: savedOrder.customerId,
+          restaurantId: savedOrder.restaurantId,
+        });
+
+        // Notify customer and restaurant (optional)
+        io.to(`user_${savedOrder.customerId.toString()}`).emit("agentAssigned", {
+          agentId: assignedAgent._id,
+          orderId: savedOrder._id,
+        });
+
+        io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit("agentAssigned", {
+          agentId: assignedAgent._id,
+          orderId: savedOrder._id,
+        });
+
+        // Optional push notifications
+        await sendPushNotification(savedOrder.customerId, "Agent Assigned", "Your order is on the way.");
+        await sendPushNotification(savedOrder.restaurantId, "Agent Assigned", "An agent has been assigned to deliver the order.");
+      }
+
+      await Order.findByIdAndUpdate(savedOrder._id, updateData);
+    }
+ else {
+      console.log("No available agent found for auto-assignment.");
+      await Order.findByIdAndUpdate(savedOrder._id, {
+        orderStatus: "awaiting_agent_assignment"
+      });
+    }
 
     return res.status(201).json({
       message: "Order placed successfully",
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
       billSummary,
+      orderStatus: savedOrder.orderStatus // Include current status in response
     });
   } catch (err) {
     console.error("Error placing order:", err);
@@ -609,7 +646,7 @@ exports.merchantAcceptOrder = async (req, res) => {
     // ✅ Emit to customer via Socket.IO
     const io = req.app.get("io");
     if (io) {
-      io.to(order.customerId.toString()).emit("order-accepted", {
+      io.to(`user_${order.customerId.toString()}`).emit("order-accepted", {
         message: "Your order has been accepted by the restaurant",
         order,
       });
@@ -662,7 +699,7 @@ exports.merchantRejectOrder = async (req, res) => {
     // Emit event via Socket.IO
     const io = req.app.get("io");
     if (io) {
-      io.to(order.restaurantId.toString()).emit("order-rejected", {
+      io.to(`user_${order.restaurantId.toString()}`).emit("order-rejected", {
         orderId: order._id,
         message: "Order has been rejected by the merchant",
         reason: order.rejectionReason,
@@ -817,5 +854,90 @@ exports.getOrderPriceSummary = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+exports.reassignExpiredOrders = async () => {
+  try {
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now - 5 * 60 * 1000);
+    const thirtyMinutesAgo = new Date(now - 30 * 60 * 1000);
+
+    // 1. Reassign orders stuck in 'pending_agent_acceptance'
+    const pendingOrders = await Order.find({
+      orderStatus: "pending_agent_acceptance",
+      $or: [
+        { "agentRespondedAt": { $exists: false } },
+        { "agentRespondedAt": { $lte: fiveMinutesAgo } }
+      ]
+    }).populate("assignedAgent", "permissions.maxCODAmount codTracking.currentCODHolding");
+
+    for (const order of pendingOrders) {
+      // Release the original agent
+      if (order.assignedAgent) {
+        await Agent.findByIdAndUpdate(order.assignedAgent._id, {
+          $inc: { "deliveryStatus.currentOrderCount": -1 },
+          "deliveryStatus.status": "Available"
+        });
+      }
+
+      // Reset order status
+      await Order.findByIdAndUpdate(order._id, {
+        assignedAgent: null,
+        orderStatus: "awaiting_agent_assignment",
+        $push: { 
+          reassignmentHistory: { 
+            timestamp: new Date(),
+            reason: "agent_acceptance_timeout" 
+          } 
+        }
+      });
+
+      // Reassign with COD check (using updated findAndAssignNearestAgent)
+      await findAndAssignNearestAgent(
+        order._id,
+        {
+          longitude: order.location.coordinates[0],
+          latitude: order.location.coordinates[1]
+        }
+      );
+    }
+
+    // 2. Handle orders stuck in 'awaiting_agent_assignment'
+    const unassignedOrders = await Order.find({
+      orderStatus: "awaiting_agent_assignment",
+      createdAt: { $lte: thirtyMinutesAgo }
+    });
+
+    if (unassignedOrders.length > 0) {
+      console.log(`[${new Date().toISOString()}] ${unassignedOrders.length} orders unassigned for >30m`);
+      
+      // Option 1: Expand search radius gradually
+      for (const order of unassignedOrders) {
+        await findAndAssignNearestAgent(
+          order._id,
+          {
+            longitude: order.location.coordinates[0],
+            latitude: order.location.coordinates[1]
+          },
+          10000 // 10km instead of default 5km
+        );
+      }
+
+      // Option 2: Notify admin
+      await notifyAdmin({
+        title: "Unassigned Order Alert",
+        message: `${unassignedOrders.length} orders need manual assignment.`,
+        urgency: "high"
+      });
+    }
+
+    return {
+      reassigned: pendingOrders.length,
+      longPending: unassignedOrders.length
+    };
+  } catch (error) {
+    console.error("[reassignExpiredOrders] Failed:", error);
+    throw error;
   }
 };

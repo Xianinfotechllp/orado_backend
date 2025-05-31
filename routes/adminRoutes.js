@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPendingRestaurantApprovals, updateRestaurantApprovalStatus, logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest} = require("../controllers/adminController");
+const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPendingRestaurantApprovals, updateRestaurantApprovalStatus, 
+    logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, 
+    deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs} = require("../controllers/adminController");
 const {protect, checkRole, checkPermission} = require('../middlewares/authMiddleware')
 
 router.post("/login", adminLogin);
@@ -30,6 +32,10 @@ router.post('/change-requests/:requestId/review', protect, checkPermission('merc
 // Agent Permissions
 router.get('/agent-permissions/requests', protect, checkPermission('agents.manage'), getAllAgentPermissionRequests);
 router.post('/agent-permissions/review', protect, checkPermission('agents.manage'), handleAgentPermissionRequest);
+
+// Access Logs
+router.get("/access-logs", protect, checkRole('superAdmin'), getAllAccessLogs);
+router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLogs);
 
 
 module.exports = router;

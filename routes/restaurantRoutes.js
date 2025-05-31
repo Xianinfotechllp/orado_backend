@@ -5,7 +5,7 @@ const {registerMerchant, loginMerchant, logoutMerchant, logoutAll} = require('..
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 
 const {upload} = require('../middlewares/multer')
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants}  = require('../controllers/restaurantController')
+const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)

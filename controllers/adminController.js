@@ -11,6 +11,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { sendSms } = require("../utils/sendSms")
 const permissionsList = require('../utils/adminPermissions')
+const logAccess = require('../utils/logAccess')
+const AccessLog = require('../models/accessLogModel')
 
 exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
@@ -125,6 +127,14 @@ exports.createAdmin = async (req, res) => {
     });
 
     await admin.save();
+
+    // For logging this
+    await logAccess({
+      userId: req.user._id, 
+      action: "admin.create",
+      description: `Created a new admin ${admin.name}`,
+      req,
+    });
     res.status(201).json({ message: "Admin created successfully", admin });
   } catch (error) {
     console.error("Error creating admin:", error);
@@ -144,6 +154,14 @@ exports.deleteAdmin = async (req, res) => {
     }
 
     await User.findByIdAndDelete(adminId);
+
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "admin.delete",
+      description: `Deleted admin with name ${admin.name}`,
+      req,
+    });
     res.status(200).json({ message: "Admin deleted successfully" });
   } catch (error) {
     console.error("Error deleting admin:", error);
@@ -170,6 +188,13 @@ exports.updateAdminPermissions = async (req, res) => {
     admin.adminPermissions = permissions;
     await admin.save();
 
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "admin.permissions",
+      description: `Updated these admin permissions ${admin.adminPermissions} for ${admin.name}`,
+      req,
+    });
     res.status(200).json({ message: "Permissions updated successfully", permissions });
   } catch (error) {
     console.error("Error updating permissions:", error);
@@ -265,7 +290,15 @@ exports.approveAgentApplication = async (req, res) => {
 
     await user.save();
 
-    // ✅Send SMS
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "agent.approval",
+      description: `${action} agent registration request for agent ${user.name} with id  ${userId}`,
+      req,
+    });
+
+    // Send SMS
     const message = `Hello ${user.name}, your agent application has been ${user.agentApplicationStatus.toUpperCase()}.`;
     if (user.phone) {
       await sendSms(user.phone, message);
@@ -342,6 +375,14 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
     }
 
     await restaurant.save();
+
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "restaurant.registration",
+      description: `${action} restaurant registration for restaurant named ${restaurant.name} with id ${restaurantId}`,
+      req,
+    });
     const message = `Hello ${restaurant.name}, your restaurant application has been ${restaurant.approvalStatus.toUpperCase()}.`;
     if (restaurant.phone) {
       await sendSms(restaurant.phone, message);
@@ -391,7 +432,7 @@ exports.updatePermissions = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ error: 'Invalid restaurant ID' });
     }
-
+    const restaurant = await Restaurant.findById(restaurantId)
     // Validate restaurant existence before updating permissions
     const restaurantExists = await Restaurant.exists({ _id: restaurantId });
     if (!restaurantExists) {
@@ -420,6 +461,13 @@ exports.updatePermissions = async (req, res) => {
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "restaurant.permissions",
+      description: `Updated these restaurant permissions ${permissionDoc.permissions} for this restaurant ${restaurant.name}`,
+      req,
+    });
     res.json({
       message: 'Permissions updated successfully',
       permissions: permissionDoc.permissions
@@ -539,6 +587,14 @@ exports.reviewChangeRequest = async (req, res) => {
 
     await changeRequest.save();
 
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "products.change",
+      description: `${changeRequest.status} restaurant request for ${data.action} for restaurant with id ${changeRequest.restaurantId}`,
+      req,
+    });
+
     res.json({
       message: `Request has been ${changeRequest.status.toLowerCase()}`,
       request: changeRequest
@@ -564,8 +620,11 @@ exports.getAllAgentPermissionRequests = async (req, res) => {
         pendingRequests.push({
           agentId: agent._id,
           fullName: agent.fullName,
-          permission: req.permission,
+          permission: req.permissionType,  // use permissionType here
           requestedAt: req.requestedAt,
+          status: req.status,               // add any other info you want here
+          responseDate: req.responseDate,
+          adminComment: req.adminComment
         });
       }
     });
@@ -583,7 +642,7 @@ exports.handleAgentPermissionRequest = async (req, res) => {
   if (!agent) return res.status(404).json({ error: "Agent not found." });
 
   const request = agent.permissionRequests.find(
-    (r) => r.permission === permission && r.status === "Pending"
+    (r) => r.permissionType === permission && r.status === "Pending"
   );
 
   if (!request) {
@@ -591,16 +650,59 @@ exports.handleAgentPermissionRequest = async (req, res) => {
   }
 
   request.status = decision;
-  request.reviewedAt = new Date();
-  request.adminId = adminId;
-  request.reason = reason || "";
+  request.responseDate = new Date(); // Your schema calls it responseDate, not reviewedAt
+  request.adminComment = reason || "";
+  request.adminId = adminId; // Optional: You can add adminId to the schema if you want to track it
 
   // Actually update the permission
   if (decision === "Approved") {
     agent.permissions[permission] = true;
   }
 
+  // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "agent.permissions",
+      description: `${request.status} agent request for ${permission} for agent with name ${agent.fullName}`,
+      req,
+    });
   await agent.save();
 
   res.status(200).json({ message: `Request ${decision}` });
+};
+
+
+// Get all access logs (superAdmin-only)
+exports.getAllAccessLogs = async (req, res) => {
+  try {
+    const logs = await AccessLog.find()
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: logs,
+    });
+  } catch (error) {
+    console.error("Error fetching all access logs:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Get access logs for the logged-in admin
+exports.getMyLogs = async (req, res) => {
+  try {
+    const userId = req.user._id; 
+
+    const logs = await AccessLog.find({ userId })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: logs,
+    });
+  } catch (error) {
+    console.error("Error fetching user access logs:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 };

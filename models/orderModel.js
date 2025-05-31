@@ -19,9 +19,9 @@ const orderSchema = mongoose.Schema({
     type: String,
     default: 'pending',
     enum: [
-      'pending', 'accepted_by_restaurant', 'rejected_by_restaurant',
-      'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'on_the_way',
-      'arrived', 'delivered', 'cancelled_by_customer'
+      'pending', 'pending_agent_acceptance', 'accepted_by_restaurant', 'rejected_by_restaurant',
+      'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'in_progress',
+      'arrived', 'completed', 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
     ]
   },
 
@@ -30,6 +30,14 @@ const orderSchema = mongoose.Schema({
     ref: 'Agent',
     required: false,
   },
+
+  rejectionHistory: [{
+    agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },
+    rejectedAt: { type: Date, default: Date.now },
+    reason: { type: String } 
+  }],
+
+  agentAcceptedAt: { type: Date },
 
   subtotal: Number,
   discountAmount: Number,

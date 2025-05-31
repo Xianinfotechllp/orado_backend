@@ -39,27 +39,29 @@ const agentSchema = new mongoose.Schema(
     },
 
     deliveryStatus: {
-      currentOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" }, // current order they are delivering
-      status: { type: String, enum: ["Assigned", "In Progress", "Completed", "Cancelled"], default: "Assigned" },
+      currentOrderId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }], // current order they are delivering
+      status: { type: String, enum: ["assigned_to_agent", "picked_up", "in_progress", "completed", "cancelled_by_customer", "pending_agent_acceptance"], default: "assigned_to_agent" },
       estimatedDeliveryTime: { type: Date }, // estimated time of arrival
       location: {
         latitude: { type: Number },
         longitude: { type: Number }
       }, 
       accuracy: { type: Number }, // accuracy of the GPS location (in meters)
+      currentOrderCount: { type: Number, default: 0 },
+
     },
 
      location: {
-    type: {
-      type: String,
-      enum: ['Point'],
-      required: true
+      type: {
+        type: String,
+        enum: ['Point'],
+        // required: true
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        // required: true
+      }
     },
-    coordinates: {
-      type: [Number], // [longitude, latitude]
-      required: true
-    }
-  },
     leaveStatus: {
       leaveApplied: { type: Boolean, default: false },
       leaveStartDate: { type: Date },
@@ -113,7 +115,7 @@ const agentSchema = new mongoose.Schema(
       canChangeMaxActiveOrders: { type: Boolean, default: false },
       canChangeCODAmount: { type: Boolean, default: false },
     },
-    permissionRequests: [
+    permissionRequests: [ 
       {
         permissionType: {
           type: String,
@@ -141,7 +143,7 @@ const agentSchema = new mongoose.Schema(
     ],
 
  
-    availabilityStatus: { type: String, enum: ["Available", "Unavailable"], default: "Available" },
+    availabilityStatus: { type: String, enum: ["Available", "Unavailable"], default: "Unavailable" },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   },
