@@ -134,6 +134,7 @@ io.on("connection", (socket) => {
 
       const chatDoc = chat || newChat;
 
+
       // Create new message
       const newMessage = {
         sender: senderId,
@@ -143,6 +144,7 @@ io.on("connection", (socket) => {
         readBy: [senderId],
         createdAt: new Date()
       };
+
 
       chatDoc.messages.push(newMessage);
       chatDoc.lastMessage = newMessage._id;
@@ -279,6 +281,7 @@ io.on("connection", (socket) => {
           message.readBy.push(readerId);
         }
       });
+
 
       await chat.save();
 
