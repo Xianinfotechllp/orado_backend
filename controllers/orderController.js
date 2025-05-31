@@ -797,12 +797,13 @@ const TAX_PERCENTAGE = 8; // example 8%
 exports.getOrderPriceSummary = async (req, res) => {
   try {
     const { longitude, latitude, couponCode, cartId, userId } = req.body;
+    console.log("r")
 
     if (!cartId || !userId) {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
 
-    const cart = await Cart.findOne({ _id: cartId, userId });
+    const cart = await Cart.findOne({ _id: cartId });
     if (!cart) {
       return res.status(404).json({ error: "Cart not found for this user" });
     }
