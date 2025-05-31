@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
-const { registerAgent,loginAgent, agentAcceptsOrder,agentRejectsOrder, agentUpdatesOrderStatus, toggleAvailability, getAgentReviews, updateAgentBankDetails, logoutAgent,
-  getAgentEarnings
+const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, getAgentReviews, updateAgentBankDetails, logoutAgent, requestPermission,
+   activateUnlockedPermissions, getAgentEarnings, getMyPermissionRequests, handleAgentResponse
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole } = require('../middlewares/authMiddleware');
@@ -35,12 +35,23 @@ router.put('/:userId/availability', protect, checkRole('agent'), toggleAvailabil
 // agent reviews
 router.get("/:agentId/reviews", getAgentReviews);
 
-router.post('/orders/:orderId/accept',agentAcceptsOrder)
-router.post("/orders/:orderId/accept",agentRejectsOrder)
-router.put("/:agentId/orders/:orderId/status",agentUpdatesOrderStatus)
+// agent accepts or rejects an order
+router.post("/orders/response", protect, checkRole('agent'), handleAgentResponse)
+
+router.put("/:agentId/orders/:orderId/status",protect, checkRole('agent'), agentUpdatesOrderStatus)
+
+// request permission
+router.post("/request-permission", protect, checkRole('agent'), requestPermission);
+
+// get agent permission requests
+router.get("/my-permission-requests", protect, checkRole('agent'), getMyPermissionRequests);
+
+// activate unlocked permissions
+router.post('/activate-unlocked-perks', protect, checkRole('agent'), activateUnlockedPermissions);
+
 
 //get agent earnigs
-router.get("/agent-earnings/:agentId",getAgentEarnings)
+router.get("/agent-earnings/:agentId", protect, checkRole('agent'), getAgentEarnings)
 
     
 

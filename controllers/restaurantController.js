@@ -21,26 +21,43 @@ exports.createRestaurant = async (req, res) => {
       foodType,
       merchantSearchName,
       minOrderAmount,
-
       location,
-      paymentMethods
+      paymentMethods,
 
-    
-   
-
-
+      // KYC Numbers
+      fssaiNumber,
+      gstNumber,
+      aadharNumber,
     } = req.body;
 
 
+    const kycDocs = {
+      fssaiDoc: req.files?.fssaiDoc?.[0],
+      gstDoc: req.files?.gstDoc?.[0],
+      aadharDoc: req.files?.aadharDoc?.[0],
+    };
+
+    if (!kycDocs.fssaiDoc || !kycDocs.gstDoc || !kycDocs.aadharDoc) {
+      return res.status(400).json({ message: "Missing KYC documents." });
+    }
+
+    //  Upload images
     let imageUrls = [];
-    if (req.files && req.files.length > 0) {
+    if (req.files?.images && req.files.images.length > 0) {
       const uploads = await Promise.all(
-        req.files.map(file => uploadOnCloudinary(file.path))
+        req.files.images.map(file => uploadOnCloudinary(file.path))
       );
       imageUrls = uploads
         .filter(result => result && result.secure_url)
         .map(result => result.secure_url);
     }
+
+    //  Upload KYC Docs
+    const [fssaiUpload, gstUpload, aadharUpload] = await Promise.all([
+      uploadOnCloudinary(kycDocs.fssaiDoc.path),
+      uploadOnCloudinary(kycDocs.gstDoc.path),
+      uploadOnCloudinary(kycDocs.aadharDoc.path),
+    ]);
 
     const newRestaurant = new Restaurant({
       name,
@@ -60,11 +77,25 @@ exports.createRestaurant = async (req, res) => {
       paymentMethods,
       location,
       images: imageUrls,
-      serviceAreas
+
+      // 👇KYC Info
+      kyc: {
+        fssaiNumber,
+        gstNumber,
+        aadharNumber,
+      },
+      kycDocuments: {
+        fssaiDocUrl: fssaiUpload?.secure_url || "",
+        gstDocUrl: gstUpload?.secure_url || "",
+        aadharDocUrl: aadharUpload?.secure_url || "",
+      },
+      kycStatus: "pending",
+      approvalStatus: "pending",
     });
 
     await newRestaurant.save();
 
+    //  Permissions
     const defaultPermissions = new Permission({
       restaurantId: newRestaurant._id,
       permissions: {
@@ -77,16 +108,17 @@ exports.createRestaurant = async (req, res) => {
     });
 
     await defaultPermissions.save();
+
     res.status(201).json({
-      message: "Restaurant created successfully.",
+      message: "Restaurant created and awaiting admin approval.",
       restaurant: newRestaurant,
-      permissions: defaultPermissions.permissions
     });
   } catch (error) {
-    console.error(error);
+    console.error("Error in createRestaurant:", error);
     res.status(500).json({ message: "Server error.", error });
   }
 };
+
 
 
 
@@ -112,7 +144,7 @@ exports.updateRestaurant = async (req, res) => {
       status
     } = req.body;
 
-    // 🛠 Update basic fields if they exist
+    // Update basic fields if they exist
     if (name) restaurant.name = name;
     if (phone) restaurant.phone = phone;
     if (email) restaurant.email = email;
@@ -466,6 +498,29 @@ console.log("hi")
     });
   }
 };
+
+// get all restauants
+
+exports.getAllApprovedRestaurants = async (req, res) => {
+  try {
+    const approvedRestaurants = await Restaurant.find({ approvalStatus: "approved" }).select('-kycDocuments')
+      .populate("ownerId", "name email") // Optional: populate owner info
+      .populate("categories", "name")     // Optional: populate category names
+
+    res.status(200).json({
+      message: "Approved restaurants fetched successfully.",
+      count: approvedRestaurants.length,
+      restaurants: approvedRestaurants,
+    });
+  } catch (error) {
+    console.error("Error fetching approved restaurants:", error);
+    res.status(500).json({
+      message: "Failed to fetch approved restaurants.",
+      error: error.message,
+    });
+  }
+};
+
 
 
 exports.updateRestaurantOrderStatus = async (req, res) => {

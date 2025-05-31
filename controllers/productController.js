@@ -259,7 +259,12 @@ exports.deleteProduct = async (req, res) => {
         type: "MENU_CHANGE",
         data: {
           action: "DELETE_PRODUCT",
-          productId
+          productId,
+          productSnapshot: {
+            name: product.name,
+            price: product.price,
+            categoryId: product.categoryId,
+          }
         },
         note: `User requested to delete product "${product.name}" without permission.`
       });
@@ -299,6 +304,11 @@ exports.toggleProductActive = async (req, res) => {
         data: {
           action: "TOGGLE_PRODUCT_ACTIVE",
           productId,
+          productSnapshot: {
+            name: product.name,
+            price: product.price,
+            categoryId: product.categoryId,
+          },
           currentStatus: product.active
         },
         note: `User requested to toggle product "${product.name}" active status without permission.`

@@ -7,6 +7,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose')
 const {addAgentEarnings,addRestaurantEarnings} = require("../services/earningService")
+const { uploadOnCloudinary } = require('../utils/cloudinary');
+const { findAndAssignNearestAgent } = require('../services/findAndAssignNearestAgent');
+const { sendPushNotification } = require('../utils/sendPushNotification');
+
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -63,6 +67,25 @@ exports.registerAgent = async (req, res) => {
     if (profilePicture) {
       const result = await uploadOnCloudinary(profilePicture.path);
       profilePicUrl = result?.secure_url;
+    }
+
+    let location = null;
+    try {
+      if (req.body.location) {
+        location = JSON.parse(req.body.location);
+
+        if (
+          location.type !== "Point" ||
+          !Array.isArray(location.coordinates) ||
+          location.coordinates.length !== 2
+        ) {
+          return res.status(400).json({ message: "Invalid location format. Must be GeoJSON with type 'Point' and two coordinates." });
+        }
+      } else {
+        return res.status(400).json({ message: "Location is required" });
+      }
+    } catch (err) {
+      return res.status(400).json({ message: "Invalid location JSON format" });
     }
 
     // Create user with agent application info
@@ -194,99 +217,136 @@ exports.logoutAgent = async (req, res) => {
 
 
 
-
-
-exports.agentAcceptsOrder = async (req, res) => {
+exports.handleAgentResponse = async (req, res) => {
   try {
-    const agentId = req.body.agentId;
-    const { orderId } = req.params;
+    const { orderId, agentId, response } = req.body;
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
-    if (!orderId) {
-      return res.status(400).json({ error: 'Order ID is required' });
-    }
-    if (!agentId) {
-      return res.status(400).json({ message: "Agent ID is required", messageType: "failure" });
-    }
-
-    // Validate agent existence and active status
     const agent = await Agent.findById(agentId);
-    if (!agent) {
-      return res.status(404).json({ error: 'Agent not found' });
-    }
-    if (!agent.active) {
-      return res.status(403).json({ error: 'Agent is not active' });
-    }
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
 
-    // Fetch the order
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
+    if (order.assignedAgent.toString() !== agentId)
+      return res.status(400).json({ error: "This order is not assigned to you" });
 
-    if (order.orderStatus !== 'accepted_by_restaurant') {
-      return res.status(400).json({
-        error: `Cannot accept order. Current status is: ${order.orderStatus}`,
+    if (order.orderStatus !== 'pending_agent_acceptance')
+      return res.status(400).json({ error: "This order doesn't require acceptance" });
+
+    const io = req.app.get("io");
+
+    if (response === 'accept') {
+      await Order.findByIdAndUpdate(orderId, {
+        orderStatus: 'assigned_to_agent',
+        agentAcceptedAt: new Date()
+      });
+
+      await Agent.findByIdAndUpdate(agentId, {
+        'deliveryStatus.status': 'in_progress',
+        $addToSet: { 'deliveryStatus.currentOrderIds': orderId }
+      });
+
+
+      // Notify agent to start delivery tracking
+      io.to(`agent_${agentId}`).emit("startDeliveryTracking", {
+        orderId,
+        customerId: order.customerId,
+        restaurantId: order.restaurantId,
+      });
+
+      // Notify customer
+      io.to(`user_${order.customerId.toString()}`).emit("agentAssigned", {
+        agentId,
+        orderId,
+      });
+
+      // Notify restaurant
+      io.to(`restaurant_${order.restaurantId.toString()}`).emit("agentAssigned", {
+        agentId,
+        orderId,
+      });
+
+      // Send push notifications
+      await sendPushNotification(order.customerId, "Order Accepted", "Your delivery is now on the way!");
+      await sendPushNotification(order.restaurantId, "Agent Accepted", "An agent accepted the order and is on the way.");
+
+      return res.json({ message: "Order accepted successfully" });
+
+    } else if (response === 'reject') {
+      await Order.findByIdAndUpdate(orderId, {
+        assignedAgent: null,
+        orderStatus: 'awaiting_agent_assignment',
+        $push: {
+          rejectionHistory: {
+            agentId,
+            rejectedAt: new Date()
+          }
+        }
+      });
+
+      await Agent.findByIdAndUpdate(agentId, {
+        $inc: { 'deliveryStatus.currentOrderCount': -1 },
+        $pull: { 'deliveryStatus.currentOrderIds': orderId },
+      });
+
+
+      const newAgent = await findAndAssignNearestAgent(
+        orderId,
+        {
+          longitude: order.location.coordinates[0],
+          latitude: order.location.coordinates[1]
+        }
+      );
+
+      if (!newAgent) {
+        return res.json({
+          message: "Order rejected. No other agents currently available",
+          orderStatus: 'awaiting_agent_assignment'
+        });
+      }
+
+      const newStatus = newAgent.permissions.canAcceptOrRejectOrders
+        ? 'pending_agent_acceptance'
+        : 'assigned_to_agent';
+
+      await Order.findByIdAndUpdate(orderId, {
+        assignedAgent: newAgent._id,
+        orderStatus: newStatus
+      });
+
+      // If no acceptance needed, start tracking immediately
+      if (!newAgent.permissions.canAcceptOrRejectOrders) {
+        io.to(`agent_${newAgent._id.toString()}`).emit("startDeliveryTracking", {
+          orderId,
+          customerId: order.customerId,
+          restaurantId: order.restaurantId,
+        });
+
+        io.to(`user_${order.customerId.toString()}`).emit("agentAssigned", {
+          agentId: newAgent._id,
+          orderId,
+        });
+
+        io.to(`restaurant_${order.restaurantId.toString()}`).emit("agentAssigned", {
+          agentId: newAgent._id,
+          orderId,
+        });
+
+        await sendPushNotification(order.customerId, "New Agent Assigned", "A new agent has been auto-assigned to your order.");
+        await sendPushNotification(order.restaurantId, "Agent Reassigned", "A new agent has been assigned to the order.");
+      }
+
+      return res.json({
+        message: "Order rejected and reassigned to another agent",
+        newAgent: newAgent.fullName,
+        orderStatus: newStatus
       });
     }
 
-    // Assign agent and update order status
-    order.orderStatus = 'assigned_to_agent';
-    order.assignedAgent = agentId;
+    return res.status(400).json({ error: "Invalid response" });
 
-    await order.save();
-
-    res.status(200).json({
-      message: 'Order successfully accepted by agent',
-      order,
-    });
-
-  } catch (error) {
-    console.error('Agent Accept Order Error:', error);
-    res.status(500).json({ error: 'Something went wrong while accepting the order' });
-  }
-};
-
-
-
-exports.agentRejectsOrder = async (req, res) => {
-  try {
-    const agentId = req.params.agentId;
-    const { orderId, rejectionReason } = req.body;
-
-    // Validate input
-    if (!orderId) {
-      return res.status(400).json({ error: 'Order ID is required' });
-    }
-
-    // Fetch the order
-    const order = await Order.findById(orderId);
-
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    // Ensure order is in 'accepted_by_restaurant' status
-    if (order.orderStatus !== 'accepted_by_restaurant') {
-      return res.status(400).json({
-        error: `Cannot reject order. Current status is: ${order.orderStatus}`,
-      });
-    }
-
-    // Update status to cancelled_by_agent and optionally store rejection reason
-    order.orderStatus = 'cancelled_by_agent';
-    order.cancellationReason = rejectionReason || 'Rejected by agent';
-    order.assignedAgent = null;
-
-    await order.save();
-
-    res.status(200).json({
-      message: 'Order successfully rejected by agent',
-      order,
-    });
-
-  } catch (error) {
-    console.error('Agent Reject Order Error:', error);
-    res.status(500).json({ error: 'Something went wrong while rejecting the order' });
+  } catch (err) {
+    console.error("Error handling agent response:", err);
+    res.status(500).json({ error: "Failed to process agent response" });
   }
 };
 
@@ -305,7 +365,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
       return res.status(400).json({ error: "Invalid orderId format" });
     }
 
-    const allowedStatuses = ['picked_up', 'on_the_way', 'arrived', 'delivered'];
+    const allowedStatuses = ['picked_up', 'in_progress', 'arrived', 'completed', "available"];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ error: "Invalid status value" });
     }
@@ -322,25 +382,50 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     order.orderStatus = status;
     await order.save();
 
-    io.emit("orderstatus", { message: "Order status updated", order });
+    // Broadcast order status update to all relevant parties
+    io.to(`user_${order.customerId.toString()}`)
+      .to(`restaurant_${order.restaurantId.toString()}`)
+      .to(`agent_${order.agentId?.toString()}`)  // Optional chaining in case no agent assigned yet
+      .emit("orderStatus", { 
+        message: "Order status updated", 
+        order 
+      });
+    // Award earnings if completed
+    if (status === "completed") {
+      // Award agent earnings
+      await addAgentEarnings({
+        agentId,
+        orderId,
+        amount: order.deliveryCharge,
+        type: "delivery_fee",
+        remarks: "Delivery fee for order"
+      });
 
-    // Award earnings if delivered
-    if (status === "delivered") {
-         
+      await addRestaurantEarnings(orderId);
 
-    await addAgentEarnings({
-    agentId,
-    orderId,
-    amount: order.deliveryCharge,
-    type: "delivery_fee",
-    remarks: "Delivery fee for order"
-  });
+      // Stop live location sharing for the customer
+      io.to(`user_${order.customerId.toString()}`).emit("stopLocationSharing");
 
-  await addRestaurantEarnings(orderId)
+      // Notify restaurant about order completion (without stopping location sharing)
+      io.to(`restaurant_${order.restaurantId.toString()}`).emit("orderCompleted", { 
+        orderId: order._id.toString()  // Added ._id for clarity
+      });
 
+      //  Optionally update agent delivery status here if needed:
+      await Agent.findByIdAndUpdate(agentId, {
+        $pull: { 'deliveryStatus.currentOrderIds': orderId },
+        $inc: { 'deliveryStatus.currentOrderCount': -1 }
+      });
 
+      // Now check if agent still has active orders:
+      const updatedAgent = await Agent.findById(agentId);
+      const newStatus = (updatedAgent.deliveryStatus.currentOrderCount <= 0) ? 'available' : updatedAgent.deliveryStatus.status;
 
-    } 
+      await Agent.findByIdAndUpdate(agentId, {
+        'deliveryStatus.status': newStatus,
+      });
+    }
+
 
     return res.status(200).json({ message: "Order status updated successfully", order });
 
@@ -349,28 +434,72 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Server error while updating order status" });
   }
 };
+
+// toggle availability and notify nearby restaurants
 exports.toggleAvailability = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { status } = req.body;
+    const { status, location } = req.body;
+    const io = req.app.get("io"); // Get Socket.IO instance
 
+    // Validate input
     if (!["Available", "Unavailable"].includes(status)) {
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
-    // 1. Find the user by userId
-    const user = await User.findById(userId);
-
-    if (!user || !user.agentId) {
-      return res.status(404).json({ message: "Agent not linked to user or user not found" });
-
+    if (!location?.latitude || !location?.longitude) {
+      return res.status(400).json({ message: "Missing location coordinates" });
     }
 
-    return res.status(200).json({ message: "Order status updated successfully", order });
+    // 1. Find user and associated agent
+    const user = await User.findById(userId);
+    if (!user || !user.agentId) {
+      return res.status(404).json({ message: "Agent not linked to user or user not found" });
+    }
 
+    // 2. Update agent availability and location
+    const updatedAgent = await Agent.findByIdAndUpdate(
+      user.agentId,
+      {
+        availabilityStatus: status,
+        location: {
+          type: "Point",
+          coordinates: [location.longitude, location.latitude],
+        },
+        updatedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    // 3. If available, notify nearby restaurants
+    if (status === "Available") {
+      const nearbyRestaurants = await Restaurant.find({
+        location: {
+          $near: {
+            $geometry: {
+              type: "Point",
+              coordinates: [location.longitude, location.latitude],
+            },
+            $maxDistance: 3000, // 3km
+          },
+        },
+      });
+
+      nearbyRestaurants.forEach((restaurant) => {
+        io.to(`restaurant_${restaurant._id.toString()}`).emit("nearbyAgentLocation", {
+          agentId: user.agentId,
+          location,
+        });
+      });
+    }
+
+    return res.status(200).json({
+      message: "Agent availability and location updated successfully",
+      agent: updatedAgent,
+    });
   } catch (error) {
-    console.error("Error updating order status", error);
-    res.status(500).json({ error: "Server error while updating order status" });
+    console.error("Error toggling agent availability:", error);
+    res.status(500).json({ error: "Server error while toggling agent availability" });
   }
 };
 
@@ -382,8 +511,8 @@ exports.addAgentReview = async (req, res) => {
   try {
     const order = await Order.findById(orderId);
 
-    // Check if order exists and is delivered
-    if (!order || order.orderStatus !== "delivered") {
+    // Check if order exists and is completed
+    if (!order || order.orderStatus !== "completed") {
       return res.status(400).json({ message: "You can only leave a review after delivery is completed." });
     }
 
@@ -520,3 +649,79 @@ console.error("Error fetching agent earnings:", error);
   }
 
 }
+
+// request for permission
+
+exports.requestPermission = async (req, res) => {
+  const { permission } = req.body;
+  const agentId = req.user.agentId;
+
+  const validPermissions = [
+    "canChangeMaxActiveOrders",
+    "canChangeCODAmount",
+    "canAcceptOrRejectOrders"
+  ];
+
+  if (!validPermissions.includes(permission)) {
+    return res.status(400).json({ error: "Invalid permission requested." });
+  }
+
+  const agent = await Agent.findById(agentId);
+
+  if (!agent) {
+    return res.status(404).json({ error: "Agent not found." });
+  }
+
+  const existingRequest = agent.permissionRequests.find(
+    (req) => req.permissionType === permission && req.status === "Pending"
+  );
+
+  if (existingRequest) {
+    return res.status(400).json({ error: "You already have a pending request for this permission." });
+  }
+
+  agent.permissionRequests.push({ permissionType: permission });
+  await agent.save();
+
+  res.status(200).json({ message: "Permission request submitted." });
+};
+
+
+// get  permission requests of agent
+
+exports.getMyPermissionRequests = async (req, res) => {
+  const agent = await Agent.findById(req.user.agentId).select("permissionRequests");
+  res.json(agent.permissionRequests);
+};
+
+
+// activate unlocked permissions
+exports.activateUnlockedPermissions = async (req, res) => {
+  const agentId = req.user.agentId;
+  const agent = await Agent.findById(agentId);
+
+  if (!agent) return res.status(404).json({ error: "Agent not found." });
+
+  let updated = false;
+
+  if (agent.canChangeMaxActiveOrders && agent.maxActiveOrders < 5) {
+    agent.maxActiveOrders = 5;
+    updated = true;
+  }
+
+  if (agent.canChangeCODAmount && agent.maxCODAmount < 3000) {
+    agent.maxCODAmount = 3000;
+    updated = true;
+  }
+
+  if (!updated) {
+    return res.status(400).json({ message: "No eligible changes or already upgraded." });
+  }
+
+  await agent.save();
+  res.status(200).json({
+    message: "Your values have been upgraded based on your permissions.",
+    maxActiveOrders: agent.maxActiveOrders,
+    maxCODAmount: agent.maxCODAmount,
+  });
+};
