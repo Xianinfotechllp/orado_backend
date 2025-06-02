@@ -6,8 +6,6 @@ const Session = require("../models/session");
 const ChangeRequest = require("../models/changeRequest");
 
 exports.protect = async (req, res, next) => {
-    console.log("Authorization Header:", req.headers.authorization);
-
   let token;
 
   if (
