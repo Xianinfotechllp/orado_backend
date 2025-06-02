@@ -10,6 +10,8 @@ const orderSchema = mongoose.Schema({
     price: Number,
     name: String,
     totalPrice: Number, // price * quantity
+    image: String, 
+
   }],
 
   orderTime: { type: Date, default: Date.now },

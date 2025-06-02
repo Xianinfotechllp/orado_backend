@@ -209,13 +209,21 @@ exports.placeOrder = async (req, res) => {
       couponCode,
     });
 
-    const orderItems = cart.products.map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      price: item.price,
-      name: item.name,
-      totalPrice: item.price * item.quantity,
-    }));
+    const orderItems = await Promise.all(
+      cart.products.map(async (item) => {
+        const product = await Product.findById(item.productId).select('images');
+
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+          name: item.name,
+          totalPrice: item.price * item.quantity,
+          image: product?.images?.[0] || null, 
+        };
+      })
+    );
+
 
     // Create order object
     const newOrder = new Order({
@@ -324,7 +332,8 @@ exports.getOrderById = async (req, res) => {
 // Get Orders by Customer
 exports.getOrdersByCustomer = async (req, res) => {
   try {
-    const orders = await Order.find({ customerId: req.params.customerId });
+    const customerId = req.user._id;
+    const orders = await Order.find({ customerId });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
@@ -959,4 +968,63 @@ exports.reassignExpiredOrders = async () => {
     throw error;
   }
 
+};
+
+// Reorder previous order
+
+exports.reorder = async (req, res) => {
+  try {
+    const userId = req.user._id; // assuming you use auth middleware
+    const { orderId } = req.params;
+
+    const previousOrder = await Order.findById(orderId);
+    if (!previousOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (previousOrder.customerId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Unauthorized access to this order' });
+    }
+
+    // Clean up any existing cart
+    await Cart.findOneAndDelete({ userId });
+
+    const products = [];
+
+    for (const item of previousOrder.orderItems) {
+      const product = await Product.findById(item.productId);
+      if (!product || !product.active) continue; // skip deleted/inactive products
+
+      const currentPrice = product.price;
+      const quantity = item.quantity;
+
+      products.push({
+        productId: product._id,
+        name: product.name,
+        price: currentPrice,
+        quantity,
+        total: currentPrice * quantity,
+      });
+    }
+
+    if (products.length === 0) {
+      return res.status(400).json({ message: 'No products from the original order are available.' });
+    }
+
+    const totalPrice = products.reduce((sum, p) => sum + p.total, 0);
+
+    const newCart = new Cart({
+      userId,
+      restaurantId: previousOrder.restaurantId,
+      products,
+      totalPrice,
+    });
+
+    await newCart.save();
+
+    res.status(200).json({ message: 'Cart created from previous order.', cart: newCart });
+  } catch (error) {
+    console.error('Error in reorder:', error);
+    res.status(500).json({ message: 'Something went wrong while reordering.' });
+  }
 };
