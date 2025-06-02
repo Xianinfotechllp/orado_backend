@@ -44,7 +44,7 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // 🔥Super Admin  Flag
+    // Super Admin  Flag
     isSuperAdmin: { type: Boolean, default: false },
 
     //  Admin Permission System

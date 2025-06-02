@@ -10,6 +10,9 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { sendSms } = require("../utils/sendSms")
+const permissionsList = require('../utils/adminPermissions')
+const logAccess = require('../utils/logAccess')
+const AccessLog = require('../models/accessLogModel')
 
 exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
@@ -97,6 +100,126 @@ exports.logoutAll = async (req, res) => {
   res.json({ message: "Logged out from all sessions" });
 };
 
+
+
+// Creating admin / updating and deleting
+
+
+// Create Admin
+exports.createAdmin = async (req, res) => {
+  try {
+    const { name, email, phone, password, permissions } = req.body;
+
+    // Permissions  check
+    if (!Array.isArray(permissions) || !permissions.every(p => permissionsList.includes(p))) {
+      return res.status(400).json({ message: "Invalid permissions provided." });
+    }
+
+    const hashedPassword = await require("bcryptjs").hash(password, 10);
+
+    const admin = new User({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      userType: "admin",
+      adminPermissions: permissions,
+    });
+
+    await admin.save();
+
+    // For logging this
+    await logAccess({
+      userId: req.user._id, 
+      action: "admin.create",
+      description: `Created a new admin ${admin.name}`,
+      req,
+    });
+    res.status(201).json({ message: "Admin created successfully", admin });
+  } catch (error) {
+    console.error("Error creating admin:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Delete Admin
+exports.deleteAdmin = async (req, res) => {
+  try {
+    const { adminId } = req.params;
+
+    const admin = await User.findById(adminId);
+
+    if (!admin || admin.userType !== "admin") {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    await User.findByIdAndDelete(adminId);
+
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "admin.delete",
+      description: `Deleted admin with name ${admin.name}`,
+      req,
+    });
+    res.status(200).json({ message: "Admin deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting admin:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Update Admin Permissions
+exports.updateAdminPermissions = async (req, res) => {
+  try {
+    const { adminId } = req.params;
+    const { permissions } = req.body;
+
+    if (!Array.isArray(permissions) || !permissions.every(p => permissionsList.includes(p))) {
+      return res.status(400).json({ message: "Invalid permissions provided." });
+    }
+
+    const admin = await User.findById(adminId);
+
+    if (!admin || admin.userType !== "admin") {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    admin.adminPermissions = permissions;
+    await admin.save();
+
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "admin.permissions",
+      description: `Updated these admin permissions ${admin.adminPermissions} for ${admin.name}`,
+      req,
+    });
+    res.status(200).json({ message: "Permissions updated successfully", permissions });
+  } catch (error) {
+    console.error("Error updating permissions:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// get all admins
+
+exports.getAllAdmins = async (req, res) => {
+  try {
+    const admins = await User.find({ userType: "admin" }).select("-password");
+
+    res.status(200).json({
+      message: "Admins fetched successfully",
+      count: admins.length,
+      admins,
+    });
+  } catch (error) {
+    console.error("Error fetching admins:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
 // get requests for agent approval
 
 exports.getPendingAgentRequests = async (req, res) => {
@@ -167,7 +290,15 @@ exports.approveAgentApplication = async (req, res) => {
 
     await user.save();
 
-    // ✅ Send SMS
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "agent.approval",
+      description: `${action} agent registration request for agent ${user.name} with id  ${userId}`,
+      req,
+    });
+
+    // Send SMS
     const message = `Hello ${user.name}, your agent application has been ${user.agentApplicationStatus.toUpperCase()}.`;
     if (user.phone) {
       await sendSms(user.phone, message);
@@ -186,54 +317,87 @@ exports.approveAgentApplication = async (req, res) => {
 
 
 
-// get pending merchant requests
+// get pending restaurant requests
 
-exports.getPendingMerchants = async (req, res) => {
+
+exports.getPendingRestaurantApprovals = async (req, res) => {
   try {
-    const pendingMerchants = await User.find({
-      userType: "merchant",
-      "merchantApplication.status": "pending"
-    }).select("-password"); // Don't return passwords, obviously
+    // Fetch restaurants where kycStatus is 'pending'
+    const pendingRestaurants = await Restaurant.find({ kycStatus: "pending" })
+      .populate("ownerId", "name email phone") // Optional: show owner's info
+      .select("-__v"); // Clean response, remove version key
 
-    res.status(200).json({ merchants: pendingMerchants });
-  } catch (err) {
-    console.error("Error fetching pending merchants:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(200).json({
+      message: "Pending restaurant approval requests fetched successfully.",
+      total: pendingRestaurants.length,
+      restaurants: pendingRestaurants,
+    });
+  } catch (error) {
+    console.error("Error fetching pending restaurants:", error);
+    res.status(500).json({
+      message: "Server error while fetching pending approval requests.",
+      error: error.message,
+    });
   }
 };
 
 // approve or reject merchant application
-exports.updateMerchantStatus = async (req, res) => {
+exports.updateRestaurantApprovalStatus = async (req, res) => {
   try {
-    const { userId } = req.params; // This is merchant ID, not admin ID
-    const { action } = req.body;   // Should be either "approved" or "rejected"
+    const { restaurantId } = req.params;
+    const { action, reason } = req.body;
 
+    // Validate action
     if (!["approved", "rejected"].includes(action)) {
-      return res.status(400).json({ message: "Invalid action. Use 'approved' or 'rejected'." });
+      return res.status(400).json({ message: "Invalid action. Must be 'approved' or 'rejected'." });
     }
 
-    const merchant = await User.findById(userId);
+    const restaurant = await Restaurant.findById(restaurantId);
 
-    if (!merchant || merchant.userType !== "merchant") {
-      return res.status(404).json({ message: "Merchant not found." });
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    if (restaurant.kycStatus !== "pending") {
+      return res.status(400).json({ message: `Restaurant is already ${restaurant.kycStatus}.` });
+    }
+    if (restaurant.approvalStatus !== "pending") {
+      return res.status(400).json({ message: `Restaurant is already ${restaurant.approvalStatus}.` });
     }
 
     // Update status
-    merchant.merchantApplication.status = action;
-    await merchant.save();
-
-    // Compose and send SMS
-    const message = `Hello ${merchant.name}, your merchant application has been ${action.toUpperCase()}.`;
-    if (merchant.phone) {
-      await sendSms(merchant.phone, message);
+    restaurant.kycStatus = action;
+    restaurant.approvalStatus = action;
+    if (action === "rejected") {
+      restaurant.kycRejectionReason = reason || "Not specified";
+    } else {
+      restaurant.kycRejectionReason = undefined; // clear any previous rejection reason
     }
 
-    res.status(200).json({ message: `Merchant has been ${action} and notified.` });
-  } catch (err) {
-    console.error("Error updating merchant status:", err);
-    res.status(500).json({ message: "Server error" });
+    await restaurant.save();
+
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "restaurant.registration",
+      description: `${action} restaurant registration for restaurant named ${restaurant.name} with id ${restaurantId}`,
+      req,
+    });
+    const message = `Hello ${restaurant.name}, your restaurant application has been ${restaurant.approvalStatus.toUpperCase()}.`;
+    if (restaurant.phone) {
+      await sendSms(restaurant.phone, message);
+    }
+
+    res.status(200).json({
+      message: `Restaurant KYC ${action} successfully.`,
+      restaurant,
+    });
+  } catch (error) {
+    console.error("Error updating KYC status:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
 
 
 
@@ -268,7 +432,7 @@ exports.updatePermissions = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ error: 'Invalid restaurant ID' });
     }
-
+    const restaurant = await Restaurant.findById(restaurantId)
     // Validate restaurant existence before updating permissions
     const restaurantExists = await Restaurant.exists({ _id: restaurantId });
     if (!restaurantExists) {
@@ -297,6 +461,13 @@ exports.updatePermissions = async (req, res) => {
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "restaurant.permissions",
+      description: `Updated these restaurant permissions ${permissionDoc.permissions} for this restaurant ${restaurant.name}`,
+      req,
+    });
     res.json({
       message: 'Permissions updated successfully',
       permissions: permissionDoc.permissions
@@ -416,6 +587,14 @@ exports.reviewChangeRequest = async (req, res) => {
 
     await changeRequest.save();
 
+    // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "products.change",
+      description: `${changeRequest.status} restaurant request for ${data.action} for restaurant with id ${changeRequest.restaurantId}`,
+      req,
+    });
+
     res.json({
       message: `Request has been ${changeRequest.status.toLowerCase()}`,
       request: changeRequest
@@ -426,3 +605,104 @@ exports.reviewChangeRequest = async (req, res) => {
   }
 };
 
+
+// get all agent permission requests
+exports.getAllAgentPermissionRequests = async (req, res) => {
+  const agents = await Agent.find({ "permissionRequests.status": "Pending" })
+    .select("fullName permissionRequests")
+    .lean();
+
+  const pendingRequests = [];
+
+  agents.forEach((agent) => {
+    agent.permissionRequests.forEach((req) => {
+      if (req.status === "Pending") {
+        pendingRequests.push({
+          agentId: agent._id,
+          fullName: agent.fullName,
+          permission: req.permissionType,  // use permissionType here
+          requestedAt: req.requestedAt,
+          status: req.status,               // add any other info you want here
+          responseDate: req.responseDate,
+          adminComment: req.adminComment
+        });
+      }
+    });
+  });
+
+  res.status(200).json({ requests: pendingRequests });
+};
+
+
+exports.handleAgentPermissionRequest = async (req, res) => {
+  const { agentId, permission, decision, reason } = req.body;
+  const adminId = req.user.id; 
+
+  const agent = await Agent.findById(agentId);
+  if (!agent) return res.status(404).json({ error: "Agent not found." });
+
+  const request = agent.permissionRequests.find(
+    (r) => r.permissionType === permission && r.status === "Pending"
+  );
+
+  if (!request) {
+    return res.status(400).json({ error: "No pending request for this permission." });
+  }
+
+  request.status = decision;
+  request.responseDate = new Date(); // Your schema calls it responseDate, not reviewedAt
+  request.adminComment = reason || "";
+  request.adminId = adminId; // Optional: You can add adminId to the schema if you want to track it
+
+  // Actually update the permission
+  if (decision === "Approved") {
+    agent.permissions[permission] = true;
+  }
+
+  // For logging this
+    await logAccess({
+      userId: req.user._id,
+      action: "agent.permissions",
+      description: `${request.status} agent request for ${permission} for agent with name ${agent.fullName}`,
+      req,
+    });
+  await agent.save();
+
+  res.status(200).json({ message: `Request ${decision}` });
+};
+
+
+// Get all access logs (superAdmin-only)
+exports.getAllAccessLogs = async (req, res) => {
+  try {
+    const logs = await AccessLog.find()
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: logs,
+    });
+  } catch (error) {
+    console.error("Error fetching all access logs:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Get access logs for the logged-in admin
+exports.getMyLogs = async (req, res) => {
+  try {
+    const userId = req.user._id; 
+
+    const logs = await AccessLog.find({ userId })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: logs,
+    });
+  } catch (error) {
+    console.error("Error fetching user access logs:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
