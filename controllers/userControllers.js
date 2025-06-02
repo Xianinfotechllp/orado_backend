@@ -6,6 +6,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const { sendEmail } = require("../utils/sendEmail");
+const { NotificationPreference, Notification } = require('../models/notificationModel');
+
 
 const { sendSms } = require("../utils/sendSms");
 const crypto = require("crypto");
@@ -546,83 +548,73 @@ exports.deleteUser = async (req, res) => {
 
 exports.updateNotificationPrefs = async (req, res) => {
   try {
-    const userId  = req.user._id;
+    const userId = req.user._id;
     const updates = req.body;
 
-    // Define allowed preference keys
     const allowedKeys = [
       "orderUpdates",
       "promotions",
       "walletCredits",
       "newFeatures",
-      "serviceAlerts",
+      "serviceAlerts"
     ];
 
-    // Check if updates object contains at least one valid key
-    const hasValidKey = Object.keys(updates).some((key) =>
-      allowedKeys.includes(key)
-    );
+    const hasValidKey = Object.keys(updates).some(key => allowedKeys.includes(key));
     if (!hasValidKey) {
-      return res
-        .status(400)
-        .json({ error: "No valid notification preference keys provided" });
+      return res.status(400).json({ error: "No valid notification preference keys provided" });
     }
 
-    // Find user
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    let prefs = await NotificationPreference.findOne({ userId });
+    if (!prefs) {
+      prefs = new NotificationPreference({ userId });
+    }
 
-    // Update allowed preferences
     for (const key of allowedKeys) {
       if (updates.hasOwnProperty(key)) {
-        user.notificationPrefs[key] = updates[key];
+        prefs[key] = updates[key];
       }
     }
 
-    await user.save();
+    await prefs.save();
 
     return res.status(200).json({
       message: "Notification preferences updated successfully",
-      notificationPrefs: user.notificationPrefs,
+      notificationPrefs: prefs
     });
   } catch (error) {
     console.error("Error updating notification preferences:", error);
-    res
-      .status(500)
-      .json({ error: "Server error while updating notification preferences" });
+    res.status(500).json({ error: "Server error while updating notification preferences" });
   }
 };
+
 exports.getNotificationPrefs = async (req, res) => {
   try {
-    const userId  = req.user._id;
+    const userId = req.user._id;
 
-    // Find user
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    let prefs = await NotificationPreference.findOne({ userId });
 
-    // If notificationPrefs is undefined/null, optionally initialize defaults
-    if (!user.notificationPrefs) {
-      user.notificationPrefs = {
+    if (!prefs) {
+      prefs = new NotificationPreference({
+        userId,
         orderUpdates: true,
         promotions: true,
         walletCredits: true,
         newFeatures: true,
         serviceAlerts: true,
-      };
-      await user.save();
+      });
+      await prefs.save();
     }
 
     return res.status(200).json({
       message: "Notification preferences fetched successfully",
-      notificationPrefs: user.notificationPrefs,
+      notificationPrefs: prefs
     });
   } catch (error) {
     console.error("Error fetching notification preferences:", error);
-    res
-      .status(500)
-      .json({ error: "Server error while fetching notification preferences" });
+    res.status(500).json({ error: "Server error while fetching notification preferences" });
   }
 };
+
 
 
 // Delete user account
@@ -649,3 +641,63 @@ exports.deleteAccount = async (req, res) => {
     return res.status(500).json({ message: "Server error while deleting account" });
   }
 };
+
+// get user notifications
+exports.getUserNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Get user notification preferences
+    const prefs = await NotificationPreference.findOne({ userId });
+    if (!prefs) {
+      return res.status(404).json({ message: 'Notification preferences not found' });
+    }
+
+    // Get enabled types (e.g., { promotions: true, orderUpdates: false } → ['promotions'])
+    const enabledTypes = Object.entries(prefs.toObject())
+      .filter(([key, value]) => value === true)
+      .map(([key]) => key);
+
+    // Fetch notifications that match enabled types
+    const notifications = await Notification.find({
+      userId,
+      type: { $in: enabledTypes },
+    }).sort({ createdAt: -1 });
+
+    res.json(notifications);
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ message: 'Failed to fetch notifications' });
+  }
+};
+
+
+// Mark notification as read
+exports.markAsRead = async (req, res) => {
+  try {
+    const notificationId = req.params.id;
+    await Notification.findByIdAndUpdate(notificationId, { read: true });
+    res.json({ message: 'Notification marked as read' });
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    res.status(500).json({ message: 'Failed to update notification' });
+  }
+};
+
+// Mark all notifications as read
+exports.markAllAsRead = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    await Notification.updateMany(
+      { userId, read: false },
+      { $set: { read: true } }
+    );
+
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    console.error('Error marking all notifications as read:', error);
+    res.status(500).json({ message: 'Failed to update notifications' });
+  }
+};
+

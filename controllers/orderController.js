@@ -17,6 +17,7 @@ const Permission = require("../models/restaurantPermissionModel");
 
 const Restaurant = require("../models/restaurantModel");
 const { sendPushNotification } = require("../utils/sendPushNotification");
+const {NotificationPreference} = require("../models/notificationModel");
 const {
   awardDeliveryPoints,
   awardPointsToRestaurant,
@@ -198,7 +199,7 @@ exports.placeOrder = async (req, res) => {
     pincode,
       country = "India",
     } = req.body;
- console.log(req.body)
+ 
     if (
       !cartId ||
       !userId ||
@@ -305,13 +306,11 @@ exports.placeOrder = async (req, res) => {
 
       if (assignedAgent.permissions.canAcceptOrRejectOrders) {
         updateData.orderStatus = "pending_agent_acceptance";
-        console.log("Order sent to agent for acceptance:", assignedAgent.fullName);
 
         // Send push notification to agent for acceptance
         await sendPushNotification(assignedAgent.userId, "New Delivery Request", "You have a new delivery request. Please accept it.");
       } else {
         updateData.orderStatus = "assigned_to_agent";
-        console.log("Order auto-assigned to:", assignedAgent.fullName);
 
         // Emit socket event to start live tracking immediately
         const io = req.app.get("io");
@@ -343,7 +342,6 @@ exports.placeOrder = async (req, res) => {
       await Order.findByIdAndUpdate(savedOrder._id, updateData);
     }
  else {
-      console.log("No available agent found for auto-assignment.");
       await Order.findByIdAndUpdate(savedOrder._id, {
         orderStatus: "awaiting_agent_assignment"
       });
@@ -989,7 +987,6 @@ exports.reassignExpiredOrders = async () => {
     });
 
     if (unassignedOrders.length > 0) {
-      console.log(`[${new Date().toISOString()}] ${unassignedOrders.length} orders unassigned for >30m`);
       
       // Option 1: Expand search radius gradually
       for (const order of unassignedOrders) {
@@ -1026,7 +1023,8 @@ exports.reassignExpiredOrders = async () => {
 
 exports.reorder = async (req, res) => {
   try {
-    const userId = req.user._id; // assuming you use auth middleware
+    const userId = req.user._id; 
+    
     const { orderId } = req.params;
 
     const previousOrder = await Order.findById(orderId);
@@ -1071,6 +1069,13 @@ exports.reorder = async (req, res) => {
       products,
       totalPrice,
     });
+
+    await sendPushNotification(
+      userId,
+      `ReOrder Placed with with order id ${orderId}`,
+      `Here are the products ${products}`,
+      'orderUpdates'
+    );
 
     await newCart.save();
 
