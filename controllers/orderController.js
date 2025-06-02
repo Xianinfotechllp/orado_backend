@@ -127,6 +127,11 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order(orderData);
     const savedOrder = await newOrder.save();
+     // Clear cart after order placed
+    await Cart.findOneAndUpdate(
+      { userId: userId },
+      { products: [], totalPrice: 0 }
+    );
 
     //  Check permission for auto-accept
     const permission = await Permission.findOne({ restaurantId });
@@ -171,6 +176,7 @@ exports.createOrder = async (req, res) => {
       .json({ error: "Failed to create order", details: err.message });
   }
 };
+
 exports.placeOrder = async (req, res) => {
   try {
     const {
@@ -236,10 +242,11 @@ exports.placeOrder = async (req, res) => {
           price: item.price,
           name: item.name,
           totalPrice: item.price * item.quantity,
-          image: product?.images?.[0] || null, 
+          image: product?.images?.[0] || 'https://example.com/default-image.jpg',
         };
       })
     );
+
 
 
     // 📌 Create order object
@@ -279,20 +286,18 @@ exports.placeOrder = async (req, res) => {
 
 
     if (restaurant.permissions.canAcceptRejectOrders) {
-      console.log("Notify restaurant for order acceptance");
+      return res.status(201).json({
+        message: "Order placed successfully",
+        orderId: savedOrder._id,
+        totalAmount: savedOrder.totalAmount,
+        billSummary,
+        orderStatus: "pending_restaurant_acceptance"
+      });
     } else {
       const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
         longitude,
         latitude,
       });
-
-
-    // Auto-assign delivery agent
-    const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
-      longitude,
-      latitude,
-    });
-
     if (assignedAgent) {
       const updateData = {
         assignedAgent: assignedAgent._id,
@@ -333,8 +338,7 @@ exports.placeOrder = async (req, res) => {
       }
 
 
-    // // Optional: Clear cart after order placed
-    // await Cart.findByIdAndDelete(cartId);
+
 
       await Order.findByIdAndUpdate(savedOrder._id, updateData);
     }
@@ -353,7 +357,7 @@ exports.placeOrder = async (req, res) => {
       billSummary,
       orderStatus: savedOrder.orderStatus // Include current status in response
     });
-  } catch (err) {
+  }} catch (err) {
     console.error("Error placing order:", err);
     res.status(500).json({ error: "Failed to place order" });
   }
@@ -379,7 +383,9 @@ exports.getOrderById = async (req, res) => {
 exports.getOrdersByCustomer = async (req, res) => {
   try {
     const customerId = req.user._id;
-    const orders = await Order.find({ customerId });
+    const orders = await Order.find({ customerId })
+                  .populate("restaurantId", "name location address")
+                  .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
