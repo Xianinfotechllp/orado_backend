@@ -73,13 +73,20 @@ router.get('/restaurant/:restaurantId', protect, getOrdersByMerchant);
 
 
 //bill summary 
-router.post("/order/pricesummary", protect, getOrderPriceSummary)
+
+router.post("/pricesummary", protect, getOrderPriceSummary)
 
 
 //place order 
-router.post("/order/place-order", protect, placeOrder)
+router.post("/place-order", protect, placeOrder)
 
 // Reorder route
 router.post('/reorder/:orderId', protect, reorder);
+
+
+
+
+
+
 
 module.exports = router;

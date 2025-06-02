@@ -3,9 +3,13 @@ const Product = require('../models/productModel');
 const { calculateOrderCost } = require("../services/orderCostCalculator");
 
 const mongoose = require('mongoose')
+
 exports.addToCart = async (req,res) => {
   const userId = req.user._id; 
   const { restaurantId, products } = req.body
+
+
+
   try {
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       throw { status: 400, message: "Invalid userId format" };
@@ -17,15 +21,16 @@ exports.addToCart = async (req,res) => {
       throw { status: 400, message: "Products must be a non-empty array" };
     }
 
-    let cart = await Cart.findOne({ userId });
+    let cart = await Cart.findOne({ user: userId });
 
     if (!cart) {
       cart = new Cart({
-        userId,
+        user: userId,
         restaurantId,
         products: []
       });
     } else if (cart.restaurantId.toString() !== restaurantId) {
+      // Clear existing products if switching restaurant
       cart.products = [];
       cart.restaurantId = restaurantId;
     }
@@ -61,11 +66,76 @@ exports.addToCart = async (req,res) => {
     cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
     await cart.save();
 
-    return { message: "Cart updated successfully", cart };
+    return res.status(200).json({ message: "Cart updated successfully", cart });
   } catch (error) {
     console.error("Error inside addToCart service:", error);
-    // rethrow error so the controller can catch it
-    throw error;
+    res.status(error.status || 500).json({ message: error.message || "Something went wrong" });
+  }
+};
+exports.addToCart = async (req, res) => {
+  const { userId, restaurantId, products } = req.body;
+  console.log(userId, restaurantId, products);
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw { status: 400, message: "Invalid userId format" };
+    }
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      throw { status: 400, message: "Invalid restaurantId format" };
+    }
+    if (!products || !Array.isArray(products) || products.length === 0) {
+      throw { status: 400, message: "Products must be a non-empty array" };
+    }
+
+    let cart = await Cart.findOne({ user: userId });
+
+    if (!cart) {
+      cart = new Cart({
+        user: userId,
+        restaurantId,
+        products: []
+      });
+    } else if (cart.restaurantId.toString() !== restaurantId) {
+      // Clear existing products if switching restaurant
+      cart.products = [];
+      cart.restaurantId = restaurantId;
+    }
+
+    for (const prod of products) {
+      if (!prod.productId || !mongoose.Types.ObjectId.isValid(prod.productId)) continue;
+
+      const productData = await Product.findById(prod.productId);
+      if (!productData || productData.restaurantId.toString() !== restaurantId) continue;
+
+      const index = cart.products.findIndex(p => p.productId.toString() === prod.productId);
+      const newQty = (prod.quantity && prod.quantity > 0) ? prod.quantity : 1;
+      const price = productData.price;
+
+      if (index > -1) {
+        cart.products[index].quantity = newQty;
+        cart.products[index].total = newQty * price;
+      } else {
+        cart.products.push({
+          productId: prod.productId,
+          name: productData.name,
+          price,
+          quantity: newQty,
+          total: price * newQty
+        });
+      }
+    }
+
+    if (cart.products.length === 0) {
+      throw { status: 400, message: "No valid products found to add to cart" };
+    }
+
+    cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
+    await cart.save();
+
+    return res.status(200).json({ message: "Cart updated successfully", cart });
+  } catch (error) {
+    console.error("Error inside addToCart service:", error);
+    res.status(error.status || 500).json({ message: error.message || "Something went wrong" });
   }
 };
 // Get user's cart
@@ -73,7 +143,7 @@ exports.getCart = async (req, res) => {
   try {
     const userId  = req.user._id;
 
-    const cart = await Cart.findOne({ userId: userId });
+    const cart = await Cart.findOne({ user: userId });
     if (!cart) {
       return res.status(200).json({ message: "Cart is empty", cart: { items: [] } });
     }

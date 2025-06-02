@@ -3,7 +3,9 @@ const router = express.Router();
 
 
 
-const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll ,deleteUser ,getNotificationPrefs,updateNotificationPrefs} = require("../controllers/userControllers");
+
+const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll  ,getNotificationPrefs,updateNotificationPrefs,getaddress} = require("../controllers/userControllers");
+
 
 
 
@@ -19,8 +21,12 @@ router.post("/verify-otp",verifyOtp);
 
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
-router.post("/address", protect, checkRole('customer'), addAddress)
-router.put("/address/:addressId", protect, checkRole('customer'), updateAddressById)
+router.get("/adderss/:userId",getaddress)
+// router.post("/address", protect, checkRole('customer'), addAddress)
+router.post("/address",addAddress)
+// router.put("/address/:addressId", protect, checkRole('customer'), updateAddressById)
+router.put("/:userId/addresses/:addressId",updateAddressById)
+
 router.delete("/delete/:addressId ", protect, checkRole('customer'), deleteAddressById)
 
 router.post("/forgot-password", protect, checkRole('customer'), forgotPassword)
