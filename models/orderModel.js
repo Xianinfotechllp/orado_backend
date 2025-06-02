@@ -25,11 +25,7 @@ const orderSchema = mongoose.Schema({
     ]
   },
 
-  assignedAgent: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Agent',
-    required: false,
-  },
+  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
 
   rejectionHistory: [{
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },
@@ -46,16 +42,16 @@ const orderSchema = mongoose.Schema({
   surgeCharge: Number,
   tipAmount: Number,
   totalAmount: Number,
-  distanceKm: Number,   // from restaurant to delivery point
+  distanceKm: Number,
 
   paymentMethod: { type: String, enum: ['cash', 'online', 'wallet'] },
   paymentStatus: { type: String, enum: ['pending', 'completed', 'failed'] },
 
   deliveryMode: { type: String, enum: ['contact', 'no_contact', 'do_not_disturb'] },
 
-  instructions: String, // special instructions
+  instructions: String,
   orderPreparationDelay: Boolean,
-  scheduledTime: Date, // for scheduled deliveries
+  scheduledTime: Date,
   couponCode: String,
 
   customerReview: String,
@@ -66,7 +62,7 @@ const orderSchema = mongoose.Schema({
   cancellationReason: String,
   debtCancellation: Boolean,
 
-  location: {
+  deliveryLocation: {
     type: {
       type: String,
       enum: ['Point'],
@@ -82,8 +78,17 @@ const orderSchema = mongoose.Schema({
         },
         message: 'Coordinates must be [longitude, latitude]',
       },
-    },
-    addressText: String, // readable delivery address
+    }
+  },
+
+  deliveryAddress: {
+    street: { type: String, required: true },
+    area: { type: String },
+    landmark: { type: String },
+    city: { type: String, required: true },
+    state: { type: String },
+    pincode: { type: String, required: true },
+    country: { type: String, default: 'India' },
   },
 
   guestName: { type: String },
@@ -92,6 +97,6 @@ const orderSchema = mongoose.Schema({
 
 }, { timestamps: true });
 
-orderSchema.index({ location: '2dsphere' });
+orderSchema.index({ deliveryLocation: '2dsphere' });
 
 module.exports = mongoose.model('Order', orderSchema);

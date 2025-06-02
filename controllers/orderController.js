@@ -171,7 +171,6 @@ exports.createOrder = async (req, res) => {
       .json({ error: "Failed to create order", details: err.message });
   }
 };
-
 exports.placeOrder = async (req, res) => {
   try {
     const {
@@ -183,13 +182,31 @@ exports.placeOrder = async (req, res) => {
       couponCode,
       instructions,
       tipAmount = 0,
-    } = req.body;
 
-    if (!cartId || !userId || !paymentMethod || !longitude || !latitude) {
+      // 📌 New delivery address fields
+      street,
+      area,
+      landmark,
+      city,
+      state,
+    pincode,
+      country = "India",
+    } = req.body;
+ console.log(req.body)
+    if (
+      !cartId ||
+      !userId ||
+      !paymentMethod ||
+      !longitude ||
+      !latitude ||
+      !street ||
+      !city ||
+      !pincode
+    ) {
       return res.status(400).json({ error: "Required fields are missing" });
     }
-
-    const cart = await Cart.findOne({ _id: cartId, userId });
+    
+    const cart = await Cart.findOne({ _id: cartId, user: userId });
     if (!cart) {
       return res.status(404).json({ error: "Cart not found" });
     }
@@ -217,14 +234,27 @@ exports.placeOrder = async (req, res) => {
       totalPrice: item.price * item.quantity,
     }));
 
-    // Create order object
+    // 📌 Create order object
     const newOrder = new Order({
       customerId: userId,
       restaurantId: cart.restaurantId,
       orderItems,
       paymentMethod,
       orderStatus: "pending",
-      location: { type: "Point", coordinates: userCoords },
+      deliveryLocation: { type: "Point", coordinates: userCoords },
+
+      deliveryAddress: {
+        street,
+        area,
+        landmark,
+        city,
+        state,
+         pincode,
+        country,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+      },
+
       subtotal: billSummary.subtotal,
       tax: billSummary.tax,
       discountAmount: billSummary.discount,
@@ -238,6 +268,16 @@ exports.placeOrder = async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
+
+
+    if (restaurant.permissions.canAcceptRejectOrders) {
+      console.log("Notify restaurant for order acceptance");
+    } else {
+      const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
+        longitude,
+        latitude,
+      });
+
 
     // Auto-assign delivery agent
     const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
@@ -284,6 +324,10 @@ exports.placeOrder = async (req, res) => {
         await sendPushNotification(savedOrder.restaurantId, "Agent Assigned", "An agent has been assigned to deliver the order.");
       }
 
+
+    // // Optional: Clear cart after order placed
+    // await Cart.findByIdAndDelete(cartId);
+
       await Order.findByIdAndUpdate(savedOrder._id, updateData);
     }
  else {
@@ -292,6 +336,7 @@ exports.placeOrder = async (req, res) => {
         orderStatus: "awaiting_agent_assignment"
       });
     }
+
 
     return res.status(201).json({
       message: "Order placed successfully",
@@ -305,6 +350,7 @@ exports.placeOrder = async (req, res) => {
     res.status(500).json({ error: "Failed to place order" });
   }
 };
+
 
 // Get Order by ID
 exports.getOrderById = async (req, res) => {
@@ -839,7 +885,7 @@ exports.getOrderPriceSummary = async (req, res) => {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
 
-    const cart = await Cart.findOne({ _id: cartId, userId });
+    const cart = await Cart.findOne({ _id: cartId, user:userId });
     if (!cart) {
       return res.status(404).json({ error: "Cart not found for this user" });
     }
@@ -866,7 +912,7 @@ exports.getOrderPriceSummary = async (req, res) => {
 
     return res.status(200).json({
       message: "Bill summary calculated successfully",
-      billSummary: costSummary,
+      data: costSummary,
     });
   } catch (err) {
     console.error(err);
