@@ -4,7 +4,7 @@ const router = express.Router();
 
 
 
-const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll  ,getNotificationPrefs,updateNotificationPrefs,getaddress} = require("../controllers/userControllers");
+const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll  ,getNotificationPrefs,updateNotificationPrefs,getaddress,markAsRead, getUserNotifications, markAllAsRead} = require("../controllers/userControllers");
 
 
 
@@ -43,9 +43,15 @@ router.post("/logout-all", protect, checkRole('customer'), logoutAll);
 // post agent review
 router.post("/:agentId/review", protect, checkRole('customer'), addAgentReview);
 
-//notificaton prefs
+
+//notificaton
+router.get('/notifications', protect, getUserNotifications);
+router.patch('/notifications/:id/read', protect, markAsRead);
+router.patch('/notifications/mark-all-read', protect, markAllAsRead);
+
+
 router.get("/notifications/preferences", protect, getNotificationPrefs)
-router.put("/notifications/preferences", protect, updateNotificationPrefs)
+router.put("/notifications/preferences/update", protect, updateNotificationPrefs)
 
 // Delete Account
 router.delete("/delete-account", protect, deleteAccount);
