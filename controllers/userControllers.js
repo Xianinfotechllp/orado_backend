@@ -1,4 +1,6 @@
 const User = require("../models/userModel");
+const Order = require("../models/orderModel");
+const Chat = require("../models/chatModel");
 const Session = require("../models/session");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -544,7 +546,7 @@ exports.deleteUser = async (req, res) => {
 
 exports.updateNotificationPrefs = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId  = req.user._id;
     const updates = req.body;
 
     // Define allowed preference keys
@@ -592,7 +594,7 @@ exports.updateNotificationPrefs = async (req, res) => {
 };
 exports.getNotificationPrefs = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId  = req.user._id;
 
     // Find user
     const user = await User.findById(userId);
@@ -619,5 +621,31 @@ exports.getNotificationPrefs = async (req, res) => {
     res
       .status(500)
       .json({ error: "Server error while fetching notification preferences" });
+  }
+};
+
+
+// Delete user account
+exports.deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user._id; // Assumes user is authenticated and req.user is populated
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Delete related data
+    await Promise.all([
+      Order.deleteMany({ customerId: userId }),
+      Chat.deleteMany({ user: userId }),
+      // Add more deletions if needed, e.g., Reviews, Addresses, etc.
+    ]);
+
+    // Delete the user
+    await User.findByIdAndDelete(userId);
+
+    return res.status(200).json({ message: "Account and related data deleted successfully" });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return res.status(500).json({ message: "Server error while deleting account" });
   }
 };

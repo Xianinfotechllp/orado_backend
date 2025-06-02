@@ -3,7 +3,9 @@ const router = express.Router();
 
 
 
-const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll ,deleteUser ,getNotificationPrefs,updateNotificationPrefs, getaddress} = require("../controllers/userControllers");
+
+const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll  ,getNotificationPrefs,updateNotificationPrefs,getaddress} = require("../controllers/userControllers");
+
 
 
 
@@ -34,7 +36,7 @@ router.post("/logout", protect, checkRole('customer'), logoutUser);
 router.post("/logout-all", protect, checkRole('customer'), logoutAll);
 
 // GDPR-delete
-router.delete("/delete/:userId",deleteUser)
+// router.delete("/delete/:userId",deleteUser)
 
 
 
@@ -42,8 +44,12 @@ router.delete("/delete/:userId",deleteUser)
 router.post("/:agentId/review", protect, checkRole('customer'), addAgentReview);
 
 //notificaton prefs
-router.get("/:userId/notifications/preferences",getNotificationPrefs)
-router.put("/:userId/notifications/preferences",updateNotificationPrefs)
+router.get("/notifications/preferences", protect, getNotificationPrefs)
+router.put("/notifications/preferences", protect, updateNotificationPrefs)
+
+// Delete Account
+router.delete("/delete-account", protect, deleteAccount);
+
 
 
 module.exports = router;

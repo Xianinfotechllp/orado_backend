@@ -4,9 +4,11 @@ const { calculateOrderCost } = require("../services/orderCostCalculator");
 
 const mongoose = require('mongoose')
 
-exports.addToCart = async (req, res) => {
-  const { userId, restaurantId, products } = req.body;
-  console.log(userId, restaurantId, products);
+exports.addToCart = async (req,res) => {
+  const userId = req.user._id; 
+  const { restaurantId, products } = req.body
+
+
 
   try {
     if (!mongoose.Types.ObjectId.isValid(userId)) {
@@ -139,7 +141,7 @@ exports.addToCart = async (req, res) => {
 // Get user's cart
 exports.getCart = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId  = req.user._id;
 
     const cart = await Cart.findOne({ user: userId });
     if (!cart) {
@@ -156,7 +158,8 @@ exports.getCart = async (req, res) => {
 // Update item quantity
 exports.updateCartItem = async (req, res) => {
   try {
-    const { userId, productId, quantity } = req.body;
+    const userId  = req.user._id;
+    const { productId, quantity } = req.body;
 
     if (!userId || !productId || quantity == null) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -189,7 +192,8 @@ exports.updateCartItem = async (req, res) => {
 // Remove item from cart
 exports.removeFromCart = async (req, res) => {
   try {
-    const { userId, productId } = req.body;
+    const userId  = req.user._id;
+    const { productId } = req.body;
 
     const cart = await Cart.findOne({ user: userId });
     if (!cart) return res.status(404).json({ message: "Cart not found" });
@@ -214,7 +218,7 @@ exports.removeFromCart = async (req, res) => {
 // Clear entire cart
 exports.clearCart = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId  = req.user._id;
 
     const cart = await Cart.findOne({ user: userId });
     if (!cart) return res.status(404).json({ message: "Cart not found" });
