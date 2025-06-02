@@ -171,7 +171,6 @@ exports.createOrder = async (req, res) => {
       .json({ error: "Failed to create order", details: err.message });
   }
 };
-
 exports.placeOrder = async (req, res) => {
   try {
     const {
@@ -183,13 +182,31 @@ exports.placeOrder = async (req, res) => {
       couponCode,
       instructions,
       tipAmount = 0,
-    } = req.body;
 
-    if (!cartId || !userId || !paymentMethod || !longitude || !latitude) {
+      // 📌 New delivery address fields
+      street,
+      area,
+      landmark,
+      city,
+      state,
+    pincode,
+      country = "India",
+    } = req.body;
+ console.log(req.body)
+    if (
+      !cartId ||
+      !userId ||
+      !paymentMethod ||
+      !longitude ||
+      !latitude ||
+      !street ||
+      !city ||
+      !pincode
+    ) {
       return res.status(400).json({ error: "Required fields are missing" });
     }
-
-    const cart = await Cart.findOne({ _id: cartId, userId });
+    
+    const cart = await Cart.findOne({ _id: cartId, user: userId });
     if (!cart) {
       return res.status(404).json({ error: "Cart not found" });
     }
@@ -217,14 +234,27 @@ exports.placeOrder = async (req, res) => {
       totalPrice: item.price * item.quantity,
     }));
 
-    // Create order object
+    // 📌 Create order object
     const newOrder = new Order({
       customerId: userId,
       restaurantId: cart.restaurantId,
       orderItems,
       paymentMethod,
       orderStatus: "pending",
-      location: { type: "Point", coordinates: userCoords },
+      deliveryLocation: { type: "Point", coordinates: userCoords },
+
+      deliveryAddress: {
+        street,
+        area,
+        landmark,
+        city,
+        state,
+         pincode,
+        country,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+      },
+
       subtotal: billSummary.subtotal,
       tax: billSummary.tax,
       discountAmount: billSummary.discount,
@@ -238,10 +268,10 @@ exports.placeOrder = async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
+
     if (restaurant.permissions.canAcceptRejectOrders) {
       console.log("Notify restaurant for order acceptance");
     } else {
-      // Auto-assign delivery agent immediately
       const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
         longitude,
         latitude,
@@ -254,7 +284,7 @@ exports.placeOrder = async (req, res) => {
       }
     }
 
-    // // Clear cart
+    // // Optional: Clear cart after order placed
     // await Cart.findByIdAndDelete(cartId);
 
     return res.status(201).json({
@@ -268,6 +298,7 @@ exports.placeOrder = async (req, res) => {
     res.status(500).json({ error: "Failed to place order" });
   }
 };
+
 
 // Get Order by ID
 exports.getOrderById = async (req, res) => {

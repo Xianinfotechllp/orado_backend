@@ -3,21 +3,18 @@ const Session = require("../models/session");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
-const {sendEmail} = require("../utils/sendEmail")
+const { sendEmail } = require("../utils/sendEmail");
 
-const{sendSms} = require("../utils/sendSms")
+const { sendSms } = require("../utils/sendSms");
 const crypto = require("crypto");
-
 
 // Register user with validations, OTP generation and notifications
 exports.registerUser = async (req, res) => {
   try {
-
-
-
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
     const phoneRegex = /^\+91\d{10}$/;
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
 
     const { name, email, phone, password } = req.body;
 
@@ -30,18 +27,25 @@ exports.registerUser = async (req, res) => {
     }
 
     if (!phoneRegex.test(phone)) {
-      return res.status(400).json({ message: "Invalid phone number format. Use country code (+91)" });
+      return res
+        .status(400)
+        .json({
+          message: "Invalid phone number format. Use country code (+91)",
+        });
     }
 
     if (!passwordRegex.test(password)) {
       return res.status(400).json({
-        message: "Password must be at least 8 characters long, include an uppercase letter, a number, and a special character.",
+        message:
+          "Password must be at least 8 characters long, include an uppercase letter, a number, and a special character.",
       });
     }
 
     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
-      return res.status(400).json({ message: "Email or phone number already registered" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number already registered" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -50,7 +54,7 @@ exports.registerUser = async (req, res) => {
     const emailOtp = otpGenerator(6);
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    await sendEmail(email, 'OTP Verification', `Your OTP is ${emailOtp}`);
+    await sendEmail(email, "OTP Verification", `Your OTP is ${emailOtp}`);
     // await sendSms(phone, `Hi, your OTP is ${phoneOtp}`);
 
     const newUser = new User({
@@ -82,7 +86,9 @@ exports.verifyOtp = async (req, res) => {
     const { email, phone, emailOtp, phoneOtp } = req.body;
 
     if (!email || !phone || !emailOtp || !phoneOtp) {
-      return res.status(400).json({ message: "Email, phone number, and OTPs are required" });
+      return res
+        .status(400)
+        .json({ message: "Email, phone number, and OTPs are required" });
     }
 
     const user = await User.findOne({ $or: [{ email }, { phone }] });
@@ -117,17 +123,17 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
-
-
 // Login user with JWT token generation and session management
 
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log( email, password)
+    console.log(email, password);
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      return res
+        .status(400)
+        .json({ message: "Email and password are required" });
     }
 
     const userExist = await User.findOne({ email });
@@ -140,22 +146,22 @@ exports.loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign(
-      { userId: userExist._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ userId: userExist._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
     // Limit to 3 active sessions
     const MAX_SESSIONS = 3;
-    const existingSessions = await Session.find({ userId: userExist._id }).sort({ createdAt: 1 });
+    const existingSessions = await Session.find({ userId: userExist._id }).sort(
+      { createdAt: 1 }
+    );
 
     if (existingSessions.length >= MAX_SESSIONS) {
       const oldestSession = existingSessions[0];
       await Session.findByIdAndDelete(oldestSession._id); // Kick the oldest session out
     }
 
-    // Get device + IP info 
+    // Get device + IP info
     const userAgent = req.headers["user-agent"] || "Unknown Device";
     const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
 
@@ -180,13 +186,11 @@ exports.loginUser = async (req, res) => {
       token,
       user,
     });
-
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 // Logout user by deleting session
 
@@ -205,120 +209,193 @@ exports.logoutAll = async (req, res) => {
   res.json({ message: "Logged out from all sessions" });
 };
 
-
-
-
 exports.addAddress = async (req, res) => {
-    try {
-      const { street, city, state, zip, longitude, latitude, userId } = req.body;
-  
-      if (!street || !city || !state || !zip || !longitude || !latitude || !userId) {
-        return res.status(400).json({ message: "All fields are required" });
-      }
-  
-      const userExist = await User.findById(userId);
-      if (!userExist) {
-        return res.status(404).json({ message: "User not found" });
-      }
-  
-      userExist.address = {
-        street,
-        city,
-        state,
-        zip,
+  try {
+    const { userId, type, street, city, state, zip, longitude, latitude } =
+      req.body;
+
+    if (
+      !street ||
+      !city ||
+      !state ||
+      !zip ||
+      !longitude ||
+      !latitude ||
+      !userId
+    ) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    const userExist = await User.findById(userId);
+    if (!userExist) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (!userExist.addresses) {
+      userExist.addresses = [];
+    }
+
+    userExist.addresses.push({
+      type, // Home / Work / Other
+      street,
+      city,
+      state,
+      zip,
+      location: {
+        type: "Point",
+        coordinates: [parseFloat(longitude), parseFloat(latitude)],
+      },
+    });
+    await userExist.save();
+    res.json({
+      message: "Address added successfully",
+      addresses: userExist.addresses,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.deleteAddressById = async (req, res) => {
+  try {
+    const { userId, addressId } = req.params;
+
+    // Find the user by userId
+    const userExist = await User.findById(userId);
+    if (!userExist) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if the user has the specified addressId
+    const addressExists = userExist.address.id(addressId); // If it's a subdocument (array of addresses)
+    if (!addressExists) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+
+    // Remove the address
+    userExist.address.id(addressId).remove();
+
+    // Save the updated user
+    await userExist.save();
+
+    res.json({ message: "Address deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.updateAddressById = async (req, res) => {
+  try {
+    const { userId, addressId } = req.params;
+    const { street, city, state, zip, longitude, latitude, type } = req.body;
+
+    // Validate required fields
+    if (!userId || !addressId) {
+      return res.status(400).json({ message: "userId and addressId are required" });
+    }
+
+    // Validate optional fields if they exist
+    if (street && typeof street !== "string") {
+      return res.status(400).json({ message: "Street must be a string" });
+    }
+    if (city && typeof city !== "string") {
+      return res.status(400).json({ message: "City must be a string" });
+    }
+    if (state && typeof state !== "string") {
+      return res.status(400).json({ message: "State must be a string" });
+    }
+    if (zip && typeof zip !== "string") {
+      return res.status(400).json({ message: "Zip must be a string" });
+    }
+    if (type && !["Home", "Work", "Other"].includes(type)) {
+      return res.status(400).json({ message: "Type must be one of Home, Work, or Other" });
+    }
+    if ((longitude && typeof longitude !== "number") || (latitude && typeof latitude !== "number")) {
+      return res.status(400).json({ message: "Longitude and latitude must be numbers" });
+    }
+
+    // Find the user
+    const userExist = await User.findById(userId);
+    if (!userExist) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Find the address
+    const address = userExist.addresses.id(addressId);
+    if (!address) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+
+    // Only update fields if provided
+    if (street) address.street = street;
+    if (city) address.city = city;
+    if (state) address.state = state;
+    if (zip) address.zip = zip;
+    if (type) address.type = type;
+    if (longitude !== undefined && latitude !== undefined) {
+      address.location = {
+        type: "Point",
+        coordinates: [parseFloat(longitude), parseFloat(latitude)],
+      };
+    }
+
+    await userExist.save();
+
+    res.json({ message: "Address updated successfully", address });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+exports.getaddress = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    const userExist = await User.findOne({ _id: userId });
+
+    if (!userExist) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Map addresses to include latitude & longitude separately
+    const formattedAddresses = userExist.addresses.map(address => {
+      const [longitude, latitude] = address.location.coordinates;
+
+      return {
+        addressId: address._id,
+        type: address.type,
+        street: address.street,
+        city: address.city,
+        state: address.state,
+        zip: address.zip,
         location: {
-          type: "Point",  // ✅ Important for GeoJSON!
-          coordinates: [parseFloat(longitude), parseFloat(latitude)]
+          latitude,
+          longitude
         }
       };
-       
-      await userExist.save();
-  
-      res.json({ message: "Address updated successfully" });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  };
+    });
 
-  exports.deleteAddressById = async (req, res) => {
-    try {
-      const { userId, addressId } = req.params;
-  
-      // Find the user by userId
-      const userExist = await User.findById(userId);
-      if (!userExist) {
-        return res.status(404).json({ message: "User not found" });
-      }
-  
-      // Check if the user has the specified addressId
-      const addressExists = userExist.address.id(addressId); // If it's a subdocument (array of addresses)
-      if (!addressExists) {
-        return res.status(404).json({ message: "Address not found" });
-      }
-  
-      // Remove the address
-      userExist.address.id(addressId).remove();
-  
-      // Save the updated user
-      await userExist.save();
-  
-      res.json({ message: "Address deleted successfully" });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  };
-  
+    res.json({ data: formattedAddresses });
 
-  exports.updateAddressById = async (req, res) => {
-    try {
-      const { userId, addressId } = req.params; // Extract userId and addressId from request params
-      const { street, city, state, zip, longitude, latitude } = req.body; // Extract address fields from request body
-  
-      // Validate the required fields
-      if (!street || !city || !state || !zip || !longitude || !latitude) {
-        return res.status(400).json({ message: "All address fields are required" });
-      }
-  
-      // Find the user by userId
-      const userExist = await User.findById(userId);
-      if (!userExist) {
-        return res.status(404).json({ message: "User not found" });
-      }
-  
-      // Find the address by addressId within the user's address subdocument
-      const address = userExist.address.id(addressId);
-      if (!address) {
-        return res.status(404).json({ message: "Address not found" });
-      }
-  
-      // Update the address fields
-      address.street = street;
-      address.city = city;
-      address.state = state;
-      address.zip = zip;
-      address.location = {
-        type: "Point",  // Required for GeoJSON
-        coordinates: [parseFloat(longitude), parseFloat(latitude)]  // Ensure coordinates are floats
-      };
-  
-      // Save the updated user document
-      await userExist.save();
-  
-      res.json({ message: "Address updated successfully" });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  };
-  // Resend new OTPs
+  } catch (error) {
+    console.error("Error fetching addresses:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+// Resend new OTPs
 exports.resendOtp = async (req, res) => {
   try {
     const { email, phone } = req.body;
 
     if (!email && !phone) {
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number is required" });
     }
 
     const user = await User.findOne({ $or: [{ email }, { phone }] });
@@ -330,7 +407,9 @@ exports.resendOtp = async (req, res) => {
     const timeDifference = (currentTime - user.verification.otpExpiry) / 60000;
 
     if (timeDifference < 5) {
-      return res.status(400).json({ message: "You can only request a new OTP after 5 minutes" });
+      return res
+        .status(400)
+        .json({ message: "You can only request a new OTP after 5 minutes" });
     }
 
     const emailOtp = otpGenerator(6);
@@ -343,7 +422,11 @@ exports.resendOtp = async (req, res) => {
 
     await user.save();
 
-    await sendEmail(user.email, 'OTP Verification', `Your new email OTP is ${emailOtp}`);
+    await sendEmail(
+      user.email,
+      "OTP Verification",
+      `Your new email OTP is ${emailOtp}`
+    );
     await sendSms(user.phone, `Your new phone OTP is ${phoneOtp}`);
 
     res.json({ message: "OTP sent successfully to email and phone" });
@@ -352,8 +435,6 @@ exports.resendOtp = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-
 
 exports.forgotPassword = async (req, res) => {
   try {
@@ -381,7 +462,7 @@ exports.forgotPassword = async (req, res) => {
     await sendEmail(
       user.email,
       "Password Reset Request",
-      `You requested a password reset. Click here to reset: ${resetUrl}`,
+      `You requested a password reset. Click here to reset: ${resetUrl}`
     );
 
     res.json({ message: "Password reset email sent" });
@@ -408,7 +489,7 @@ exports.resetPassword = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     // Update user password and clear reset token fields
-    user.password = hashedPassword; 
+    user.password = hashedPassword;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
 
@@ -420,7 +501,6 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 // check for Gdpr
 exports.deleteUser = async (req, res) => {
@@ -453,14 +533,14 @@ exports.deleteUser = async (req, res) => {
 
     // TODO: Optionally delete or anonymize related data from other collections (e.g., Orders, Referrals, etc.)
 
-    res.json({ message: "User data permanently deleted as per GDPR compliance" });
+    res.json({
+      message: "User data permanently deleted as per GDPR compliance",
+    });
   } catch (error) {
     console.error("Delete User Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
-
-
 
 exports.updateNotificationPrefs = async (req, res) => {
   try {
@@ -468,12 +548,22 @@ exports.updateNotificationPrefs = async (req, res) => {
     const updates = req.body;
 
     // Define allowed preference keys
-    const allowedKeys = ['orderUpdates', 'promotions', 'walletCredits', 'newFeatures', 'serviceAlerts'];
+    const allowedKeys = [
+      "orderUpdates",
+      "promotions",
+      "walletCredits",
+      "newFeatures",
+      "serviceAlerts",
+    ];
 
     // Check if updates object contains at least one valid key
-    const hasValidKey = Object.keys(updates).some(key => allowedKeys.includes(key));
+    const hasValidKey = Object.keys(updates).some((key) =>
+      allowedKeys.includes(key)
+    );
     if (!hasValidKey) {
-      return res.status(400).json({ error: "No valid notification preference keys provided" });
+      return res
+        .status(400)
+        .json({ error: "No valid notification preference keys provided" });
     }
 
     // Find user
@@ -491,12 +581,13 @@ exports.updateNotificationPrefs = async (req, res) => {
 
     return res.status(200).json({
       message: "Notification preferences updated successfully",
-      notificationPrefs: user.notificationPrefs
+      notificationPrefs: user.notificationPrefs,
     });
-
   } catch (error) {
     console.error("Error updating notification preferences:", error);
-    res.status(500).json({ error: "Server error while updating notification preferences" });
+    res
+      .status(500)
+      .json({ error: "Server error while updating notification preferences" });
   }
 };
 exports.getNotificationPrefs = async (req, res) => {
@@ -514,18 +605,19 @@ exports.getNotificationPrefs = async (req, res) => {
         promotions: true,
         walletCredits: true,
         newFeatures: true,
-        serviceAlerts: true
+        serviceAlerts: true,
       };
       await user.save();
     }
 
     return res.status(200).json({
       message: "Notification preferences fetched successfully",
-      notificationPrefs: user.notificationPrefs
+      notificationPrefs: user.notificationPrefs,
     });
-
   } catch (error) {
     console.error("Error fetching notification preferences:", error);
-    res.status(500).json({ error: "Server error while fetching notification preferences" });
+    res
+      .status(500)
+      .json({ error: "Server error while fetching notification preferences" });
   }
 };
