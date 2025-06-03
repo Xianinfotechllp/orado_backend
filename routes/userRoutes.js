@@ -21,13 +21,13 @@ router.post("/verify-otp",verifyOtp);
 
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
-router.get("/adderss/:userId",getaddress)
+router.get("/adderss", protect, getaddress)
 // router.post("/address", protect, checkRole('customer'), addAddress)
-router.post("/address",addAddress)
+router.post("/address", protect, addAddress)
 // router.put("/address/:addressId", protect, checkRole('customer'), updateAddressById)
-router.put("/:userId/addresses/:addressId",updateAddressById)
+router.put("/addresses/:addressId", protect, updateAddressById)
 
-router.delete("/delete/:addressId ", protect, checkRole('customer'), deleteAddressById)
+router.delete("/delete/:addressId", protect, deleteAddressById)
 
 router.post("/forgot-password", protect, checkRole('customer'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('customer'), resetPassword)

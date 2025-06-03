@@ -262,36 +262,39 @@ exports.addAddress = async (req, res) => {
 
 exports.deleteAddressById = async (req, res) => {
   try {
-    const { userId, addressId } = req.params;
+    const { addressId } = req.params;
+    const userId = req.user._id;
 
-    // Find the user by userId
+    // Find the user
     const userExist = await User.findById(userId);
     if (!userExist) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if the user has the specified addressId
-    const addressExists = userExist.address.id(addressId); // If it's a subdocument (array of addresses)
-    if (!addressExists) {
+    // Find index of the address to remove
+    const addressIndex = userExist.addresses.findIndex(
+      (addr) => addr._id.toString() === addressId
+    );
+
+    if (addressIndex === -1) {
       return res.status(404).json({ message: "Address not found" });
     }
 
-    // Remove the address
-    userExist.address.id(addressId).remove();
-
-    // Save the updated user
+    // Remove address and save
+    userExist.addresses.splice(addressIndex, 1);
     await userExist.save();
 
     res.json({ message: "Address deleted successfully" });
   } catch (error) {
-    console.error(error);
+    console.error("Delete Address Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
 exports.updateAddressById = async (req, res) => {
   try {
-    const { userId, addressId } = req.params;
+    const userId = req.user._id;
+    const { addressId } = req.params;
     const { street, city, state, zip, longitude, latitude, type } = req.body;
 
     // Validate required fields
@@ -354,7 +357,7 @@ exports.updateAddressById = async (req, res) => {
 };
 exports.getaddress = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId  = req.user._id; 
 
     if (!userId) {
       return res.status(400).json({ message: "userId is required" });
