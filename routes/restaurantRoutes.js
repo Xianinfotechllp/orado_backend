@@ -12,7 +12,12 @@ const {forgotPassword, resetPassword} = require('../controllers/userControllers'
 
 router.get("/all-restaurants", getAllApprovedRestaurants)
 // merchant login/register
-router.post("/register", registerMerchant);
+router.post("/register", upload.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'fssaiDoc', maxCount: 1 },
+    { name: 'gstDoc', maxCount: 1 },
+    { name: 'aadharDoc', maxCount: 1 }
+  ]),createRestaurant);
 router.post("/login", loginMerchant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
