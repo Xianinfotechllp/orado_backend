@@ -182,17 +182,18 @@ exports.placeOrder = async (req, res) => {
       couponCode,
       instructions,
       tipAmount = 0,
-
-      // 📌 New delivery address fields
       street,
       area,
       landmark,
       city,
       state,
-    pincode,
+      pincode,
       country = "India",
     } = req.body;
- console.log(req.body)
+
+    console.log(req.body);
+
+    // Validate required fields
     if (
       !cartId ||
       !userId ||
@@ -205,12 +206,14 @@ exports.placeOrder = async (req, res) => {
     ) {
       return res.status(400).json({ error: "Required fields are missing" });
     }
-    
+
+    // Find cart
     const cart = await Cart.findOne({ _id: cartId, user: userId });
     if (!cart) {
       return res.status(404).json({ error: "Cart not found" });
     }
 
+    // Find restaurant
     const restaurant = await Restaurant.findById(cart.restaurantId);
     if (!restaurant) {
       return res.status(404).json({ error: "Restaurant not found" });
@@ -218,7 +221,7 @@ exports.placeOrder = async (req, res) => {
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
 
-    // Calculate cost summary
+    // Calculate bill summary
     const billSummary = calculateOrderCost({
       cartProducts: cart.products,
       restaurant,
@@ -234,7 +237,7 @@ exports.placeOrder = async (req, res) => {
       totalPrice: item.price * item.quantity,
     }));
 
-    // 📌 Create order object
+    // Create new order
     const newOrder = new Order({
       customerId: userId,
       restaurantId: cart.restaurantId,
@@ -242,19 +245,17 @@ exports.placeOrder = async (req, res) => {
       paymentMethod,
       orderStatus: "pending",
       deliveryLocation: { type: "Point", coordinates: userCoords },
-
       deliveryAddress: {
         street,
         area,
         landmark,
         city,
         state,
-         pincode,
+        pincode,
         country,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
       },
-
       subtotal: billSummary.subtotal,
       tax: billSummary.tax,
       discountAmount: billSummary.discount,
@@ -269,87 +270,106 @@ exports.placeOrder = async (req, res) => {
 
     const savedOrder = await newOrder.save();
 
+    const io = req.app.get("io");
 
+    // Notify restaurant or assign agent based on restaurant permission
     if (restaurant.permissions.canAcceptRejectOrders) {
       console.log("Notify restaurant for order acceptance");
+
+      io.to(`restaurant_${restaurant._id.toString()}`).emit("newOrder", {
+        orderId: savedOrder._id,
+      });
+
     } else {
+      // Auto-assign nearest agent
       const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
         longitude,
         latitude,
       });
 
+      if (assignedAgent) {
+        const updateData = {
+          assignedAgent: assignedAgent._id,
+        };
 
-    // Auto-assign delivery agent
-    const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
-      longitude,
-      latitude,
-    });
+        if (assignedAgent.permissions.canAcceptOrRejectOrders) {
+          updateData.orderStatus = "pending_agent_acceptance";
 
-    if (assignedAgent) {
-      const updateData = {
-        assignedAgent: assignedAgent._id,
-      };
+          console.log("Order sent to agent for acceptance:", assignedAgent.fullName);
 
-      if (assignedAgent.permissions.canAcceptOrRejectOrders) {
-        updateData.orderStatus = "pending_agent_acceptance";
-        console.log("Order sent to agent for acceptance:", assignedAgent.fullName);
+          await sendPushNotification(
+            assignedAgent.userId,
+            "New Delivery Request",
+            "You have a new delivery request. Please accept it."
+          );
 
-        // Send push notification to agent for acceptance
-        await sendPushNotification(assignedAgent.userId, "New Delivery Request", "You have a new delivery request. Please accept it.");
+        } else {
+          updateData.orderStatus = "assigned_to_agent";
+
+          console.log("Order auto-assigned to:", assignedAgent.fullName);
+
+          // Start live tracking
+          io.to(`agent_${assignedAgent._id.toString()}`).emit("startDeliveryTracking", {
+            orderId: savedOrder._id,
+            customerId: savedOrder.customerId,
+            restaurantId: savedOrder.restaurantId,
+          });
+
+          // Notify customer and restaurant
+          io.to(`user_${savedOrder.customerId.toString()}`).emit("agentAssigned", {
+            agentId: assignedAgent._id,
+            orderId: savedOrder._id,
+          });
+
+          io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit("agentAssigned", {
+            agentId: assignedAgent._id,
+            orderId: savedOrder._id,
+          });
+
+          // Send push notifications
+          await sendPushNotification(
+            savedOrder.customerId,
+            "Agent Assigned",
+            "Your order is on the way."
+          );
+
+          await sendPushNotification(
+            savedOrder.restaurantId,
+            "Agent Assigned",
+            "An agent has been assigned to deliver the order."
+          );
+        }
+
+        // Update order with agent assignment status
+        await Order.findByIdAndUpdate(savedOrder._id, updateData);
+
       } else {
-        updateData.orderStatus = "assigned_to_agent";
-        console.log("Order auto-assigned to:", assignedAgent.fullName);
-
-        // Emit socket event to start live tracking immediately
-        const io = req.app.get("io");
-        io.to(`agent_${assignedAgent._id.toString()}`).emit("startDeliveryTracking", {
-          orderId: savedOrder._id,
-          customerId: savedOrder.customerId,
-          restaurantId: savedOrder.restaurantId,
+        // No available agent found
+        console.log("No available agent found for auto-assignment.");
+        await Order.findByIdAndUpdate(savedOrder._id, {
+          orderStatus: "awaiting_agent_assignment",
         });
-
-        // Notify customer and restaurant (optional)
-        io.to(`user_${savedOrder.customerId.toString()}`).emit("agentAssigned", {
-          agentId: assignedAgent._id,
-          orderId: savedOrder._id,
-        });
-
-        io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit("agentAssigned", {
-          agentId: assignedAgent._id,
-          orderId: savedOrder._id,
-        });
-
-        // Optional push notifications
-        await sendPushNotification(savedOrder.customerId, "Agent Assigned", "Your order is on the way.");
-        await sendPushNotification(savedOrder.restaurantId, "Agent Assigned", "An agent has been assigned to deliver the order.");
       }
-
-
-    // // Optional: Clear cart after order placed
-    // await Cart.findByIdAndDelete(cartId);
-
-      await Order.findByIdAndUpdate(savedOrder._id, updateData);
-    }
- else {
-      console.log("No available agent found for auto-assignment.");
-      await Order.findByIdAndUpdate(savedOrder._id, {
-        orderStatus: "awaiting_agent_assignment"
-      });
     }
 
+    // Optional: Clear cart after order placed
+    await Cart.findByIdAndDelete(cartId);
 
+    // Final response
     return res.status(201).json({
       message: "Order placed successfully",
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
       billSummary,
-      orderStatus: savedOrder.orderStatus // Include current status in response
+      orderStatus: savedOrder.orderStatus,
     });
+
   } catch (err) {
     console.error("Error placing order:", err);
     res.status(500).json({ error: "Failed to place order" });
   }
 };
+
 
 
 // Get Order by ID
