@@ -367,6 +367,7 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
     restaurant.approvalStatus = action;
     if (action === "rejected") {
       restaurant.kycRejectionReason = reason || "Not specified";
+      restaurant.approvalRejectionReason = reason || "Not specified"
     } else {
       restaurant.kycRejectionReason = undefined; // clear any previous rejection reason
     }
@@ -381,9 +382,7 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
       req,
     });
     const message = `Hello ${restaurant.name}, your restaurant application has been ${restaurant.approvalStatus.toUpperCase()}.`;
-    if (restaurant.phone) {
-      await sendSms(restaurant.phone, message);
-    }
+   
 
     res.status(200).json({
       message: `Restaurant KYC ${action} successfully.`,
