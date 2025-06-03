@@ -3,11 +3,7 @@ const mongoose = require("mongoose");
 const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    ownerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+    ownerName:String,
     images: [String], // URLs of images (e.g. Cloudinary URLs)
 
     address: {
@@ -45,8 +41,8 @@ const restaurantSchema = new mongoose.Schema(
     ]
     ,
     openingHours: {
-      startTime: { type: String, required: true },
-      endTime: { type: String, required: true },
+      startTime: { type: String },
+      endTime: { type: String },
     },
 
     businessHours: {

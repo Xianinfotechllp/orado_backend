@@ -4,7 +4,13 @@ const router = express.Router();
 
 
 
-const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll  ,getNotificationPrefs,updateNotificationPrefs,getaddress,markAsRead, getUserNotifications, markAllAsRead} = require("../controllers/userControllers");
+const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll ,deleteUser ,getNotificationPrefs,updateNotificationPrefs, getAddress,
+      addFavouriteRestaurant,
+    getFavouriteRestaurants,
+    removeFavouriteRestaurant,
+        getUserNotifications, markAllAsRead
+} = require("../controllers/userControllers");
+
 
 
 
@@ -14,17 +20,17 @@ const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
 const {addAgentReview} = require('../controllers/agentController')
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 
-// Routes
+// // Routes
 router.post("/register", registerUser);
 
-router.post("/verify-otp",verifyOtp);
+// router.post("/verify-otp",verifyOtp);
 
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
-router.get("/adderss/:userId",getaddress)
-// router.post("/address", protect, checkRole('customer'), addAddress)
+router.get("/adderss/:userId",getAddress)
+router.post("/address", protect, checkRole('customer'), addAddress)
 router.post("/address",addAddress)
-// router.put("/address/:addressId", protect, checkRole('customer'), updateAddressById)
+router.put("/address/:addressId", protect, checkRole('customer'), updateAddressById)
 router.put("/:userId/addresses/:addressId",updateAddressById)
 
 router.delete("/delete/:addressId ", protect, checkRole('customer'), deleteAddressById)
@@ -44,6 +50,10 @@ router.post("/logout-all", protect, checkRole('customer'), logoutAll);
 router.post("/:agentId/review", protect, checkRole('customer'), addAgentReview);
 
 
+router.get("/:userId/notifications/preferences",getNotificationPrefs)
+router.put("/:userId/notifications/preferences",updateNotificationPrefs)
+
+
 //notificaton
 router.get('/notifications', protect, getUserNotifications);
 router.patch('/notifications/:id/read', protect, markAsRead);
@@ -57,5 +67,9 @@ router.put("/notifications/preferences/update", protect, updateNotificationPrefs
 router.delete("/delete-account", protect, deleteAccount);
 
 
+
+router.post("/fav/restaurants",protect,addFavouriteRestaurant)
+router.get("/fav/restaurants",protect,getFavouriteRestaurants)
+router.put('/fav/restaurants/remove',protect,removeFavouriteRestaurant);
 
 module.exports = router;
