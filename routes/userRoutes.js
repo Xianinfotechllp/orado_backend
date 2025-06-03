@@ -8,7 +8,7 @@ const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editadd
       addFavouriteRestaurant,
     getFavouriteRestaurants,
     removeFavouriteRestaurant,
-        getUserNotifications, markAllAsRead
+        getUserNotifications, markAllAsRead,markAsRead,deleteAccount
 } = require("../controllers/userControllers");
 
 
@@ -56,7 +56,7 @@ router.put("/:userId/notifications/preferences",updateNotificationPrefs)
 
 //notificaton
 router.get('/notifications', protect, getUserNotifications);
-router.patch('/notifications/:id/read', protect, markAsRead);
+// router.patch('/notifications/:id/read', protect, markAsRead);
 router.patch('/notifications/mark-all-read', protect, markAllAsRead);
 
 

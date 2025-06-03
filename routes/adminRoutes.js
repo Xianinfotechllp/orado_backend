@@ -2,12 +2,14 @@ const express = require("express");
 const router = express.Router();
 const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPendingRestaurantApprovals, updateRestaurantApprovalStatus, 
     logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, 
-    deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs} = require("../controllers/adminController");
+    deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs,getRestaurantById} = require("../controllers/adminController");
 const {protect, checkRole, checkPermission} = require('../middlewares/authMiddleware')
 
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
 router.post("/logout-all", protect, checkRole('admin', 'superAdmin'), logoutAll);
+
+router.get("/restaurant/:restaurantId", protect, checkRole('admin', 'superAdmin'),getRestaurantById)
 
 // Create admins(only for superAdmins)
 router.post("/create-admin", protect, checkRole('superAdmin'), createAdmin);

@@ -74,6 +74,7 @@ router.get('/restaurant/:restaurantId', protect, getOrdersByMerchant);
 
 //bill summary 
 
+
 router.post("/pricesummary", protect, getOrderPriceSummary)
 
 

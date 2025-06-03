@@ -35,30 +35,37 @@ exports.addToCart = async (req,res) => {
       cart.restaurantId = restaurantId;
     }
 
-    for (const prod of products) {
-      if (!prod.productId || !mongoose.Types.ObjectId.isValid(prod.productId)) continue;
+for (const prod of products) {
+  if (!prod.productId || !mongoose.Types.ObjectId.isValid(prod.productId)) continue;
 
-      const productData = await Product.findById(prod.productId);
-      if (!productData || productData.restaurantId.toString() !== restaurantId) continue;
+  const productData = await Product.findById(prod.productId);
+  if (!productData || productData.restaurantId.toString() !== restaurantId) continue;
 
-      const index = cart.products.findIndex(p => p.productId.toString() === prod.productId);
-      const newQty = (prod.quantity && prod.quantity > 0) ? prod.quantity : 1;
-      const price = productData.price;
+  const index = cart.products.findIndex(p => p.productId.toString() === prod.productId);
 
-      if (index > -1) {
-        cart.products[index].quantity = newQty;
-        cart.products[index].total = newQty * price;
-      } else {
-        cart.products.push({
-          productId: prod.productId,
-          name: productData.name,
-          price,
-          quantity: newQty,
-          total: price * newQty
-        });
-      }
+  if (prod.quantity === 0) {
+    // remove the product from cart
+    if (index > -1) {
+      cart.products.splice(index, 1);
     }
+  } else {
+    const newQty = (prod.quantity && prod.quantity > 0) ? prod.quantity : 1;
+    const price = productData.price;
 
+    if (index > -1) {
+      cart.products[index].quantity = newQty;
+      cart.products[index].total = newQty * price;
+    } else {
+      cart.products.push({
+        productId: prod.productId,
+        name: productData.name,
+        price,
+        quantity: newQty,
+        total: price * newQty
+      });
+    }
+  }
+}
     if (cart.products.length === 0) {
       throw { status: 400, message: "No valid products found to add to cart" };
     }
