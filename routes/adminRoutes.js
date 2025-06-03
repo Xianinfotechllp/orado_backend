@@ -9,7 +9,7 @@ router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
 router.post("/logout-all", protect, checkRole('admin', 'superAdmin'), logoutAll);
 
-router.get("/restaurant/:restaurantId",getRestaurantById)
+router.get("/restaurant/:restaurantId", protect, checkRole('admin', 'superAdmin'),getRestaurantById)
 
 // Create admins(only for superAdmins)
 router.post("/create-admin", protect, checkRole('superAdmin'), createAdmin);
