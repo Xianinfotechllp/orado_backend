@@ -8,7 +8,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET  
 });
 
-const uploadOnCloudinary = async (localFilePath) => {
+const uploadOnCloudinary = async (localFilePath, folder = 'orado_uploads') => {
   try {
     if (!localFilePath) return null;
 
@@ -18,23 +18,22 @@ const uploadOnCloudinary = async (localFilePath) => {
       : 'auto';
 
     const response = await cloudinary.uploader.upload(localFilePath, {
-      resource_type: resourceType
+      resource_type: resourceType,
+      folder
     });
 
-    // ✅ Safe delete
-    if (fs.existsSync(localFilePath)) {
-      fs.unlink(localFilePath, err => {
-        if (err) console.error("Failed to delete file:", err);
-      });
-    }
+    // ✅ Safe delete after upload
+    await fs.promises.unlink(localFilePath);
 
     return response;
   } catch (error) {
-    // ✅ Handle deletion even in error case
+    // ✅ Cleanup even on error
     if (fs.existsSync(localFilePath)) {
-      fs.unlink(localFilePath, err => {
-        if (err) console.error("Cleanup failed:", err);
-      });
+      try {
+        await fs.promises.unlink(localFilePath);
+      } catch (delErr) {
+        console.error("Failed to delete file after error:", delErr);
+      }
     }
     console.error("Cloudinary upload error:", error);
     return null;

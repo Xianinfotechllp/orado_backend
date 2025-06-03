@@ -3,11 +3,7 @@ const mongoose = require("mongoose");
 const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    ownerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+    ownerName:String,
     images: [String], // URLs of images (e.g. Cloudinary URLs)
 
     address: {
@@ -45,8 +41,8 @@ const restaurantSchema = new mongoose.Schema(
     ]
     ,
     openingHours: {
-      startTime: { type: String, required: true },
-      endTime: { type: String, required: true },
+      startTime: { type: String },
+      endTime: { type: String },
     },
 
     businessHours: {
@@ -74,17 +70,33 @@ const restaurantSchema = new mongoose.Schema(
     },
     banners: [String],
     merchantSearchName: { type: String },
+    kyc: {
+    fssaiNumber: { type: String, required: true },
+    gstNumber: { type: String, required: true },
+    aadharNumber: { type: String, required: true },
+    },
+    kycDocuments: {
+      fssaiDocUrl: { type: String, required: true },
+      gstDocUrl: { type: String, required: true },
+      aadharDocUrl: { type: String, required: true },
+    },
     kycStatus: {
       type: String,
       enum: ["pending", "approved", "rejected"],
       default: "pending",
-    },  permissions: {
-    canAcceptOrders: { type: Boolean, default: false },
-    canManageMenu: { type: Boolean, default: false },
-  },
-    kycDocuments: {
-      type: [String],
-      default: [],
+    },
+    kycRejectionReason: {
+      type: String,
+      default: null,
+    },
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending"
+    },
+    permissions: {
+      canAcceptOrders: { type: Boolean, default: false },
+      canManageMenu: { type: Boolean, default: false },
     },
     rating: { type: Number, default: 0 },
     serviceAreas: [

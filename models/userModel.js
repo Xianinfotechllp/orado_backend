@@ -1,5 +1,35 @@
 const mongoose = require("mongoose");
 
+const addressSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["Home", "Work", "Other"],
+      default: "Home",
+    },
+    displayName: {
+      type: String
+    },
+    street: String,
+    city: String,
+    state: String,
+    zip: String,
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: [0, 0],
+      },
+    },
+  },
+  { _id: true }
+);
+
+
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -14,7 +44,7 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // 🔥Super Admin  Flag
+    // Super Admin  Flag
     isSuperAdmin: { type: Boolean, default: false },
 
     //  Admin Permission System
@@ -38,23 +68,7 @@ const userSchema = new mongoose.Schema(
       submittedAt: { type: Date },
     },
 
-    address: {
-      street: String,
-      city: String,
-      state: String,
-      zip: String,
-      location: {
-        type: {
-          type: String,
-          enum: ["Point"],
-          default: "Point"
-        },
-        coordinates: {
-          type: [Number],
-          default: [0, 0]
-        }
-      }
-    },
+    addresses: [addressSchema], 
 
     active: { type: Boolean, default: true },
 

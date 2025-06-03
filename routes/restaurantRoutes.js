@@ -5,22 +5,19 @@ const {registerMerchant, loginMerchant, logoutMerchant, logoutAll} = require('..
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 
 const {upload} = require('../middlewares/multer')
-
-
-
+const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
+// get all restruants (for users)
+
+router.get("/all-restaurants", getAllApprovedRestaurants)
 // merchant login/register
-router.post(
-  "/register",
-  upload.fields([
-    { name: "aadhaarCard", maxCount: 1 },
-    { name: "fssaiLicense", maxCount: 1 },
-    { name: "gstCertificate", maxCount: 1 },
-  ]),
-  registerMerchant
-);
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu,getRestaurantEarningSummary}  = require('../controllers/restaurantController')
+router.post("/register", upload.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'fssaiDoc', maxCount: 1 },
+    { name: 'gstDoc', maxCount: 1 },
+    { name: 'aadharDoc', maxCount: 1 }
+  ]),createRestaurant);
 router.post("/login", loginMerchant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
@@ -28,9 +25,16 @@ router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
 router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
 
 
-
 // restaurant routes
-router.post("/", upload.array('images', 1), protect, checkRole('merchant'), createRestaurant);
+router.post(
+  '/',
+  upload.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'fssaiDoc', maxCount: 1 },
+    { name: 'gstDoc', maxCount: 1 },
+    { name: 'aadharDoc', maxCount: 1 }
+  ]),
+  protect, checkRole('merchant'), createRestaurant);
 router.put("/:restaurantId", upload.array('images', 1), protect, checkRole('merchant'), updateRestaurant);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
 // router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)

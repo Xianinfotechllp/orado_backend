@@ -22,44 +22,44 @@ const {
   merchantRejectOrder,
   getOrdersByMerchant,
   getOrderPriceSummary,
-  placeOrder
- 
+  placeOrder,
+  reorder
   
 } = require('../controllers/orderController');
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, checkRestaurantPermission } = require('../middlewares/authMiddleware');
 
 // orders
-router.post('/create', createOrder); // Create new order
-router.get('/', getAllOrders); // Admin - get all orders
-router.get('/:orderId', getOrderById); // Get specific order
+router.post('/create', protect, createOrder); // Create new order
+router.get('/', protect, getAllOrders); // Admin - get all orders
+router.get('/:orderId', protect, getOrderById); // Get specific order
 
 // customer and agent orders
-router.get('/customer/:customerId', getOrdersByCustomer);
-router.get('/customer/:customerId/status', getOrdersByCustomer);
-router.get('/agent/:agentId', getOrdersByAgent);
+router.get('/customer/orders', protect, getOrdersByCustomer);
+router.get('/customer/:customerId/status', protect, getOrdersByCustomer);
+router.get('/agent/:agentId', protect, getOrdersByAgent);
 
 // updates and actions on orders
-router.put('/:orderId/status', updateOrderStatus);
-router.post('/:orderId/cancel', cancelOrder);
+router.put('/:orderId/status', protect, updateOrderStatus);
+router.post('/:orderId/cancel', protect, cancelOrder);
 router.post(
   '/:orderId/review',
   upload.fields([
     { name: 'customerImages', maxCount: 3 },
     { name: 'restaurantImages', maxCount: 2 },
-  ]),
+  ]), protect,
   reviewOrder
 );
-router.put('/:orderId/delivery-mode', updateDeliveryMode);
-router.put('/:orderId/agent', assignAgent);
-router.put('/:orderId/scheduled-time', updateScheduledTime);
-router.put('/:orderId/instructions', updateInstructions);
-router.post('/:orderId/apply-discount', applyDiscount);
+router.put('/:orderId/delivery-mode', protect, updateDeliveryMode);
+router.put('/:orderId/agent', protect, assignAgent);
+router.put('/:orderId/scheduled-time', protect, updateScheduledTime);
+router.put('/:orderId/instructions', protect, updateInstructions);
+router.post('/:orderId/apply-discount', protect, applyDiscount);
 
 
 //-ordershedules-//
-router.get('/admin/scheduled-orders', getScheduledOrders);
-router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders); 
+router.get('/admin/scheduled-orders', protect, getScheduledOrders);
+router.get('/customer/:customerId/scheduled-orders', protect, getCustomerScheduledOrders); 
 // router.put('/reschedule/:orderId', rescheduleOrder);
 
 //merchants actins
@@ -67,16 +67,27 @@ router.get('/customer/:customerId/scheduled-orders', getCustomerScheduledOrders)
 router.put('/:orderId/merchant-accept', protect, checkRole('merchant'), checkRestaurantPermission('canAcceptOrder', true), merchantAcceptOrder);
 router.put('/:orderId/merchant-reject', protect, checkRole('merchant'), checkRestaurantPermission('canRejectOrder', true), merchantRejectOrder)
 // router.get('/restaurant/:restaurantId', protect, checkRole('merchant'), getOrdersByMerchant);
-router.get('/restaurant/:restaurantId', getOrdersByMerchant);
+router.get('/restaurant/:restaurantId', protect, getOrdersByMerchant);
 
 
 
 
 //bill summary 
-router.post("/pricesummary",getOrderPriceSummary)
+
+
+router.post("/pricesummary", protect, getOrderPriceSummary)
 
 
 //place order 
-router.post("/order/place-order",placeOrder)
+router.post("/place-order", protect, placeOrder)
+
+// Reorder route
+router.post('/reorder/:orderId', protect, reorder);
+
+
+
+
+
+
 
 module.exports = router;

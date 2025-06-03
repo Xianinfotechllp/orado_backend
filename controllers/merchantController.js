@@ -13,45 +13,16 @@ exports.registerMerchant = async (req, res) => {
       email,
       phone,
       password,
-      aadhaarNumber,
-      fssaiNumber,
-      gstNumber
     } = req.body;
 
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ message: "All basic fields are required." });
     }
 
-    const aadhaarCardFile = req.files?.aadhaarCard?.[0];
-    const fssaiLicenseFile = req.files?.fssaiLicense?.[0];
-    const gstCertificateFile = req.files?.gstCertificate?.[0];
-
-    if (!aadhaarCardFile || !fssaiLicenseFile || !gstCertificateFile) {
-      return res.status(400).json({ message: "All documents are required." });
-    }
-
     // Check for existing user
     const existing = await User.findOne({ $or: [{ email }, { phone }] });
     if (existing) {
       return res.status(409).json({ message: "Email or phone already in use." });
-    }
-
-    // Upload files to Cloudinary
-    let aadhaarCardUrl = "", fssaiLicenseUrl = "", gstCertificateUrl = "";
-
-    if (aadhaarCardFile) {
-      const result = await uploadOnCloudinary(aadhaarCardFile.path);
-      aadhaarCardUrl = result?.secure_url;
-    }
-
-    if (fssaiLicenseFile) {
-      const result = await uploadOnCloudinary(fssaiLicenseFile.path);
-      fssaiLicenseUrl = result?.secure_url;
-    }
-
-    if (gstCertificateFile) {
-      const result = await uploadOnCloudinary(gstCertificateFile.path);
-      gstCertificateUrl = result?.secure_url;
     }
 
     // Hash password
@@ -64,22 +35,12 @@ exports.registerMerchant = async (req, res) => {
       email,
       phone,
       password: hashedPassword,
-      userType: "merchant",
-      merchantApplication: {
-        aadhaarCard: aadhaarCardUrl,
-        aadhaarNumber,
-        fssaiLicense: fssaiLicenseUrl,
-        fssaiNumber,
-        gstCertificate: gstCertificateUrl,
-        gstNumber,
-        submittedAt: new Date(),
-        status: "pending"
-      }
+      userType: "merchant"
     });
 
     await newMerchant.save();
 
-    res.status(201).json({ message: "Merchant registration submitted! Awaiting approval." });
+    res.status(201).json({ message: "Merchant registration submitted!" });
   } catch (err) {
     console.error("Merchant registration error:", err);
     res.status(500).json({ message: "Internal server error." });
@@ -102,14 +63,6 @@ exports.loginMerchant = async (req, res) => {
 
     if (!userExist) {
       return res.status(404).json({ message: "Merchant not found." });
-    }
-
-    // Check if merchant is approved
-    if (
-      !userExist.merchantApplication ||
-      userExist.merchantApplication.status !== "approved"
-    ) {
-      return res.status(403).json({ message: "Merchant not approved yet." });
     }
 
     const isPasswordValid = await bcrypt.compare(password, userExist.password);

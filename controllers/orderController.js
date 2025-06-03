@@ -17,6 +17,7 @@ const Permission = require("../models/restaurantPermissionModel");
 
 const Restaurant = require("../models/restaurantModel");
 const { sendPushNotification } = require("../utils/sendPushNotification");
+const {NotificationPreference} = require("../models/notificationModel");
 const {
   awardDeliveryPoints,
   awardPointsToRestaurant,
@@ -127,6 +128,11 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order(orderData);
     const savedOrder = await newOrder.save();
+     // Clear cart after order placed
+    await Cart.findOneAndUpdate(
+      { userId: userId },
+      { products: [], totalPrice: 0 }
+    );
 
     //  Check permission for auto-accept
     const permission = await Permission.findOne({ restaurantId });
@@ -139,7 +145,7 @@ exports.createOrder = async (req, res) => {
 
       // Notify customer
       if (io) {
-        io.to(customerId?.toString()).emit("order-accepted", {
+        io.to(`user_${customerId?.toString()}`).emit("order-accepted", {
           message: "Order auto-accepted",
           order: savedOrder,
         });
@@ -153,8 +159,8 @@ exports.createOrder = async (req, res) => {
       "an new order placed by cusotmer"
     );
 
-    // ✅ send realtime notification via Socket.IO
-    io.to(restaurantId).emit("new-order", {
+    //  send realtime notification via Socket.IO
+    io.to(`restaurant_${restaurantId}`).emit("new-order", {
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
       orderItems: savedOrder.orderItems,
@@ -172,6 +178,7 @@ exports.createOrder = async (req, res) => {
   }
 };
 
+
 exports.placeOrder = async (req, res) => {
   try {
     const {
@@ -183,25 +190,41 @@ exports.placeOrder = async (req, res) => {
       couponCode,
       instructions,
       tipAmount = 0,
+      street,
+      area,
+      landmark,
+      city,
+      state,
+      pincode, // 👈 fixed indentation
+      country = "India",
     } = req.body;
 
-    if (!cartId || !userId || !paymentMethod || !longitude || !latitude) {
-      return res.status(400).json({ error: "Required fields are missing" });
+    console.log(req.body);
+
+    // ✅ Basic validation
+    if (
+      !cartId ||
+      !userId ||
+      !paymentMethod ||
+      !longitude ||
+      !latitude ||
+      !street ||
+      !city ||
+      !pincode
+    ) {
+      return res.status(400).json({ message: "Required fields are missing" ,messageType:"failure" });
     }
 
-    const cart = await Cart.findOne({ _id: cartId, userId });
-    if (!cart) {
-      return res.status(404).json({ error: "Cart not found" });
-    }
+    // ✅ Find cart and restaurant
+    const cart = await Cart.findOne({ _id: cartId, user: userId });
+    if (!cart) return res.status(404).json({ message: "Cart not found",messageType:"failure"});
 
     const restaurant = await Restaurant.findById(cart.restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ error: "Restaurant not found" });
-    }
+    if (!restaurant) return res.status(404).json({ message: "Restaurant not found",messageType:"failure" });
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
 
-    // Calculate cost summary
+    // ✅ Calculate bill summary
     const billSummary = calculateOrderCost({
       cartProducts: cart.products,
       restaurant,
@@ -209,22 +232,40 @@ exports.placeOrder = async (req, res) => {
       couponCode,
     });
 
-    const orderItems = cart.products.map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      price: item.price,
-      name: item.name,
-      totalPrice: item.price * item.quantity,
-    }));
+    // ✅ Map order items with product images
+    const orderItems = await Promise.all(
+      cart.products.map(async (item) => {
+        const product = await Product.findById(item.productId).select("images");
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+          name: item.name,
+          totalPrice: item.price * item.quantity,
+          image: product?.images?.[0] || null,
+        };
+      })
+    );
 
-    // Create order object
+    // ✅ Create and save order
     const newOrder = new Order({
       customerId: userId,
       restaurantId: cart.restaurantId,
       orderItems,
       paymentMethod,
       orderStatus: "pending",
-      location: { type: "Point", coordinates: userCoords },
+      deliveryLocation: { type: "Point", coordinates: userCoords },
+      deliveryAddress: {
+        street,
+        area,
+        landmark,
+        city,
+        state,
+        pincode,
+        country,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+      },
       subtotal: billSummary.subtotal,
       tax: billSummary.tax,
       discountAmount: billSummary.discount,
@@ -238,30 +279,79 @@ exports.placeOrder = async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
+
+    const io = req.app.get("io");
+
+    // ✅ Restaurant permissions check
     if (restaurant.permissions.canAcceptRejectOrders) {
       console.log("Notify restaurant for order acceptance");
+      // You can emit socket or notification here if needed
     } else {
-      // Auto-assign delivery agent immediately
+      // ✅ Auto-assign delivery agent
       const assignedAgent = await findAndAssignNearestAgent(savedOrder._id, {
         longitude,
         latitude,
       });
 
       if (assignedAgent) {
-        console.log("Order auto-assigned to:", assignedAgent.fullName);
+        let updateData = { assignedAgent: assignedAgent._id };
+
+        if (assignedAgent.permissions.canAcceptOrRejectOrders) {
+          updateData.orderStatus = "pending_agent_acceptance";
+          console.log("Order sent to agent for acceptance:", assignedAgent.fullName);
+
+          await sendPushNotification(
+            assignedAgent.userId,
+            "New Delivery Request",
+            "You have a new delivery request. Please accept it."
+          );
+        } else {
+          updateData.orderStatus = "assigned_to_agent";
+          console.log("Order auto-assigned to:", assignedAgent.fullName);
+
+          io.to(`agent_${assignedAgent._id}`).emit("startDeliveryTracking", {
+            orderId: savedOrder._id,
+            customerId: savedOrder.customerId,
+            restaurantId: savedOrder.restaurantId,
+          });
+
+          io.to(`user_${savedOrder.customerId}`).emit("agentAssigned", {
+            agentId: assignedAgent._id,
+            orderId: savedOrder._id,
+          });
+
+          io.to(`restaurant_${savedOrder.restaurantId}`).emit("agentAssigned", {
+            agentId: assignedAgent._id,
+            orderId: savedOrder._id,
+          });
+
+          await sendPushNotification(
+            savedOrder.customerId,
+            "Agent Assigned",
+            "Your order is on the way."
+          );
+          await sendPushNotification(
+            savedOrder.restaurantId,
+            "Agent Assigned",
+            "An agent has been assigned to deliver the order."
+          );
+        }
+
+        await Order.findByIdAndUpdate(savedOrder._id, updateData);
       } else {
         console.log("No available agent found for auto-assignment.");
+        await Order.findByIdAndUpdate(savedOrder._id, {
+          orderStatus: "awaiting_agent_assignment",
+        });
       }
     }
-
-    // // Clear cart
-    // await Cart.findByIdAndDelete(cartId);
 
     return res.status(201).json({
       message: "Order placed successfully",
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
       billSummary,
+      orderStatus: savedOrder.orderStatus,
     });
   } catch (err) {
     console.error("Error placing order:", err);
@@ -287,7 +377,10 @@ exports.getOrderById = async (req, res) => {
 // Get Orders by Customer
 exports.getOrdersByCustomer = async (req, res) => {
   try {
-    const orders = await Order.find({ customerId: req.params.customerId });
+    const customerId = req.user._id;
+    const orders = await Order.find({ customerId })
+                  .populate("restaurantId", "name location address")
+                  .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
@@ -609,7 +702,7 @@ exports.merchantAcceptOrder = async (req, res) => {
     // ✅ Emit to customer via Socket.IO
     const io = req.app.get("io");
     if (io) {
-      io.to(order.customerId.toString()).emit("order-accepted", {
+      io.to(`user_${order.customerId.toString()}`).emit("order-accepted", {
         message: "Your order has been accepted by the restaurant",
         order,
       });
@@ -662,7 +755,7 @@ exports.merchantRejectOrder = async (req, res) => {
     // Emit event via Socket.IO
     const io = req.app.get("io");
     if (io) {
-      io.to(order.restaurantId.toString()).emit("order-rejected", {
+      io.to(`user_${order.restaurantId.toString()}`).emit("order-rejected", {
         orderId: order._id,
         message: "Order has been rejected by the merchant",
         reason: order.rejectionReason,
@@ -803,7 +896,8 @@ exports.getOrderPriceSummary = async (req, res) => {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
 
-    const cart = await Cart.findOne({ _id: cartId });
+    const cart = await Cart.findOne({ _id: cartId, user:userId });
+
     if (!cart) {
       return res.status(404).json({ error: "Cart not found for this user" });
     }
@@ -830,10 +924,163 @@ exports.getOrderPriceSummary = async (req, res) => {
 
     return res.status(200).json({
       message: "Bill summary calculated successfully",
-      billSummary: costSummary,
+      data: costSummary,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  }
+
+};
+
+exports.reassignExpiredOrders = async () => {
+  try {
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now - 5 * 60 * 1000);
+    const thirtyMinutesAgo = new Date(now - 30 * 60 * 1000);
+
+    // 1. Reassign orders stuck in 'pending_agent_acceptance'
+    const pendingOrders = await Order.find({
+      orderStatus: "pending_agent_acceptance",
+      $or: [
+        { "agentRespondedAt": { $exists: false } },
+        { "agentRespondedAt": { $lte: fiveMinutesAgo } }
+      ]
+    }).populate("assignedAgent", "permissions.maxCODAmount codTracking.currentCODHolding");
+
+    for (const order of pendingOrders) {
+      // Release the original agent
+      if (order.assignedAgent) {
+        await Agent.findByIdAndUpdate(order.assignedAgent._id, {
+          $inc: { "deliveryStatus.currentOrderCount": -1 },
+          "deliveryStatus.status": "Available"
+        });
+      }
+
+      // Reset order status
+      await Order.findByIdAndUpdate(order._id, {
+        assignedAgent: null,
+        orderStatus: "awaiting_agent_assignment",
+        $push: { 
+          reassignmentHistory: { 
+            timestamp: new Date(),
+            reason: "agent_acceptance_timeout" 
+          } 
+        }
+      });
+
+      // Reassign with COD check (using updated findAndAssignNearestAgent)
+      await findAndAssignNearestAgent(
+        order._id,
+        {
+          longitude: order.location.coordinates[0],
+          latitude: order.location.coordinates[1]
+        }
+      );
+    }
+
+    // 2. Handle orders stuck in 'awaiting_agent_assignment'
+    const unassignedOrders = await Order.find({
+      orderStatus: "awaiting_agent_assignment",
+      createdAt: { $lte: thirtyMinutesAgo }
+    });
+
+    if (unassignedOrders.length > 0) {
+      
+      // Option 1: Expand search radius gradually
+      for (const order of unassignedOrders) {
+        await findAndAssignNearestAgent(
+          order._id,
+          {
+            longitude: order.location.coordinates[0],
+            latitude: order.location.coordinates[1]
+          },
+          10000 // 10km instead of default 5km
+        );
+      }
+
+      // Option 2: Notify admin
+      await notifyAdmin({
+        title: "Unassigned Order Alert",
+        message: `${unassignedOrders.length} orders need manual assignment.`,
+        urgency: "high"
+      });
+    }
+
+    return {
+      reassigned: pendingOrders.length,
+      longPending: unassignedOrders.length
+    };
+  } catch (error) {
+    console.error("[reassignExpiredOrders] Failed:", error);
+    throw error;
+  }
+
+};
+
+// Reorder previous order
+
+exports.reorder = async (req, res) => {
+  try {
+    const userId = req.user._id; 
+    
+    const { orderId } = req.params;
+
+    const previousOrder = await Order.findById(orderId);
+    if (!previousOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (previousOrder.customerId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Unauthorized access to this order' });
+    }
+
+    // Clean up any existing cart
+    await Cart.findOneAndDelete({ userId });
+
+    const products = [];
+
+    for (const item of previousOrder.orderItems) {
+      const product = await Product.findById(item.productId);
+      if (!product || !product.active) continue; // skip deleted/inactive products
+
+      const currentPrice = product.price;
+      const quantity = item.quantity;
+
+      products.push({
+        productId: product._id,
+        name: product.name,
+        price: currentPrice,
+        quantity,
+        total: currentPrice * quantity,
+      });
+    }
+
+    if (products.length === 0) {
+      return res.status(400).json({ message: 'No products from the original order are available.' });
+    }
+
+    const totalPrice = products.reduce((sum, p) => sum + p.total, 0);
+
+    const newCart = new Cart({
+      userId,
+      restaurantId: previousOrder.restaurantId,
+      products,
+      totalPrice,
+    });
+
+    await sendPushNotification(
+      userId,
+      `ReOrder Placed with with order id ${orderId}`,
+      `Here are the products ${products}`,
+      'orderUpdates'
+    );
+
+    await newCart.save();
+
+    res.status(200).json({ message: 'Cart created from previous order.', cart: newCart });
+  } catch (error) {
+    console.error('Error in reorder:', error);
+    res.status(500).json({ message: 'Something went wrong while reordering.' });
   }
 };

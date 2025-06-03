@@ -1,28 +1,51 @@
-const  mongoose  = require('mongoose');
+const mongoose = require('mongoose');
 
 const chatSchema = new mongoose.Schema({
-  sender: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  receiver: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  message: {
-    type: String,
-    trim: true,
-    required: true
-  },
-  image: {
-    type: String // URL of the uploaded image (optional)
-  },
-  readBy: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+  participants: [{
+    id: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true
+    },
+    modelType: {
+      type: String,
+      enum: ['user', 'admin', 'restaurant', 'agent'],
+      required: true
+    }
   }],
+  messages: [{
+    sender: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true
+    },
+    senderModel: {
+      type: String,
+      enum: ['user', 'admin', 'restaurant', 'agent'],
+      required: true
+    },
+    content: {
+      type: String,
+      trim: true,
+      required: true
+    },
+    attachments: [{
+      url: String,
+      type: {
+        type: String,
+        enum: ['image', 'document', 'other']
+      }
+    }],
+    readBy: [{
+      type: mongoose.Schema.Types.ObjectId
+    }],
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  lastMessage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message'
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -33,6 +56,9 @@ const chatSchema = new mongoose.Schema({
   }
 });
 
-const Chat = mongoose.model('Chat',chatSchema);
+// Add compound index for participants
+chatSchema.index({ 'participants.id': 1, 'participants.modelType': 1 });
 
-module.exports =  Chat
+const Chat = mongoose.model('Chat', chatSchema);
+
+module.exports = Chat;
