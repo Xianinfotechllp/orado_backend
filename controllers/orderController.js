@@ -17,6 +17,7 @@ const Permission = require("../models/restaurantPermissionModel");
 
 const Restaurant = require("../models/restaurantModel");
 const { sendPushNotification } = require("../utils/sendPushNotification");
+const {NotificationPreference} = require("../models/notificationModel");
 const {
   awardDeliveryPoints,
   awardPointsToRestaurant,
@@ -127,6 +128,11 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order(orderData);
     const savedOrder = await newOrder.save();
+     // Clear cart after order placed
+    await Cart.findOneAndUpdate(
+      { userId: userId },
+      { products: [], totalPrice: 0 }
+    );
 
     //  Check permission for auto-accept
     const permission = await Permission.findOne({ restaurantId });
@@ -171,6 +177,7 @@ exports.createOrder = async (req, res) => {
       .json({ error: "Failed to create order", details: err.message });
   }
 };
+
 exports.placeOrder = async (req, res) => {
   try {
     const {
@@ -191,9 +198,6 @@ exports.placeOrder = async (req, res) => {
       country = "India",
     } = req.body;
 
-    console.log(req.body);
-
-    // Validate required fields
     if (
       !cartId ||
       !userId ||
@@ -229,13 +233,22 @@ exports.placeOrder = async (req, res) => {
       couponCode,
     });
 
-    const orderItems = cart.products.map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      price: item.price,
-      name: item.name,
-      totalPrice: item.price * item.quantity,
-    }));
+    const orderItems = await Promise.all(
+      cart.products.map(async (item) => {
+        const product = await Product.findById(item.productId).select('images');
+
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+          name: item.name,
+          totalPrice: item.price * item.quantity,
+          image: product?.images?.[0] || 'https://example.com/default-image.jpg',
+        };
+      })
+    );
+
+
 
     // Create new order
     const newOrder = new Order({
@@ -274,10 +287,20 @@ exports.placeOrder = async (req, res) => {
 
     // Notify restaurant or assign agent based on restaurant permission
     if (restaurant.permissions.canAcceptRejectOrders) {
+
       console.log("Notify restaurant for order acceptance");
 
       io.to(`restaurant_${restaurant._id.toString()}`).emit("newOrder", {
         orderId: savedOrder._id,
+      });
+
+
+      return res.status(201).json({
+        message: "Order placed successfully",
+        orderId: savedOrder._id,
+        totalAmount: savedOrder.totalAmount,
+        billSummary,
+        orderStatus: "pending_restaurant_acceptance"
       });
 
     } else {
@@ -286,6 +309,7 @@ exports.placeOrder = async (req, res) => {
         longitude,
         latitude,
       });
+
 
       if (assignedAgent) {
         const updateData = {
@@ -343,13 +367,51 @@ exports.placeOrder = async (req, res) => {
         // Update order with agent assignment status
         await Order.findByIdAndUpdate(savedOrder._id, updateData);
 
+    if (assignedAgent) {
+      const updateData = {
+        assignedAgent: assignedAgent._id,
+      };
+
+      if (assignedAgent.permissions.canAcceptOrRejectOrders) {
+        updateData.orderStatus = "pending_agent_acceptance";
+
+
       } else {
+
         // No available agent found
         console.log("No available agent found for auto-assignment.");
         await Order.findByIdAndUpdate(savedOrder._id, {
           orderStatus: "awaiting_agent_assignment",
+
+        updateData.orderStatus = "assigned_to_agent";
+
+        // Emit socket event to start live tracking immediately
+        const io = req.app.get("io");
+        io.to(`agent_${assignedAgent._id.toString()}`).emit("startDeliveryTracking", {
+          orderId: savedOrder._id,
+          customerId: savedOrder.customerId,
+          restaurantId: savedOrder.restaurantId,
+        });
+
+        // Notify customer and restaurant (optional)
+        io.to(`user_${savedOrder.customerId.toString()}`).emit("agentAssigned", {
+          agentId: assignedAgent._id,
+          orderId: savedOrder._id,
+
         });
       }
+
+
+
+
+
+      await Order.findByIdAndUpdate(savedOrder._id, updateData);
+    }
+ else {
+      await Order.findByIdAndUpdate(savedOrder._id, {
+        orderStatus: "awaiting_agent_assignment"
+      });
+
     }
 
     // Optional: Clear cart after order placed
@@ -364,7 +426,9 @@ exports.placeOrder = async (req, res) => {
       orderStatus: savedOrder.orderStatus,
     });
 
+
   } catch (err) {
+
     console.error("Error placing order:", err);
     res.status(500).json({ error: "Failed to place order" });
   }
@@ -390,7 +454,10 @@ exports.getOrderById = async (req, res) => {
 // Get Orders by Customer
 exports.getOrdersByCustomer = async (req, res) => {
   try {
-    const orders = await Order.find({ customerId: req.params.customerId });
+    const customerId = req.user._id;
+    const orders = await Order.find({ customerId })
+                  .populate("restaurantId", "name location address")
+                  .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
@@ -994,7 +1061,6 @@ exports.reassignExpiredOrders = async () => {
     });
 
     if (unassignedOrders.length > 0) {
-      console.log(`[${new Date().toISOString()}] ${unassignedOrders.length} orders unassigned for >30m`);
       
       // Option 1: Expand search radius gradually
       for (const order of unassignedOrders) {
@@ -1025,4 +1091,71 @@ exports.reassignExpiredOrders = async () => {
     throw error;
   }
 
+};
+
+// Reorder previous order
+
+exports.reorder = async (req, res) => {
+  try {
+    const userId = req.user._id; 
+    
+    const { orderId } = req.params;
+
+    const previousOrder = await Order.findById(orderId);
+    if (!previousOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (previousOrder.customerId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Unauthorized access to this order' });
+    }
+
+    // Clean up any existing cart
+    await Cart.findOneAndDelete({ userId });
+
+    const products = [];
+
+    for (const item of previousOrder.orderItems) {
+      const product = await Product.findById(item.productId);
+      if (!product || !product.active) continue; // skip deleted/inactive products
+
+      const currentPrice = product.price;
+      const quantity = item.quantity;
+
+      products.push({
+        productId: product._id,
+        name: product.name,
+        price: currentPrice,
+        quantity,
+        total: currentPrice * quantity,
+      });
+    }
+
+    if (products.length === 0) {
+      return res.status(400).json({ message: 'No products from the original order are available.' });
+    }
+
+    const totalPrice = products.reduce((sum, p) => sum + p.total, 0);
+
+    const newCart = new Cart({
+      userId,
+      restaurantId: previousOrder.restaurantId,
+      products,
+      totalPrice,
+    });
+
+    await sendPushNotification(
+      userId,
+      `ReOrder Placed with with order id ${orderId}`,
+      `Here are the products ${products}`,
+      'orderUpdates'
+    );
+
+    await newCart.save();
+
+    res.status(200).json({ message: 'Cart created from previous order.', cart: newCart });
+  } catch (error) {
+    console.error('Error in reorder:', error);
+    res.status(500).json({ message: 'Something went wrong while reordering.' });
+  }
 };

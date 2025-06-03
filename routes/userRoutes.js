@@ -3,11 +3,15 @@ const router = express.Router();
 
 
 
+
 const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll ,deleteUser ,getNotificationPrefs,updateNotificationPrefs, getAddress,
       addFavouriteRestaurant,
     getFavouriteRestaurants,
-    removeFavouriteRestaurant
+    removeFavouriteRestaurant,
+        getUserNotifications, markAllAsRead
 } = require("../controllers/userControllers");
+
+
 
 
 
@@ -38,16 +42,31 @@ router.post("/logout", protect, checkRole('customer'), logoutUser);
 router.post("/logout-all", protect, checkRole('customer'), logoutAll);
 
 // GDPR-delete
-router.delete("/delete/:userId",deleteUser)
+// router.delete("/delete/:userId",deleteUser)
 
 
 
 // post agent review
 router.post("/:agentId/review", protect, checkRole('customer'), addAgentReview);
 
-// notificaton prefs
+
 router.get("/:userId/notifications/preferences",getNotificationPrefs)
 router.put("/:userId/notifications/preferences",updateNotificationPrefs)
+
+
+//notificaton
+router.get('/notifications', protect, getUserNotifications);
+router.patch('/notifications/:id/read', protect, markAsRead);
+router.patch('/notifications/mark-all-read', protect, markAllAsRead);
+
+
+router.get("/notifications/preferences", protect, getNotificationPrefs)
+router.put("/notifications/preferences/update", protect, updateNotificationPrefs)
+
+// Delete Account
+router.delete("/delete-account", protect, deleteAccount);
+
+
 
 router.post("/fav/restaurants",protect,addFavouriteRestaurant)
 router.get("/fav/restaurants",protect,getFavouriteRestaurants)
