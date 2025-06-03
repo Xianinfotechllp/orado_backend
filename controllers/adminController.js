@@ -374,13 +374,13 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
 
     await restaurant.save();
 
-    // For logging this
-    await logAccess({
-      userId: req.user._id,
-      action: "restaurant.registration",
-      description: `${action} restaurant registration for restaurant named ${restaurant.name} with id ${restaurantId}`,
-      req,
-    });
+    // // For logging this
+    // await logAccess({
+    //   userId: req.user._id,
+    //   action: "restaurant.registration",
+    //   description: `${action} restaurant registration for restaurant named ${restaurant.name} with id ${restaurantId}`,
+    //   req,
+    // });
     const message = `Hello ${restaurant.name}, your restaurant application has been ${restaurant.approvalStatus.toUpperCase()}.`;
    
 
