@@ -324,9 +324,6 @@ exports.getPendingRestaurantApprovals = async (req, res) => {
   try {
     // Fetch restaurants where kycStatus is 'pending'
     const pendingRestaurants = await Restaurant.find({ kycStatus: "pending" })
-      .populate("ownerId", "name email phone") // Optional: show owner's info
-      .select("-__v"); // Clean response, remove version key
-
     res.status(200).json({
       message: "Pending restaurant approval requests fetched successfully.",
       total: pendingRestaurants.length,
