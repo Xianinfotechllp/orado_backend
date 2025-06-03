@@ -706,3 +706,43 @@ exports.getMyLogs = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+
+
+// ✅ Get restaurant details by ID for Admin
+exports.getRestaurantById = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    // Validate restaurantId format
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid restaurant ID",
+      });
+    }
+
+    const restaurant = await Restaurant.findById(restaurantId)
+
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: "Restaurant not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Restaurant details fetched successfully",
+      data: restaurant,
+    });
+
+  } catch (err) {
+    console.error(`❌ Error fetching restaurant (ID: ${req.params.restaurantId}):`, err);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while fetching restaurant details",
+      error: err.message,
+    });
+  }
+};
