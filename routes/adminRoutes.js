@@ -47,7 +47,7 @@ router.get("/access-logs", protect, checkRole('superAdmin'), getAllAccessLogs);
 router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLogs);
 
 
-router.put("/edit/restaurant/:restaurantId",checkRole('admin', 'superAdmin'),updateRestaurant)
+router.put("/edit/restaurant/:restaurantId",protect,checkRole('admin', 'superAdmin'),updateRestaurant)
 
 
 module.exports = router;
