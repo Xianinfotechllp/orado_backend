@@ -5,15 +5,9 @@ const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
 const Category = require("../models/categoryModel")
 
+
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary'); 
-
-
-
-
-
-
-
 
 
 exports.createRestaurant = async (req, res) => {
@@ -23,6 +17,7 @@ exports.createRestaurant = async (req, res) => {
     // 1️⃣ Required fields validation
     const requiredFields = [
       'name', 'ownerName', 'phone', 'email', 
+      'password', // Password is now required
       'fssaiNumber', 'gstNumber', 'aadharNumber',
       'address.street', 'address.city', 'address.state',
       'foodType', 'openingHours'
@@ -46,7 +41,16 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    // 2️⃣ foodType validation
+    // 2️⃣ Password validation
+    if (req.body.password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long',
+        code: 'WEAK_PASSWORD'
+      });
+    }
+
+    // 3️⃣ foodType validation
     const validFoodTypes = ['veg', 'non-veg', 'both'];
     if (!validFoodTypes.includes(req.body.foodType.trim())) {
       return res.status(400).json({
@@ -56,7 +60,7 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    // 3️⃣ openingHours validation
+    // 4️⃣ openingHours validation
     let openingHours;
     try {
       openingHours = JSON.parse(req.body.openingHours);
@@ -69,7 +73,7 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    // 4️⃣ Required documents check
+    // 5️⃣ Required documents check
     const requiredDocs = {
       fssaiDoc: 'FSSAI License',
       gstDoc: 'GST Certificate',
@@ -88,7 +92,7 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    // 5️⃣ Payment methods sanitization and validation
+    // 6️⃣ Payment methods sanitization and validation
     const allowedPaymentMethods = ['online', 'cod', 'wallet'];
     let paymentMethods = req.body.paymentMethods;
 
@@ -106,7 +110,11 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    // 6️⃣ Upload KYC documents to Cloudinary
+    // 7️⃣ Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(req.body.password, salt);
+
+    // 8️⃣ Upload KYC documents to Cloudinary
     const fssaiDoc = await uploadOnCloudinary(req.files.fssaiDoc[0].path);
     const gstDoc = await uploadOnCloudinary(req.files.gstDoc[0].path);
     const aadharDoc = await uploadOnCloudinary(req.files.aadharDoc[0].path);
@@ -115,10 +123,10 @@ exports.createRestaurant = async (req, res) => {
       throw new Error('Document upload failed');
     }
 
-    // 7️⃣ Slug generation
+    // 9️⃣ Slug generation
     const slug = `${req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${req.body.address.city.toLowerCase()}-${Math.random().toString(36).substring(2, 6)}`;
 
-    // 8️⃣ Final restaurant data prep
+    // 🔟 Final restaurant data prep
     const restaurantData = {
       name: req.body.name.trim(),
       ownerName: req.body.ownerName.trim(),
@@ -137,6 +145,7 @@ exports.createRestaurant = async (req, res) => {
       },
       phone: req.body.phone.trim(),
       email: req.body.email.trim(),
+      password: hashedPassword, // Store hashed password
       openingHours,
       foodType: req.body.foodType.trim(),
       minOrderAmount: req.body.minOrderAmount || 100,
@@ -155,6 +164,16 @@ exports.createRestaurant = async (req, res) => {
     };
 
     const newRestaurant = await Restaurant.create(restaurantData);
+     await Permission.create({
+      restaurantId: newRestaurant._id,// Assuming you have the authenticated user
+      permissions: {
+        canManageMenu: true,
+        canAcceptOrder: false,
+        canRejectOrder: false,
+        canManageOffers: false,
+        canViewReports: true
+      }
+    });
 
     return res.status(201).json({
       success: true,
@@ -174,6 +193,8 @@ exports.createRestaurant = async (req, res) => {
     });
   }
 };
+
+
 
 
 

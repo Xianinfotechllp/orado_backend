@@ -2,7 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPendingRestaurantApprovals, updateRestaurantApprovalStatus, 
     logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, 
-    deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs,getRestaurantById} = require("../controllers/adminController");
+    deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs,getRestaurantById,
+updatePermissionsRestuarants,getRestaurantsWithPermissions} = require("../controllers/adminController");
 const {protect, checkRole, checkPermission} = require('../middlewares/authMiddleware')
 
 router.post("/login", adminLogin);
@@ -31,6 +32,12 @@ router.put('/permissions/:restaurantId', protect, checkPermission('merchants.man
 router.get('/change-requests/pending', protect, checkPermission('merchants.manage'), getPendingChangeRequests);
 router.post('/change-requests/:requestId/review', protect, checkPermission('merchants.manage'), reviewChangeRequest);
 
+
+
+router.post("/permissions/restuarants",protect, checkPermission('merchants.manage'),updatePermissionsRestuarants)
+
+router.get("/getrestuarants/permissions",protect,checkPermission('merchants.manage'),getRestaurantsWithPermissions)
+
 // Agent Permissions
 router.get('/agent-permissions/requests', protect, checkPermission('agents.manage'), getAllAgentPermissionRequests);
 router.post('/agent-permissions/review', protect, checkPermission('agents.manage'), handleAgentPermissionRequest);
@@ -38,6 +45,7 @@ router.post('/agent-permissions/review', protect, checkPermission('agents.manage
 // Access Logs
 router.get("/access-logs", protect, checkRole('superAdmin'), getAllAccessLogs);
 router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLogs);
+
 
 
 module.exports = router;

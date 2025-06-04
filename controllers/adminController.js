@@ -1,6 +1,7 @@
 const User = require("../models/userModel");
 const Agent = require("../models/agentModel");
 const Session = require("../models/session");
+
 const Permission = require('../models/restaurantPermissionModel');
 const Restaurant = require("../models/restaurantModel");
 const ChangeRequest = require("../models/changeRequest");
@@ -420,6 +421,71 @@ exports.getPermissions = async (req, res) => {
 
 
 
+exports.toggleRestaurantPermission = async (req, res) => {
+  try {
+    const { restaurantId, permissionKey, value } = req.body;
+
+    // Validate input
+    if (!restaurantId || !permissionKey || typeof value !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'restaurantId, permissionKey and boolean value are required.',
+      });
+    }
+
+    // Check if restaurant exists
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found.',
+      });
+    }
+
+    // Find or create permission document for the restaurant
+    let permissionDoc = await Permission.findOne({ restaurantId });
+    if (!permissionDoc) {
+      permissionDoc = await Permission.create({
+        restaurantId,
+        permissions: {} // will auto-default to schema defaults
+      });
+    }
+
+    // Check if permissionKey is valid
+    if (!Object.keys(permissionDoc.permissions.toObject()).includes(permissionKey)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid permission key: ${permissionKey}`,
+      });
+    }
+
+    // Update the specific permission
+    permissionDoc.permissions[permissionKey] = value;
+    await permissionDoc.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Permission ${permissionKey} updated successfully.`,
+      data: permissionDoc.permissions
+    });
+
+  } catch (error) {
+    console.error('Toggle permission error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error.'
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
 // Update permissions for a specific restaurant
 exports.updatePermissions = async (req, res) => {
   try {
@@ -742,3 +808,106 @@ exports.getRestaurantById = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+
+exports.updatePermissionsRestuarants = async (req, res) => {
+  try {
+    const { restaurantId, permissions } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ message: 'Invalid restaurant ID' });
+    }
+
+    const validPermissions = [
+      'canManageMenu',
+      'canAcceptOrder',
+      'canRejectOrder',
+      'canManageOffers',
+      'canViewReports'
+    ];
+
+    const invalidKeys = Object.keys(permissions).filter(
+      (key) => !validPermissions.includes(key)
+    );
+
+    if (invalidKeys.length > 0) {
+      return res.status(400).json({ message: `Invalid permission keys: ${invalidKeys.join(', ')}` });
+    }
+
+    let permissionDoc = await Permission.findOne({ restaurantId });
+    console.log("Fetched Permission:", permissionDoc);
+
+    if (!permissionDoc) {
+      permissionDoc = await Permission.create({
+        restaurantId,
+        permissions
+      });
+      // console.log("Created new permission doc: ", permissionDoc); 
+    } else {
+      Object.keys(permissions).forEach((key) => {
+        permissionDoc.permissions[key] = permissions[key];
+      });
+      await permissionDoc.save();
+      // console.log("Updated permission doc: ", permissionDoc);
+    }
+
+    res.status(200).json({
+      message: 'Permissions updated successfully',
+      permissions: permissionDoc.permissions
+    });
+
+  } catch (error) {
+    console.error("Error while updating permissions: ", error);
+    res.status(500).json({ message: 'Server Error', error });
+  }
+};
+
+
+
+
+exports.getRestaurantsWithPermissions = async (req, res) => {
+  try {
+      console.log("correct api call")
+    // Fetch all restaurants
+    const restaurants = await Restaurant.find();
+
+    // Fetch permissions for each restaurant and attach
+    const restaurantList = await Promise.all(
+      restaurants.map(async (restaurant) => {
+        const permissionDoc = await Permission.findOne({ restaurantId: restaurant._id });
+
+        return {
+          _id: restaurant._id,
+          name: restaurant.name,
+          email: restaurant.email, // if exists
+          permissions: permissionDoc ? permissionDoc.permissions : {
+            canManageMenu: false,
+            canAcceptOrder: false,
+            canRejectOrder: false,
+            canManageOffers: false,
+            canViewReports: true
+          }
+        };
+      })
+    );
+  
+    
+    
+
+    res.status(200).json({
+      message: 'Restaurant list with permissions fetched successfully',
+      data: restaurantList
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error', error });
+  }
+};
+
