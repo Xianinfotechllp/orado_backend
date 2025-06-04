@@ -71,14 +71,14 @@ const restaurantSchema = new mongoose.Schema(
     banners: [String],
     merchantSearchName: { type: String },
     kyc: {
-    fssaiNumber: { type: String, required: true },
-    gstNumber: { type: String, required: true },
-    aadharNumber: { type: String, required: true },
+    fssaiNumber: { type: String },
+    gstNumber: { type: String},
+    aadharNumber: { type: String},
     },
     kycDocuments: {
-      fssaiDocUrl: { type: String, required: true },
-      gstDocUrl: { type: String, required: true },
-      aadharDocUrl: { type: String, required: true },
+      fssaiDocUrl: { type: String },
+      gstDocUrl: { type: String},
+      aadharDocUrl: { type: String},
     },
     kycStatus: {
       type: String,
@@ -118,9 +118,9 @@ const restaurantSchema = new mongoose.Schema(
         },
       },
     ],
-    minOrderAmount: { type: Number, required: true },
+    minOrderAmount: { type: Number },
     paymentMethods: [
-      { type: String, enum: ["cash", "online", "wallet"], required: true },
+      { type: String, enum: ["cash", "online", "wallet"] },
     ],
   },
   { timestamps: true }
