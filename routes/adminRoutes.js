@@ -4,10 +4,10 @@ const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPending
     logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, 
     deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs,getRestaurantById,
 updatePermissionsRestuarants,getRestaurantsWithPermissions,updateRestaurant,
-getRestaurantCategory 
+getRestaurantCategory ,createCategory
 } = require("../controllers/adminController");
 const {protect, checkRole, checkPermission} = require('../middlewares/authMiddleware')
-
+const  { upload } = require("../middlewares/multer")
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
 router.post("/logout-all", protect, checkRole('admin', 'superAdmin'), logoutAll);
@@ -52,6 +52,7 @@ router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLo
 router.put("/edit/restaurant/:restaurantId",protect,checkRole('admin', 'superAdmin'),updateRestaurant)
 
 router.get("/restaurant/:restaurantId/category",getRestaurantCategory)
+router.post("/restaurant/:restaurantId/category", upload.array('images', 5),createCategory)
 
 
 

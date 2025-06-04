@@ -15,6 +15,9 @@ const permissionsList = require('../utils/adminPermissions')
 const logAccess = require('../utils/logAccess')
 const AccessLog = require('../models/accessLogModel')
 const { isValidObjectId } = require("mongoose");
+const {uploadOnCloudinary} = require("../utils/cloudinary")
+const fs = require('fs');
+const path = require('path');
 exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
 
@@ -1077,61 +1080,106 @@ exports.getRestaurantCategory = async (req, res) => {
 
 exports.createCategory = async (req, res) => {
   try {
-    const { restaurantId, name, description = "", images = [], autoOnOff = false } = req.body;
-
-    // 1. Validate Required Fields
+         const {restaurantId} = req.params
+        
+    const { name, description = "", autoOnOff = false } = req.body;
+ console.log(name)
+    // 1. Validate Inputs
     if (!restaurantId || !name?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Restaurant ID and category name are required.",
+      return res.status(400).json({ 
+        success: false, 
+        message: "Restaurant ID and name are required." 
       });
     }
 
-    // 2. Validate MongoDB ObjectId Format
     if (!isValidObjectId(restaurantId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid Restaurant ID format.",
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid Restaurant ID." 
       });
     }
 
-    // 3. Check for Duplicate Category (case-insensitive)
+    // 2. Check for Duplicate Category
     const existingCategory = await Category.findOne({
       restaurantId,
-      name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
+      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
     });
 
     if (existingCategory) {
-      return res.status(409).json({
-        success: false,
-        message: "A category with this name already exists for the restaurant.",
+      // Clean up uploaded files if duplicate found
+      if (req.files?.length) {
+        await Promise.all(req.files.map(file => 
+          fs.promises.unlink(file.path).catch(console.error)
+        ));
+      }
+      return res.status(409).json({ 
+        success: false, 
+        message: "Category name already exists." 
       });
     }
 
-    // 4. Create New Category
+    // 3. Process and Upload Images to Cloudinary
+    const imageUrls = [];
+    if (req.files?.length) {
+      // Upload each file to Cloudinary
+      const uploadResults = await Promise.all(
+        req.files.map(file => 
+          uploadOnCloudinary(file.path, 'restaurant_categories')
+        )
+      );
+      
+      // Extract secure URLs from successful uploads
+      for (const result of uploadResults) {
+        if (result?.secure_url) {
+          imageUrls.push({
+            url: result.secure_url,
+            public_id: result.public_id,
+            resource_type: result.resource_type
+          });
+        }
+      }
+    }
+
+    // 4. Create Category with Cloudinary URLs
     const newCategory = await Category.create({
       restaurantId,
       name: name.trim(),
       description: description.trim(),
-      images,
+      images: imageUrls, // Store array of Cloudinary image objects
       autoOnOff,
     });
 
-    // 5. Success Response (exclude unnecessary fields)
+    // 5. Send Response
     const { __v, ...categoryData } = newCategory.toObject();
 
     return res.status(201).json({
       success: true,
-      message: "Category created successfully!",
+      message: "Category created successfully with images!",
       data: categoryData,
     });
 
   } catch (error) {
     console.error("🚨 Create Category Error:", error);
+
+    // Clean up any uploaded files on error
+    if (req.files?.length) {
+      await Promise.all(req.files.map(file => 
+        fs.promises.unlink(file.path).catch(console.error)
+      ));
+    }
+
+    // Handle specific errors
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: "File size too large. Maximum 5MB per image.",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
