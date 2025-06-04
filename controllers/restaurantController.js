@@ -308,6 +308,7 @@ exports.deleteRestaurant = async (req, res) => {
 exports.getRestaurantById = async (req, res) => {
  
   try {
+
     const { restaurantId } = req.params;
   
     if (!restaurantId) {
@@ -579,7 +580,7 @@ console.log("hi")
 
 exports.getAllApprovedRestaurants = async (req, res) => {
   try {
-    const approvedRestaurants = await Restaurant.find({ approvalStatus: "approved" }).select('-kycDocuments')
+    const approvedRestaurants = await Restaurant.find().select('-kycDocuments')
     res.status(200).json({
       message: "Approved restaurants fetched successfully.",
       count: approvedRestaurants.length,
