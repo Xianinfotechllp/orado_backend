@@ -35,6 +35,7 @@ router.post(
     { name: 'aadharDoc', maxCount: 1 }
   ]),
   protect, checkRole('merchant'), createRestaurant);
+// router.post("/register",register)
 router.put("/:restaurantId", upload.array('images', 1), protect, checkRole('merchant'), updateRestaurant);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
 // router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)

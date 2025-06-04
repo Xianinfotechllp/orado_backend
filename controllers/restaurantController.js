@@ -11,6 +11,11 @@ const { uploadOnCloudinary } = require('../utils/cloudinary');
 
 
 
+
+
+
+
+
 exports.createRestaurant = async (req, res) => {
   try {
     console.log(req.body);
@@ -555,9 +560,6 @@ console.log("hi")
 exports.getAllApprovedRestaurants = async (req, res) => {
   try {
     const approvedRestaurants = await Restaurant.find({ approvalStatus: "approved" }).select('-kycDocuments')
-      .populate("ownerId", "name email") // Optional: populate owner info
-      .populate("categories", "name")     // Optional: populate category names
-
     res.status(200).json({
       message: "Approved restaurants fetched successfully.",
       count: approvedRestaurants.length,
