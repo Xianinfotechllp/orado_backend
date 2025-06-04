@@ -911,3 +911,121 @@ exports.getRestaurantsWithPermissions = async (req, res) => {
   }
 };
 
+
+
+
+exports.createCategory = async (req, res) => {
+  try {
+    const { name, restaurantId, active = true, autoOnOff = false, description = '', images = [] } = req.body;
+
+    if (!name?.trim() || !restaurantId) {
+      return res.status(400).json({ message: 'Category name and restaurantId are required' });
+    }
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: 'Restaurant not found' });
+    }
+
+    const category = new Category({
+      name: name.trim(),
+      restaurantId,
+      active,
+      autoOnOff,
+      description,
+      images
+    });
+
+    await category.save();
+
+    res.status(201).json({
+      message: 'Category created successfully',
+      category
+    });
+
+  } catch (error) {
+    console.error('Error creating category:', error.message);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+
+
+
+
+exports.updateRestaurant = async (req, res) => {
+  try {
+    if (!req.body) return res.status(400).json({ message: 'Request body is missing.' });
+
+    const { restaurantId } = req.params;
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
+
+    const {
+      name,
+      address,
+      phone,
+      email,
+      openingHours,
+      foodType,
+      merchantSearchName,
+      minOrderAmount,
+      paymentMethods,
+      isActive,
+      status
+    } = req.body;
+
+    // Update basic fields if they exist
+    if (name) restaurant.name = name;
+    if (phone) restaurant.phone = phone;
+    if (email) restaurant.email = email;
+    if (foodType) restaurant.foodType = foodType;
+    if (merchantSearchName) restaurant.merchantSearchName = merchantSearchName;
+    if (minOrderAmount) restaurant.minOrderAmount = minOrderAmount;
+    if (paymentMethods) restaurant.paymentMethods = paymentMethods;
+    if (openingHours) restaurant.openingHours = openingHours;
+    if (isActive !== undefined) restaurant.isActive = isActive;
+    if (status) restaurant.status = status;
+
+    // 🧭 Address and Location
+    if (address) {
+      restaurant.address.street = address?.street || restaurant.address.street;
+      restaurant.address.city = address?.city || restaurant.address.city;
+      restaurant.address.state = address?.state || restaurant.address.state;
+      restaurant.address.zip = address?.pincode || restaurant.address.zip;
+
+      if (address.coordinates && address.coordinates.length === 2) {
+        restaurant.location = {
+          type: "Point",
+          coordinates: [address.coordinates[1], address.coordinates[0]],
+        };
+      }
+    }
+
+    if (req.files && req.files.length > 0) {
+      const uploads = await Promise.all(
+        req.files.map(file => uploadOnCloudinary(file.path))
+      );
+      const newImageUrls = uploads
+        .filter(result => result && result.secure_url)
+        .map(result => result.secure_url);
+
+      // Replace images
+      restaurant.images = newImageUrls;
+    }
+
+    await restaurant.save();
+    res.status(200).json({
+      message: 'Restaurant updated successfully.',
+      restaurant
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error.', error });
+  }
+};
+
+
+

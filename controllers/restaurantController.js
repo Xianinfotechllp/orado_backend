@@ -160,7 +160,6 @@ exports.createRestaurant = async (req, res) => {
         gstDocUrl: gstDoc.secure_url,
         aadharDocUrl: aadharDoc.secure_url
       },
-      slug
     };
 
     const newRestaurant = await Restaurant.create(restaurantData);
