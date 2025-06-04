@@ -3,7 +3,9 @@ const router = express.Router();
 const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPendingRestaurantApprovals, updateRestaurantApprovalStatus, 
     logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, 
     deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs,getRestaurantById,
-updatePermissionsRestuarants,getRestaurantsWithPermissions,updateRestaurant} = require("../controllers/adminController");
+updatePermissionsRestuarants,getRestaurantsWithPermissions,updateRestaurant,
+getRestaurantCategory 
+} = require("../controllers/adminController");
 const {protect, checkRole, checkPermission} = require('../middlewares/authMiddleware')
 
 router.post("/login", adminLogin);
@@ -48,6 +50,10 @@ router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLo
 
 
 router.put("/edit/restaurant/:restaurantId",protect,checkRole('admin', 'superAdmin'),updateRestaurant)
+
+router.get("/restaurant/:restaurantId/category",getRestaurantCategory)
+
+
 
 
 module.exports = router;

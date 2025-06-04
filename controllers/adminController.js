@@ -14,7 +14,7 @@ const { sendSms } = require("../utils/sendSms")
 const permissionsList = require('../utils/adminPermissions')
 const logAccess = require('../utils/logAccess')
 const AccessLog = require('../models/accessLogModel')
-
+const { isValidObjectId } = require("mongoose");
 exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
 
@@ -1029,3 +1029,109 @@ exports.updateRestaurant = async (req, res) => {
 
 
 
+
+exports.getRestaurantCategory = async (req, res) => {
+  try {
+    const { restaurantId } = req.params; 
+     console.log(restaurantId)
+    // Validate the restaurantId
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid restaurant ID"
+      });
+    }
+
+    // Find all active categories for the given restaurant
+    const categories = await Category.find({
+      restaurantId: restaurantId,
+      active: true
+    }).select('-__v'); // Excluding the version key
+
+    if (!categories || categories.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No categories found for this restaurant",
+        data: []
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: categories.length,
+      data: categories
+    });
+
+  } catch (error) {
+    console.error("Error fetching restaurant categories:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+exports.createCategory = async (req, res) => {
+  try {
+    const { restaurantId, name, description = "", images = [], autoOnOff = false } = req.body;
+
+    // 1. Validate Required Fields
+    if (!restaurantId || !name?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Restaurant ID and category name are required.",
+      });
+    }
+
+    // 2. Validate MongoDB ObjectId Format
+    if (!isValidObjectId(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Restaurant ID format.",
+      });
+    }
+
+    // 3. Check for Duplicate Category (case-insensitive)
+    const existingCategory = await Category.findOne({
+      restaurantId,
+      name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
+    });
+
+    if (existingCategory) {
+      return res.status(409).json({
+        success: false,
+        message: "A category with this name already exists for the restaurant.",
+      });
+    }
+
+    // 4. Create New Category
+    const newCategory = await Category.create({
+      restaurantId,
+      name: name.trim(),
+      description: description.trim(),
+      images,
+      autoOnOff,
+    });
+
+    // 5. Success Response (exclude unnecessary fields)
+    const { __v, ...categoryData } = newCategory.toObject();
+
+    return res.status(201).json({
+      success: true,
+      message: "Category created successfully!",
+      data: categoryData,
+    });
+
+  } catch (error) {
+    console.error("🚨 Create Category Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
