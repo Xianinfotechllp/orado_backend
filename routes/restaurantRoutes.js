@@ -1,11 +1,11 @@
 const express = require('express')
 const router = express.Router()
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
-const {registerMerchant, loginMerchant, logoutMerchant, logoutAll} = require('../controllers/merchantController')
+const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 
 const {upload} = require('../middlewares/multer')
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary}  = require('../controllers/restaurantController')
+const {createRestaurant, loginRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
@@ -18,7 +18,7 @@ router.post("/register", upload.fields([
     { name: 'gstDoc', maxCount: 1 },
     { name: 'aadharDoc', maxCount: 1 }
   ]),createRestaurant);
-router.post("/login", loginMerchant)
+router.post("/login", loginRestaurant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
