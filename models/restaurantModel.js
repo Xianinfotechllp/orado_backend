@@ -4,6 +4,7 @@ const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     ownerName:String,
+    password: { type: String, required: true },
     images: [String], // URLs of images (e.g. Cloudinary URLs)
 
     address: {
