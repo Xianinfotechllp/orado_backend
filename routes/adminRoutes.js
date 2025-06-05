@@ -36,7 +36,7 @@ router.post('/change-requests/:requestId/review', protect, checkPermission('merc
 
 
 
-router.put("/permissions/restuarants",protect, checkPermission('merchants.manage'),updatePermissionsRestuarants)
+router.put("/restuarants/permissions",protect, checkPermission('merchants.manage'),updatePermissionsRestuarants)
 
 router.get("/getrestuarants/permissions",protect,checkPermission('merchants.manage'),getRestaurantsWithPermissions)
 

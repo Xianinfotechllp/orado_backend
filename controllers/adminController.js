@@ -821,7 +821,9 @@ exports.getRestaurantById = async (req, res) => {
 
 exports.updatePermissionsRestuarants = async (req, res) => {
   try {
+       
     const { restaurantId, permissions } = req.body;
+ 
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ message: 'Invalid restaurant ID' });
@@ -844,7 +846,7 @@ exports.updatePermissionsRestuarants = async (req, res) => {
     }
 
     let permissionDoc = await Permission.findOne({ restaurantId });
-    console.log("Fetched Permission:", permissionDoc);
+ 
 
     if (!permissionDoc) {
       permissionDoc = await Permission.create({
