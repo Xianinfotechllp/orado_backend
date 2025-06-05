@@ -5,7 +5,7 @@ const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
 const Category = require("../models/categoryModel")
 
-
+const bcrypt = require('bcrypt');
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary'); 
 
