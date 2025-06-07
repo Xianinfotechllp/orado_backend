@@ -1,134 +1,353 @@
-const Restaurant = require("../models/restaurantModel")
-const RestaurantEarning = require('../models/RestaurantEarningModel');
+const Restaurant = require("../models/restaurantModel");
+const RestaurantEarning = require("../models/RestaurantEarningModel");
 const Permission = require("../models/restaurantPermissionModel");
+
 const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
 const Category = require("../models/categoryModel")
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken')
 
 const mongoose = require("mongoose");
-const { uploadOnCloudinary } = require('../utils/cloudinary'); 
+const { uploadOnCloudinary } = require("../utils/cloudinary");
 
+const Session = require("../models/session");
 
 exports.createRestaurant = async (req, res) => {
   try {
-    const {
-      name,
-      ownerId,
-      address,
-      phone,
-      email,
-      openingHours,
-      foodType,
-      merchantSearchName,
-      minOrderAmount,
-      location,
-      paymentMethods,
+    // 1️⃣ Required fields validation
+    const requiredFields = [
+      "name",
+      "ownerName",
+      "phone",
+      "email",
+      "password",
+      "fssaiNumber",
+      "gstNumber",
+      "aadharNumber",
+      "address.street",
+      "address.city",
+      "address.state",
+      "foodType",
+      "openingHours",
+    ];
 
-      // KYC Numbers
-      fssaiNumber,
-      gstNumber,
-      aadharNumber,
-    } = req.body;
-
-
-    const kycDocs = {
-      fssaiDoc: req.files?.fssaiDoc?.[0],
-      gstDoc: req.files?.gstDoc?.[0],
-      aadharDoc: req.files?.aadharDoc?.[0],
-    };
-
-    if (!kycDocs.fssaiDoc || !kycDocs.gstDoc || !kycDocs.aadharDoc) {
-      return res.status(400).json({ message: "Missing KYC documents." });
-    }
-
-    //  Upload images
-    let imageUrls = [];
-    if (req.files?.images && req.files.images.length > 0) {
-      const uploads = await Promise.all(
-        req.files.images.map(file => uploadOnCloudinary(file.path))
-      );
-      imageUrls = uploads
-        .filter(result => result && result.secure_url)
-        .map(result => result.secure_url);
-    }
-
-    //  Upload KYC Docs
-    const [fssaiUpload, gstUpload, aadharUpload] = await Promise.all([
-      uploadOnCloudinary(kycDocs.fssaiDoc.path),
-      uploadOnCloudinary(kycDocs.gstDoc.path),
-      uploadOnCloudinary(kycDocs.aadharDoc.path),
-    ]);
-
-    const newRestaurant = new Restaurant({
-      name,
-      ownerId,
-      address: {
-        street: address?.street,
-        city: address?.city,
-        state: address?.state,
-        zip: address?.pincode,
-      },
-      phone,
-      email,
-      openingHours,
-      foodType,
-      merchantSearchName,
-      minOrderAmount,
-      paymentMethods,
-      location,
-      images: imageUrls,
-
-      // 👇KYC Info
-      kyc: {
-        fssaiNumber,
-        gstNumber,
-        aadharNumber,
-      },
-      kycDocuments: {
-        fssaiDocUrl: fssaiUpload?.secure_url || "",
-        gstDocUrl: gstUpload?.secure_url || "",
-        aadharDocUrl: aadharUpload?.secure_url || "",
-      },
-      kycStatus: "pending",
-      approvalStatus: "pending",
+    const missingFields = requiredFields.filter((field) => {
+      const nestedFields = field.split(".");
+      let value = req.body;
+      for (const f of nestedFields) {
+        value = value?.[f];
+        if (value === undefined) break;
+      }
+      return value === undefined || value === "";
     });
 
-    await newRestaurant.save();
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+        code: "REQUIRED_FIELD_MISSING",
+      });
+    }
 
-    //  Permissions
-    const defaultPermissions = new Permission({
+    if (req.body.password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters long",
+        code: "WEAK_PASSWORD",
+      });
+    }
+
+    const validFoodTypes = ["veg", "non-veg", "both"];
+    if (!validFoodTypes.includes(req.body.foodType.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid foodType. Allowed: ${validFoodTypes.join(", ")}`,
+        code: "INVALID_FOOD_TYPE",
+      });
+    }
+
+    const validateTimeFormat = (time) => /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
+    const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    let openingHours = [];
+
+    if (req.body.openingHours) {
+      try {
+        openingHours = typeof req.body.openingHours === 'string'
+          ? JSON.parse(req.body.openingHours)
+          : req.body.openingHours;
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid openingHours format. Must be valid JSON array',
+          code: 'INVALID_OPENING_HOURS_FORMAT'
+        });
+      }
+
+      if (!Array.isArray(openingHours)) {
+        return res.status(400).json({
+          success: false,
+          message: 'openingHours must be an array',
+          code: 'OPENING_HOURS_NOT_ARRAY'
+        });
+      }
+
+      const errors = [];
+      const seenDays = new Set();
+
+      openingHours.forEach((daySchedule) => {
+        const dayError = { day: daySchedule.day, errors: [] };
+
+        if (seenDays.has(daySchedule.day)) {
+          dayError.errors.push(`Duplicate entry for ${daySchedule.day}`);
+          errors.push(dayError);
+          return;
+        }
+        seenDays.add(daySchedule.day);
+
+        if (!validDays.includes(daySchedule.day)) {
+          dayError.errors.push(`Invalid day name. Allowed: ${validDays.join(', ')}`);
+        }
+
+        if (daySchedule.isClosed) {
+          if (dayError.errors.length > 0) errors.push(dayError);
+          return;
+        }
+
+        if (!daySchedule.openingTime || !validateTimeFormat(daySchedule.openingTime)) {
+          dayError.errors.push('openingTime must be in HH:MM format');
+        }
+
+        if (!daySchedule.closingTime || !validateTimeFormat(daySchedule.closingTime)) {
+          dayError.errors.push('closingTime must be in HH:MM format');
+        }
+
+        if (daySchedule.openingTime && daySchedule.closingTime) {
+          if (daySchedule.closingTime <= '04:00' && daySchedule.openingTime > daySchedule.closingTime) {
+            // Overnight case — valid
+          } else if (daySchedule.openingTime >= daySchedule.closingTime) {
+            dayError.errors.push('closingTime must be after openingTime');
+          }
+        }
+
+        if (dayError.errors.length > 0) {
+          errors.push(dayError);
+        }
+      });
+
+      if (errors.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid opening hours data',
+          code: 'INVALID_OPENING_HOURS_DATA',
+          errors
+        });
+      }
+    }
+
+    const requiredDocs = {
+      fssaiDoc: "FSSAI License",
+      gstDoc: "GST Certificate",
+      aadharDoc: "Aadhar Card",
+    };
+
+    const missingDocs = Object.keys(requiredDocs)
+      .filter((doc) => !req.files?.[doc]?.[0])
+      .map((doc) => requiredDocs[doc]);
+
+    if (missingDocs.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing documents: ${missingDocs.join(", ")}`,
+        code: "DOCUMENT_REQUIRED",
+      });
+    }
+
+    const allowedPaymentMethods = ["online", "cod", "wallet"];
+    let paymentMethods = req.body.paymentMethods;
+
+    if (typeof paymentMethods === "string") {
+      paymentMethods = paymentMethods.split(",").map((m) => m.trim());
+    } else if (!paymentMethods) {
+      paymentMethods = ["online"];
+    }
+
+    const invalidMethods = paymentMethods.filter(
+      (m) => !allowedPaymentMethods.includes(m)
+    );
+    if (invalidMethods.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment methods: ${invalidMethods.join(
+          ", "
+        )}. Allowed: ${allowedPaymentMethods.join(", ")}`,
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(req.body.password, salt);
+
+    const fssaiDoc = await uploadOnCloudinary(req.files.fssaiDoc[0].path);
+    const gstDoc = await uploadOnCloudinary(req.files.gstDoc[0].path);
+    const aadharDoc = await uploadOnCloudinary(req.files.aadharDoc[0].path);
+
+    if (!fssaiDoc || !gstDoc || !aadharDoc) {
+      throw new Error("Document upload failed");
+    }
+
+    const slug = `${req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${req.body.address.city.toLowerCase()}-${Math.random().toString(36).substring(2, 6)}`;
+
+    const restaurantData = {
+      name: req.body.name.trim(),
+      ownerName: req.body.ownerName.trim(),
+      address: {
+        street: req.body.address.street.trim(),
+        city: req.body.address.city.trim(),
+        state: req.body.address.state.trim(),
+        zip: req.body.address.pincode || req.body.address.zip || "",
+      },
+      location: {
+        type: "Point",
+        coordinates: [
+          parseFloat(req.body.address.longitude) || 0,
+          parseFloat(req.body.address.latitude) || 0,
+        ],
+      },
+      phone: req.body.phone.trim(),
+      email: req.body.email.trim(),
+      password: hashedPassword,
+      openingHours,
+      foodType: req.body.foodType.trim(),
+      minOrderAmount: req.body.minOrderAmount || 100,
+      paymentMethods,
+      kyc: {
+        fssaiNumber: req.body.fssaiNumber.trim(),
+        gstNumber: req.body.gstNumber.trim(),
+        aadharNumber: req.body.aadharNumber.trim(),
+      },
+      kycDocuments: {
+        fssaiDocUrl: fssaiDoc.secure_url,
+        gstDocUrl: gstDoc.secure_url,
+        aadharDocUrl: aadharDoc.secure_url,
+      },
+      slug
+    };
+
+    const newRestaurant = await Restaurant.create(restaurantData);
+
+    await Permission.create({
       restaurantId: newRestaurant._id,
       permissions: {
-        canManageMenu: false,
+        canManageMenu: true,
         canAcceptOrder: false,
         canRejectOrder: false,
         canManageOffers: false,
-        canViewReports: false
-      }
+        canViewReports: true,
+      },
     });
 
-    await defaultPermissions.save();
-
-    res.status(201).json({
-      message: "Restaurant created and awaiting admin approval.",
-      restaurant: newRestaurant,
+    return res.status(201).json({
+      success: true,
+      code: "RESTAURANT_CREATED",
+      data: {
+        restaurantId: newRestaurant._id,
+        approvalStatus: newRestaurant.approvalStatus,
+      },
     });
-  } catch (error) {
-    console.error("Error in createRestaurant:", error);
-    res.status(500).json({ message: "Server error.", error });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: err.message,
+    });
   }
 };
 
 
 
+exports.loginRestaurant = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Basic validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required',
+      });
+    }
+
+    // Find restaurant by email, include required fields except password
+    const restaurant = await Restaurant.findOne({ email }).select('+password');
+    if (!restaurant) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
+    }
+
+    // Compare passwords
+    const isMatch = await bcrypt.compare(password, restaurant.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
+    }
+
+    // Fetch permissions
+    const permission = await Permission.findOne({ restaurantId: restaurant._id });
+
+    // Prepare JWT payload
+    const payload = {
+      id: restaurant._id,
+      email: restaurant.email,
+      role: 'restaurant',
+      permissions: permission?.permissions || {},
+    };
+
+    // Generate JWT token
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      expiresIn: '1d',
+    });
+
+    // Return user data excluding sensitive info
+    return res.status(200).json({
+      success: true,
+      token,
+      restaurantData: {
+        _id: restaurant._id,
+        name: restaurant.name,
+        email: restaurant.email,
+        permissions: permission?.permissions || {},
+        location: restaurant.location || {},
+        openingHours: restaurant.openingHours || [],
+        approvalStatus: restaurant.approvalStatus || 'pending',
+        approvalRejectionReason: restaurant.approvalRejectionReason || null,
+      },
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error. Please try again later.',
+    });
+  }
+};
+
+
 
 exports.updateRestaurant = async (req, res) => {
   try {
-    if (!req.body) return res.status(400).json({ message: 'Request body is missing.' });
+    if (!req.body)
+      return res.status(400).json({ message: "Request body is missing." });
 
     const { restaurantId } = req.params;
     const restaurant = await Restaurant.findById(restaurantId);
-    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
+    if (!restaurant)
+      return res.status(404).json({ message: "Restaurant not found." });
 
     const {
       name,
@@ -141,7 +360,7 @@ exports.updateRestaurant = async (req, res) => {
       minOrderAmount,
       paymentMethods,
       isActive,
-      status
+      status,
     } = req.body;
 
     // Update basic fields if they exist
@@ -173,11 +392,11 @@ exports.updateRestaurant = async (req, res) => {
 
     if (req.files && req.files.length > 0) {
       const uploads = await Promise.all(
-        req.files.map(file => uploadOnCloudinary(file.path))
+        req.files.map((file) => uploadOnCloudinary(file.path))
       );
       const newImageUrls = uploads
-        .filter(result => result && result.secure_url)
-        .map(result => result.secure_url);
+        .filter((result) => result && result.secure_url)
+        .map((result) => result.secure_url);
 
       // Replace images
       restaurant.images = newImageUrls;
@@ -185,33 +404,30 @@ exports.updateRestaurant = async (req, res) => {
 
     await restaurant.save();
     res.status(200).json({
-      message: 'Restaurant updated successfully.',
-      restaurant
+      message: "Restaurant updated successfully.",
+      restaurant,
     });
-
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error.', error });
+    res.status(500).json({ message: "Server error.", error });
   }
 };
-
-
 
 exports.deleteRestaurant = async (req, res) => {
   try {
     const { restaurantId } = req.params;
 
     if (!restaurantId) {
-      return res.status(400).json({ message: 'restaurantId is required.' });
+      return res.status(400).json({ message: "restaurantId is required." });
     }
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ message: 'Invalid restaurantId format.' });
+      return res.status(400).json({ message: "Invalid restaurantId format." });
     }
 
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
-      return res.status(404).json({ message: 'Restaurant not found.' });
+      return res.status(404).json({ message: "Restaurant not found." });
     }
 
     // Delete the restaurant
@@ -220,39 +436,40 @@ exports.deleteRestaurant = async (req, res) => {
     //  Also delete the associated permission
     await Permission.deleteOne({ restaurantId });
 
-    res.status(200).json({ message: 'Restaurant and its permissions deleted successfully.' });
-
+    res
+      .status(200)
+      .json({
+        message: "Restaurant and its permissions deleted successfully.",
+      });
   } catch (error) {
-    console.error('Error deleting restaurant:', error);
-    res.status(500).json({ message: 'Server error.' });
+    console.error("Error deleting restaurant:", error);
+    res.status(500).json({ message: "Server error." });
   }
 };
 
-
 exports.getRestaurantById = async (req, res) => {
- 
   try {
     const { restaurantId } = req.params;
-  
+
     if (!restaurantId) {
-      return res.status(400).json({ message: 'restaurantId is required.' });
+      return res.status(400).json({ message: "restaurantId is required." });
     }
-      if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ message: 'Invalid restaurantId format.' });
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ message: "Invalid restaurantId format." });
     }
-       const restaurant = await Restaurant.findOne({_id: restaurantId });
-        if (!restaurant) {
-      return res.status(404).json({ message: 'Restaurant not found.' });
+    const restaurant = await Restaurant.findOne({ _id: restaurantId });
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
     }
 
-       res.status(200).json({ message: 'Restaurant fetched successfully.', data:restaurant });
-  
+    res
+      .status(200)
+      .json({ message: "Restaurant fetched successfully.", data: restaurant });
   } catch (error) {
-     console.error(error);
-    res.status(500).json({ message: 'Server error.' });
+    console.error(error);
+    res.status(500).json({ message: "Server error." });
   }
-
-}
+};
 
 exports.updateBusinessHours = async (req, res) => {
   try {
@@ -260,14 +477,26 @@ exports.updateBusinessHours = async (req, res) => {
     const { businessHours } = req.body;
 
     if (!restaurantId || !mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ message: 'Invalid or missing restaurantId.' });
+      return res
+        .status(400)
+        .json({ message: "Invalid or missing restaurantId." });
     }
 
-    if (!businessHours || typeof businessHours !== 'object') {
-      return res.status(400).json({ message: 'businessHours must be a valid object.' });
+    if (!businessHours || typeof businessHours !== "object") {
+      return res
+        .status(400)
+        .json({ message: "businessHours must be a valid object." });
     }
 
-    const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const validDays = [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday",
+    ];
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
     for (const [day, times] of Object.entries(businessHours)) {
@@ -280,33 +509,35 @@ exports.updateBusinessHours = async (req, res) => {
       if (closed === true) continue;
 
       if (!startTime || !endTime) {
-        return res.status(400).json({ message: `Missing startTime or endTime for ${day}.` });
+        return res
+          .status(400)
+          .json({ message: `Missing startTime or endTime for ${day}.` });
       }
 
       if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-        return res.status(400).json({ message: `Invalid time format for ${day}. Use HH:mm.` });
+        return res
+          .status(400)
+          .json({ message: `Invalid time format for ${day}. Use HH:mm.` });
       }
     }
 
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
-      return res.status(404).json({ message: 'Restaurant not found.' });
+      return res.status(404).json({ message: "Restaurant not found." });
     }
 
     restaurant.businessHours = businessHours;
     await restaurant.save();
 
     return res.status(200).json({
-      message: 'Business hours updated successfully.',
-      businessHours: restaurant.businessHours
+      message: "Business hours updated successfully.",
+      businessHours: restaurant.businessHours,
     });
-
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error.' });
+    res.status(500).json({ message: "Server error." });
   }
 };
-
 
 exports.addKyc = async (req, res) => {
   try {
@@ -321,13 +552,13 @@ exports.addKyc = async (req, res) => {
     if (req.files && req.files.length > 0) {
       console.log("Uploading files to Cloudinary...");
       const uploads = await Promise.all(
-        req.files.map(file => uploadOnCloudinary(file.path))
+        req.files.map((file) => uploadOnCloudinary(file.path))
       );
       console.log("Uploads result:", uploads);
 
       kycUrls = uploads
-        .filter(result => result && result.secure_url)
-        .map(result => result.secure_url);
+        .filter((result) => result && result.secure_url)
+        .map((result) => result.secure_url);
     }
 
     restaurant.kycDocuments = [...restaurant.kycDocuments, ...kycUrls];
@@ -340,7 +571,6 @@ exports.addKyc = async (req, res) => {
       message: "KYC documents uploaded successfully.",
       restaurant,
     });
-
   } catch (error) {
     console.error("KYC upload error:", error);
     res.status(500).json({ message: "Server error while uploading KYC." });
@@ -362,32 +592,23 @@ exports.getKyc = async (req, res) => {
       kycDocuments: restaurant.kycDocuments || [],
       kycStatus: restaurant.kycStatus || "not-submitted",
     });
-
   } catch (error) {
     console.error("Error fetching KYC:", error);
     res.status(500).json({ message: "Server error while fetching KYC." });
   }
-
 };
-
-
-
-
-
 
 exports.addServiceArea = async (req, res) => {
   try {
     const { restaurantId } = req.params;
     const { serviceAreas } = req.body;
-   console.log(restaurantId)
+    console.log(restaurantId);
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
         message: "Invalid restaurant ID",
         messageType: "failure",
       });
     }
-
-    
 
     if (!Array.isArray(serviceAreas) || serviceAreas.length === 0) {
       return res.status(400).json({
@@ -405,14 +626,15 @@ exports.addServiceArea = async (req, res) => {
         area.coordinates.length === 0
       ) {
         return res.status(400).json({
-          message: "Each serviceArea must be a valid GeoJSON Polygon with coordinates",
+          message:
+            "Each serviceArea must be a valid GeoJSON Polygon with coordinates",
           messageType: "failure",
         });
       }
     }
 
     // Cast restaurantId to ObjectId
-    const restaurantObjectId =  new mongoose.Types.ObjectId(restaurantId);
+    const restaurantObjectId = new mongoose.Types.ObjectId(restaurantId);
 
     const restaurant = await Restaurant.findById(restaurantObjectId);
     if (!restaurant) {
@@ -439,16 +661,15 @@ exports.addServiceArea = async (req, res) => {
   }
 };
 
-
 exports.getRestaurantMenu = async (req, res) => {
   const { restaurantId } = req.params;
-console.log("hi")
+  console.log("hi");
   try {
     // Validate restaurantId
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
-        message: 'Invalid restaurantId format',
-        messageType: 'failure',
+        message: "Invalid restaurantId format",
+        messageType: "failure",
         data: null,
       });
     }
@@ -458,9 +679,9 @@ console.log("hi")
 
     if (!categories.length) {
       return res.status(404).json({
-        message: 'No categories found for this restaurant.',
-        messageType: 'failure',
-        data: null
+        message: "No categories found for this restaurant.",
+        messageType: "failure",
+        data: null,
       });
     }
 
@@ -470,7 +691,7 @@ console.log("hi")
         const products = await Product.find({
           restaurantId,
           categoryId: category._id,
-        }).select('-revenueShare -costPrice -profitMargin');
+        }).select("-revenueShare -costPrice -profitMargin");
 
         return {
           categoryId: category._id,
@@ -478,23 +699,22 @@ console.log("hi")
           description: category.description,
           images: category.images,
           totalProducts: products.length,
-          items: products
+          items: products,
         };
       })
     );
 
     res.status(200).json({
-      message: 'Menu fetched successfully',
-      messageType: 'success',
-      data: menu
+      message: "Menu fetched successfully",
+      messageType: "success",
+      data: menu,
     });
-
   } catch (error) {
-    console.error('Error fetching menu:', error);
+    console.error("Error fetching menu:", error);
     res.status(500).json({
-      message: 'Failed to fetch restaurant menu',
-      messageType: 'failure',
-      data: null
+      message: "Failed to fetch restaurant menu",
+      messageType: "failure",
+      data: null,
     });
   }
 };
@@ -503,10 +723,7 @@ console.log("hi")
 
 exports.getAllApprovedRestaurants = async (req, res) => {
   try {
-    const approvedRestaurants = await Restaurant.find({ approvalStatus: "approved" }).select('-kycDocuments')
-      .populate("ownerId", "name email") // Optional: populate owner info
-      .populate("categories", "name")     // Optional: populate category names
-
+    const approvedRestaurants = await Restaurant.find().select("-kycDocuments");
     res.status(200).json({
       message: "Approved restaurants fetched successfully.",
       count: approvedRestaurants.length,
@@ -520,8 +737,6 @@ exports.getAllApprovedRestaurants = async (req, res) => {
     });
   }
 };
-
-
 
 exports.updateRestaurantOrderStatus = async (req, res) => {
   try {
@@ -538,31 +753,30 @@ exports.updateRestaurantOrderStatus = async (req, res) => {
     order.status = status;
 
     // If restaurant provides estimated prep time, update it
-   
 
     await order.save();
 
     res.status(200).json({
       message: "Order status updated successfully",
-      order
+      order,
     });
   } catch (error) {
     console.error("Error updating order status:", error);
     res.status(500).json({
       message: "Failed to update order status",
-      error: error.message
+      error: error.message,
     });
   }
 };
-    
-     
 
- exports.getRestaurantEarningSummary = async (req, res) => {
+exports.getRestaurantEarningSummary = async (req, res) => {
   try {
     const { restaurantId } = req.params;
 
     // Find all earnings for the restaurant
-    const totalEarnings = await RestaurantEarning.find({ restaurantId: restaurantId });
+    const totalEarnings = await RestaurantEarning.find({
+      restaurantId: restaurantId,
+    });
 
     // Calculate totals manually since find() returns array of docs
     const summary = totalEarnings.reduce(
@@ -580,7 +794,59 @@ exports.updateRestaurantOrderStatus = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ success: false, message: 'Failed to fetch earning summary' });
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch earning summary" });
+
   }
 };
+
+
+
+
+
+// Get all orders for a specific restaurant (with pagination, filtering, and sorting)
+exports.getRestaurantOrders = async (req, res) => {
+  try {
+
+    const { restaurantId } = req.params;
+    const { 
+      page = 1, 
+      limit = 10, 
+    
+    
+
+    } = req.query;
+
+    // Validate restaurantId
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ error: "Invalid restaurant ID" });
+    }
+
+    // Build query filters
+ 
+    
+   
+
+    // Execute query with pagination
+    const orders = await Order.find({restaurantId:restaurantId}).populate("customerId", "name email").sort({ createdAt: -1 }).limit(parseInt(limit)).skip((parseInt(page) - 1) * parseInt(limit));
+
+    const totalOrders = await Order.countDocuments({restaurantId:restaurantId});
+
+    res.status(200).json({
+      success: true,
+      data: orders,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalOrders / limit),
+        totalOrders,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Server error: " + error.message });
+  }
+};
+
+
+
 

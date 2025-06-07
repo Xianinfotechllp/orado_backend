@@ -1,6 +1,6 @@
 const express = require('express');
 const { upload } = require('../middlewares/multer');
-const { createProduct, getRestaurantProducts, updateProduct, deleteProduct, toggleProductActive } = require('../controllers/productController');
+const { createProduct, getRestaurantProducts, updateProduct, deleteProduct, toggleProductActive ,getCategoryProducts} = require('../controllers/productController');
 const { protect, checkRole } = require('../middlewares/authMiddleware');
 const router = express.Router();
 
@@ -9,6 +9,12 @@ router.get('/:restaurantId/products', protect, checkRole('merchant', 'customer')
 router.put('/products/:productId', protect, checkRole('merchant'),  upload.array('images'), updateProduct);
 router.delete('/products/:productId', protect, checkRole('merchant'), deleteProduct);
 router.put('/products/:productId/auto-on-off', protect, checkRole('merchant'), toggleProductActive);
+
+router.get("/:restaurantId/products/category/:categoryId",getCategoryProducts)
+
+
+
+
 
 module.exports = router;
 

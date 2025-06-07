@@ -1,19 +1,28 @@
 const express = require('express')
 const router = express.Router()
+
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
-const {registerMerchant, loginMerchant, logoutMerchant, logoutAll} = require('../controllers/merchantController')
+const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 
 const {upload} = require('../middlewares/multer')
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary}  = require('../controllers/restaurantController')
+
+
+const {createRestaurant, loginRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary,getRestaurantOrders}  = require('../controllers/restaurantController')
+
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
 
 router.get("/all-restaurants", getAllApprovedRestaurants)
 // merchant login/register
-router.post("/register", registerMerchant);
-router.post("/login", loginMerchant)
+router.post("/register", upload.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'fssaiDoc', maxCount: 1 },
+    { name: 'gstDoc', maxCount: 1 },
+    { name: 'aadharDoc', maxCount: 1 }
+  ]),createRestaurant);
+router.post("/login", loginRestaurant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
@@ -30,6 +39,7 @@ router.post(
     { name: 'aadharDoc', maxCount: 1 }
   ]),
   protect, checkRole('merchant'), createRestaurant);
+// router.post("/register",register)
 router.put("/:restaurantId", upload.array('images', 1), protect, checkRole('merchant'), updateRestaurant);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
 // router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)
@@ -61,6 +71,8 @@ router.get("/:restaurantId/menu",getRestaurantMenu)
 
 // get restaurant earnigs
 router.get("/:restaurantId/earnigs",getRestaurantEarningSummary)
+
+router.get("/:restaurantId/myorders",getRestaurantOrders)
 
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)
