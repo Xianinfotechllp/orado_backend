@@ -171,14 +171,13 @@ exports.getNearbyCategories = async (req, res) => {
       statusCode: 500,
     });
   }
-};
-
-exports.getRestaurantsByLocationAndCategory = async (req, res) => {
+};exports.getRestaurantsByLocationAndCategory = async (req, res) => {
   try {
-    const { latitude, longitude, distance = 5000, categoryId } = req.query;
+    const { categoryId } = req.params;
+    const { latitude, longitude, distance = 5000 } = req.query;
 
-    // Validate required params
-    if (latitude === undefined || longitude === undefined) {
+    // Basic validations
+    if (!latitude || !longitude) {
       return res.status(400).json({
         message: "Latitude and longitude are required.",
         messageType: "error",
@@ -190,7 +189,6 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
     const lng = parseFloat(longitude);
     const dist = parseFloat(distance);
 
-    // Validate latitude and longitude
     if (isNaN(lat) || lat < -90 || lat > 90) {
       return res.status(400).json({
         message: "Invalid latitude.",
@@ -215,29 +213,17 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
       });
     }
 
-    // Validate categoryId if provided
-    if (categoryId) {
-      if (!mongoose.Types.ObjectId.isValid(categoryId)) {
-        return res.status(400).json({
-          message: "Invalid categoryId format.",
-          messageType: "error",
-          statusCode: 400,
-        });
-      }
-
-      // Check if category exists and is active
-      const categoryExists = await Category.findOne({ _id: categoryId, active: true });
-      if (!categoryExists) {
-        return res.status(404).json({
-          message: "Category not found or inactive.",
-          messageType: "error",
-          statusCode: 404,
-        });
-      }
+    // If categoryId provided, validate it
+    if (categoryId && !mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({
+        message: "Invalid categoryId format.",
+        messageType: "error",
+        statusCode: 400,
+      });
     }
 
-    // Build query for restaurants
-    const query = {
+    // Find nearby restaurants
+    const nearbyRestaurants = await Restaurant.find({
       location: {
         $near: {
           $geometry: { type: "Point", coordinates: [lng, lat] },
@@ -245,25 +231,50 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
         },
       },
       active: true,
-    };
+    }).select("_id name address openingHours minOrderAmount foodType phone rating images location");
 
-    // If categoryId given, filter by categoryId field in restaurants
-    if (categoryId) {
-      query.categoryId = categoryId;
+    if (!nearbyRestaurants.length) {
+      return res.status(200).json({
+        message: "No nearby restaurants found.",
+        messageType: "success",
+        statusCode: 200,
+        count: 0,
+        data: [],
+      });
     }
 
-    const restaurants = await Restaurant.find(query)
-      .select("name address openingHours minOrderAmount foodType phone rating images location");
+    // If categoryId provided, filter restaurants based on products with that category
+    let filteredRestaurantIds = nearbyRestaurants.map(r => r._id);
+
+    if (categoryId) {
+      const products = await Product.find({
+        restaurantId: "6836c9a9451788eb5e4e9e0f" ,
+        categoryId:categoryId,
+        active: true,
+      }).select("restaurantId")
+  
+    
+      const restaurantIdsWithCategory = [...new Set(products.map(p => p.restaurantId.toString()))];
+
+      // Filter restaurants list by this
+      filteredRestaurantIds = filteredRestaurantIds.filter(id => restaurantIdsWithCategory.includes(id.toString()));
+    }
+
+    // Final restaurant list
+    const finalRestaurants = nearbyRestaurants.filter(r =>
+      filteredRestaurantIds.includes(r._id.toString())
+    );
 
     return res.status(200).json({
       message: "Restaurants fetched successfully.",
       messageType: "success",
       statusCode: 200,
-      count: restaurants.length,
-      data: restaurants,
+      count: finalRestaurants.length,
+      data: finalRestaurants,
     });
+
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching restaurants by location and category:", error);
     return res.status(500).json({
       message: "Server error while fetching restaurants.",
       messageType: "error",
@@ -271,7 +282,6 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
     });
   }
 };
-
 
 exports.getRecommendedRestaurants = async (req, res) => {
   try {
