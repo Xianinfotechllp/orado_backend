@@ -2,11 +2,14 @@ const express = require('express')
 const router = express.Router()
 
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
-const {registerMerchant, loginMerchant, logoutMerchant, logoutAll} = require('../controllers/merchantController')
+const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 
 const {upload} = require('../middlewares/multer')
-const {createRestaurant,updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary,loginRestaurant}  = require('../controllers/restaurantController')
+
+
+const {createRestaurant, loginRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary}  = require('../controllers/restaurantController')
+
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
