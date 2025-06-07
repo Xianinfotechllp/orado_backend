@@ -825,7 +825,7 @@ exports.getRestaurantOrders = async (req, res) => {
    
 
     // Execute query with pagination
-    const orders = await Order.find({restaurantId:restaurantId}).limit(parseInt(limit)).skip((parseInt(page) - 1) * parseInt(limit));
+    const orders = await Order.find({restaurantId:restaurantId}).populate("customerId", "name email").sort({ createdAt: -1 }).limit(parseInt(limit)).skip((parseInt(page) - 1) * parseInt(limit));
 
     const totalOrders = await Order.countDocuments({restaurantId:restaurantId});
 
