@@ -317,8 +317,8 @@ exports.loginRestaurant = async (req, res) => {
     return res.status(200).json({
       success: true,
       token,
-      data: {
-        id: restaurant._id,
+      restaurantData: {
+        _id: restaurant._id,
         name: restaurant.name,
         email: restaurant.email,
         permissions: permission?.permissions || {},
@@ -799,3 +799,6 @@ exports.getRestaurantEarningSummary = async (req, res) => {
       .json({ success: false, message: "Failed to fetch earning summary" });
   }
 };
+
+
+
