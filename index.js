@@ -36,6 +36,7 @@ const cartRoutes = require("./routes/cartRoutes");
 const chatRouter = require("./routes/chatRoutes");
 const faqRouter = require("./routes/faqRoutes");
 const adminRouter = require("./routes/adminRoutes");
+const merchantRouter = require("./routes/merchantRoutes")
 
 // Middlewares
 app.use(express.json());
@@ -339,6 +340,8 @@ app.use("/agent", agentRouter);
 app.use("/feedback", feedbackRoutes);
 app.use("/cart", cartRoutes);
 app.use("/faq", faqRouter);
+app.use("/merchant",merchantRouter)
+
 
 // Default route
 app.get("/", (req, res) => {
@@ -350,3 +353,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
