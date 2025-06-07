@@ -1,5 +1,23 @@
 const mongoose = require("mongoose");
-
+const openingHourSchema = new mongoose.Schema({
+  day: {
+    type: String,
+    enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    required: true
+  },
+  openingTime: {
+    type: String, // e.g. '09:00'
+    required: true
+  },
+  closingTime: {
+    type: String, // e.g. '22:00'
+    required: true
+  },
+  isClosed: {
+    type: Boolean,
+    default: false
+  }
+});
 const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -40,10 +58,7 @@ const restaurantSchema = new mongoose.Schema(
       }
     ]
     ,
-    openingHours: {
-      startTime: { type: String },
-      endTime: { type: String },
-    },
+     openingHours: [openingHourSchema],
 
     businessHours: {
       type: Map,
@@ -104,6 +119,7 @@ const restaurantSchema = new mongoose.Schema(
       canManageMenu: { type: Boolean, default: false },
     },
     rating: { type: Number, default: 0 },
+    password:{type:String,required:true},
     serviceAreas: [
       {
         type: {

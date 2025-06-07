@@ -4,7 +4,8 @@ const Permission = require("../models/restaurantPermissionModel");
 const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
 const Category = require("../models/categoryModel")
-
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken')
 
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary'); 
@@ -59,19 +60,95 @@ exports.createRestaurant = async (req, res) => {
         code: 'INVALID_FOOD_TYPE'
       });
     }
+const validateTimeFormat = (time) => /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
+const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+let openingHours = []
+// 2️⃣ OpeningHours validation (without requiring all days)
+if (req.body.openingHours) {
+      
+  // Parse if it's a string
+  try {
+    openingHours = typeof req.body.openingHours === 'string' 
+      ? JSON.parse(req.body.openingHours) 
+      : req.body.openingHours;
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid openingHours format. Must be valid JSON array',
+      code: 'INVALID_OPENING_HOURS_FORMAT'
+    });
+  }
 
-    // 4️⃣ openingHours validation
-    let openingHours;
-    try {
-      openingHours = JSON.parse(req.body.openingHours);
-      if (!Array.isArray(openingHours)) throw new Error();
-    } catch {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid openingHours. Expected a valid JSON array.`,
-        code: 'INVALID_OPENING_HOURS'
-      });
+  // Validate array structure
+  if (!Array.isArray(openingHours)) {
+    return res.status(400).json({
+      success: false,
+      message: 'openingHours must be an array',
+      code: 'OPENING_HOURS_NOT_ARRAY'
+    });
+  }
+
+  // Validate each provided day's structure
+  const errors = [];
+  const seenDays = new Set();
+  
+  openingHours.forEach((daySchedule) => {
+    const dayError = { day: daySchedule.day, errors: [] };
+
+    // Check for duplicate days
+    if (seenDays.has(daySchedule.day)) {
+      dayError.errors.push(`Duplicate entry for ${daySchedule.day}`);
+      errors.push(dayError);
+      return;
     }
+    seenDays.add(daySchedule.day);
+
+    // Validate day name
+    if (!validDays.includes(daySchedule.day)) {
+      dayError.errors.push(`Invalid day name. Allowed: ${validDays.join(', ')}`);
+    }
+
+    // Skip time validation if closed
+    if (daySchedule.isClosed) {
+      if (errors.length > 0) errors.push(dayError);
+      return;
+    }
+
+    // Validate times
+    if (!daySchedule.openingTime || !validateTimeFormat(daySchedule.openingTime)) {
+      dayError.errors.push('openingTime must be in HH:MM format');
+    }
+
+    if (!daySchedule.closingTime || !validateTimeFormat(daySchedule.closingTime)) {
+      dayError.errors.push('closingTime must be in HH:MM format');
+    }
+
+    // Validate time logic if both times exist
+    if (daySchedule.openingTime && daySchedule.closingTime) {
+      // Allow overnight hours (closing time next day)
+      if (daySchedule.closingTime <= '04:00' && daySchedule.openingTime > daySchedule.closingTime) {
+        // Valid overnight case (e.g., 22:00 to 02:00)
+      } 
+      // Normal daytime hours
+      else if (daySchedule.openingTime >= daySchedule.closingTime) {
+        dayError.errors.push('closingTime must be after openingTime');
+      }
+    }
+
+    if (dayError.errors.length > 0) {
+      errors.push(dayError);
+    }
+  });
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid opening hours data',
+      code: 'INVALID_OPENING_HOURS_DATA',
+      errors
+    });
+  }
+}
 
     // 5️⃣ Required documents check
     const requiredDocs = {
@@ -146,7 +223,7 @@ exports.createRestaurant = async (req, res) => {
       phone: req.body.phone.trim(),
       email: req.body.email.trim(),
       password: hashedPassword, // Store hashed password
-      openingHours,
+      openingHours:openingHours,
       foodType: req.body.foodType.trim(),
       minOrderAmount: req.body.minOrderAmount || 100,
       paymentMethods,
@@ -189,6 +266,130 @@ exports.createRestaurant = async (req, res) => {
       success: false,
       message: 'Something went wrong',
       error: err.message
+    });
+  }
+};
+
+exports.loginRestaurant = async (req, res) => {
+  // 1. Validate input
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { email, password } = req.body;
+
+  try {
+    // 2. Check if restaurant exists
+    const restaurant = await Restaurant.findOne({ email }).select(" -password");
+    
+    if (!restaurant) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // 3. Check approval status
+    if (restaurant.approvalStatus !== "approved") {
+      return res.status(403).json({
+        success: false,
+        message: `Restaurant account is ${restaurant.approvalStatus}`,
+        status: restaurant.approvalStatus,
+      });
+    }
+
+    // 4. Verify password
+    const isMatch = await bcrypt.compare(password, restaurant.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // 5. Generate JWT token
+    const payload = {
+      restaurant: {
+        id: restaurant._id,
+        role: "restaurant",
+      },
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRE || "24h",
+    });
+
+    // 6. Remove sensitive data before sending response
+    restaurant.password = undefined;
+
+    res.status(200).json({
+      success: true,
+      token,
+      restaurant,
+      message: "Login successful",
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+
+
+exports.loginRestaurant = async (req, res) => {
+  // 1. Validate input
+ 
+  console.log(req.body)
+
+  const { email, password } = req.body;
+
+  try {
+    // 2. Check if restaurant exists
+    const restaurant = await Restaurant.findOne({ email })
+    console.log(restaurant)
+    if (!restaurant) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+
+   
+    // 4. Verify password
+    const isMatch = await bcrypt.compare(password, restaurant.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // 5. Generate JWT token
+    const payload = {
+      restaurant: {
+        id: restaurant._id,
+        role: "restaurant",
+      },
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET);
+
+    res.status(200).json({
+      success: true,
+      token,
+      data:restaurant,
+      message: "Login successful",
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
     });
   }
 };

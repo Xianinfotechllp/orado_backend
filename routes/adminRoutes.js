@@ -1,11 +1,17 @@
 const express = require("express");
 const router = express.Router();
+
 const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPendingRestaurantApprovals, updateRestaurantApprovalStatus, 
     logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, 
     deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs,getRestaurantById,
 updatePermissionsRestuarants,getRestaurantsWithPermissions,updateRestaurant,
-getRestaurantCategory ,createCategory,getCategoryProducts
+getRestaurantCategory ,createCategory,getCategoryProducts,
+createProduct
 } = require("../controllers/adminController");
+const {importMenuFromExcel} = require("../controllers/admin/restaurantController")
+
+const {getUserStats} = require("../controllers/admin/userController")
+const {getRestaurantStats} = require("../controllers/admin/restaurantController")
 const {protect, checkRole, checkPermission} = require('../middlewares/authMiddleware')
 const  { upload } = require("../middlewares/multer")
 router.post("/login", adminLogin);
@@ -54,6 +60,15 @@ router.put("/edit/restaurant/:restaurantId",protect,checkRole('admin', 'superAdm
 router.get("/restaurant/:restaurantId/category",getRestaurantCategory)
 router.post("/restaurant/:restaurantId/category", upload.array('images', 5),createCategory)
 router.get("/restaurant/:restaurantId/category/:categoryId",getCategoryProducts)
+
+
+router.post("/restaurant/:restaurantId/product",upload.array('images', 5),createProduct)
+router.post("/restaurant/menu/import-excel",upload.single("file"),importMenuFromExcel)
+
+
+router.get("/user/user-stats",getUserStats)
+router.get("/restauranteee/restaurant-stats",getRestaurantStats)
+
 
 
 

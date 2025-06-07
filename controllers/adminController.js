@@ -1082,10 +1082,9 @@ exports.getRestaurantCategory = async (req, res) => {
 
 exports.createCategory = async (req, res) => {
   try {
-         const {restaurantId} = req.params
+   const {restaurantId} = req.params
         
     const { name, description = "", autoOnOff = false } = req.body;
- console.log(name)
     // 1. Validate Inputs
     if (!restaurantId || !name?.trim()) {
       return res.status(400).json({ 
@@ -1133,11 +1132,7 @@ exports.createCategory = async (req, res) => {
       // Extract secure URLs from successful uploads
       for (const result of uploadResults) {
         if (result?.secure_url) {
-          imageUrls.push({
-            url: result.secure_url,
-            public_id: result.public_id,
-            resource_type: result.resource_type
-          });
+          imageUrls.push(result.secure_url);
         }
       }
     }
@@ -1199,68 +1194,56 @@ exports.createProduct = async (req, res) => {
       description,
       price,
       categoryId,
-      restaurantId,
       foodType,
       addOns = [],
       specialOffer = {},
       attributes = [],
-      unit = 'piece',
+      unit = "piece",
       stock = 0,
       reorderLevel = 0,
-      revenueShare = { type: 'percentage', value: 10 }
+      revenueShare = { type: "percentage", value: 10 }
     } = req.body;
 
-    // 1. Validate Required Fields
+    const { restaurantId } = req.params;
+
+    // Validate required fields
     if (!name || !price || !categoryId || !restaurantId || !foodType) {
       return res.status(400).json({
         success: false,
-        message: 'Name, price, categoryId, restaurantId and foodType are required fields'
+        message: "name, price, categoryId, restaurantId and foodType are required fields"
       });
     }
 
-
-
-     if (!name || !price || !categoryId || !restaurantId || !foodType) {
-      return res.status(400).json({
-        success: false,
-        message: 'Name, price, categoryId, restaurantId and foodType are required fields'
-      });
-    }
-    // 2. Validate ObjectIds
-  
-    if (!isValidObjectId(restaurantId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid restaurant ID format'
-      });
+    // Validate ObjectIds
+    if (!mongoose.isValidObjectId(restaurantId)) {
+      return res.status(400).json({ success: false, message: "Invalid restaurant ID format" });
     }
 
-    // 3. Validate Food Type
-    if (!['veg', 'non-veg'].includes(foodType)) {
+    if (!mongoose.isValidObjectId(categoryId)) {
+      return res.status(400).json({ success: false, message: "Invalid category ID format" });
+    }
+
+    // Validate food type
+    if (!["veg", "non-veg"].includes(foodType)) {
       return res.status(400).json({
         success: false,
         message: 'Food type must be either "veg" or "non-veg"'
       });
     }
 
-    // 4. Process Image Uploads
+    // Upload images to Cloudinary
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
       const uploadResults = await Promise.all(
-        req.files.map(file => uploadOnCloudinary(file.path, 'restaurant_products'))
+        req.files.map(file => uploadOnCloudinary(file.path, "restaurant_products"))
       );
-      
+
       imageUrls = uploadResults
         .filter(result => result?.secure_url)
-        .map(result => ({
-          url: result.secure_url,
-          public_id: result.public_id
-        }));
+        .map(result => result.secure_url);
     }
 
- 
-
-    // 6. Create the Product
+    // Create Product
     const newProduct = await Product.create({
       name: name.trim(),
       description: description?.trim(),
@@ -1277,43 +1260,39 @@ exports.createProduct = async (req, res) => {
       revenueShare
     });
 
-    // 7. Format the response
     const response = newProduct.toObject();
     delete response.__v;
 
     return res.status(201).json({
       success: true,
-      message: 'Product created successfully',
+      message: "Product created successfully",
       data: response
     });
 
   } catch (error) {
-    console.error('Error creating product:', error);
+    console.error("Error creating product:", error);
 
-    // Clean up uploaded files if error occurred
     if (req.files?.length) {
-      await Promise.all(req.files.map(file => 
+      await Promise.all(req.files.map(file =>
         fs.promises.unlink(file.path).catch(console.error)
       ));
     }
 
-    // Handle specific errors
-    if (error.name === 'ValidationError') {
+    if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
+        message: "Validation error",
         errors: Object.values(error.errors).map(err => err.message)
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
 };
-
 
 
 
@@ -1351,6 +1330,12 @@ exports.getCategoryProducts = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
 
 
 
