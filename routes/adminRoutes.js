@@ -4,7 +4,7 @@ const { adminLogin, getPendingAgentRequests, approveAgentApplication, getPending
     logoutAdmin, logoutAll , getPendingChangeRequests, getPermissions, updatePermissions, reviewChangeRequest, createAdmin, 
     deleteAdmin, updateAdminPermissions, getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs, getMyLogs,getRestaurantById} = require("../controllers/adminController");
 const {protect, checkRole, checkPermission} = require('../middlewares/authMiddleware')
-
+const {getActiveOrdersStats } = require("../controllers/admin/orderController")
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
 router.post("/logout-all", protect, checkRole('admin', 'superAdmin'), logoutAll);
@@ -38,6 +38,9 @@ router.post('/agent-permissions/review', protect, checkPermission('agents.manage
 // Access Logs
 router.get("/access-logs", protect, checkRole('superAdmin'), getAllAccessLogs);
 router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLogs);
+
+
+router.get("/order/order-stats",getActiveOrdersStats)
 
 
 module.exports = router;
