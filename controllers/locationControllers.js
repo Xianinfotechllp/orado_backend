@@ -4,6 +4,7 @@
 const Restaurant = require("../models/restaurantModel");
 const mongoose = require('mongoose');
 const Category = require('../models/categoryModel');
+const Product = require("../models/productModel")
 // Haversine formula to calculate distance between two coordinates in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the earth in km
@@ -344,3 +345,98 @@ exports.getRecommendedRestaurants = async (req, res) => {
     });
   }
 };
+
+
+
+exports.getNearbyProducts = async (req, res) => {
+  try {
+    const { latitude, longitude, distance = 5000 } = req.query;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        message: "Latitude and longitude are required in query parameters.",
+        messageType: "failure",
+        statusCode: 400,
+      });
+    }
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const dist = parseFloat(distance);
+
+    if (isNaN(lat) || lat < -90 || lat > 90) {
+      return res.status(400).json({
+        message: "Invalid latitude. Must be a number between -90 and 90.",
+        messageType: "failure",
+        statusCode: 400,
+      });
+    }
+
+    if (isNaN(lng) || lng < -180 || lng > 180) {
+      return res.status(400).json({
+        message: "Invalid longitude. Must be a number between -180 and 180.",
+        messageType: "failure",
+        statusCode: 400,
+      });
+    }
+
+    if (isNaN(dist) || dist <= 0) {
+      return res.status(400).json({
+        message: "Distance must be a positive number (in meters).",
+        messageType: "failure",
+        statusCode: 400,
+      });
+    }
+
+    // 1️⃣ Find nearby active restaurants
+    const nearbyRestaurants = await Restaurant.find({
+      location: {
+        $near: {
+          $geometry: { type: "Point", coordinates: [lng, lat] },
+          $maxDistance: dist,
+        },
+      },
+      active: true,
+    }).select("_id");
+
+    const restaurantIds = nearbyRestaurants.map(r => r._id);
+
+    if (restaurantIds.length === 0) {
+      return res.status(200).json({
+        message: "No nearby restaurants found.",
+        messageType: "success",
+        statusCode: 200,
+        count: 0,
+        data: [],
+      });
+    }
+
+    // 2️⃣ Fetch nearby products with specific fields
+    const products = await Product.find({
+      restaurantId: { $in: restaurantIds },
+      active: true,
+    }).select("name description images price");
+
+    return res.status(200).json({
+      message: "Nearby products fetched successfully.",
+      messageType: "success",
+      statusCode: 200,
+      count: products.length,
+      data: products,
+    });
+
+  } catch (error) {
+    console.error("Error fetching nearby products:", error);
+    return res.status(500).json({
+      message: "Server error while fetching nearby products.",
+      messageType: "error",
+      statusCode: 500,
+    });
+  }
+};
+
+
+
+
+
+
