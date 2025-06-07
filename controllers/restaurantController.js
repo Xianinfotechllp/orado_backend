@@ -797,8 +797,12 @@ exports.getRestaurantEarningSummary = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Failed to fetch earning summary" });
+
   }
 };
+
+
+
 
 
 // Get all orders for a specific restaurant (with pagination, filtering, and sorting)
