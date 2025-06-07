@@ -4,7 +4,10 @@ const chatSchema = new mongoose.Schema({
   participants: [{
     id: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true
+      required: function () {
+        // Required only for non-admins
+        return this.modelType !== 'admin';
+      }
     },
     modelType: {
       type: String,

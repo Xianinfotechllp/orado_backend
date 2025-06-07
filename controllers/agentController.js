@@ -3,6 +3,7 @@ const AgentEarning = require("../models/AgentEarningModel")
 const Order = require('../models/orderModel');
 const User = require("../models/userModel");
 const Session = require("../models/session");
+const Restaurant = require("../models/restaurantModel");
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose')
@@ -87,6 +88,8 @@ exports.registerAgent = async (req, res) => {
     } catch (err) {
       return res.status(400).json({ message: "Invalid location JSON format" });
     }
+    console.log("Parsed location:", location);
+
 
     // Create user with agent application info
     const newUser = new User({
@@ -351,92 +354,93 @@ exports.handleAgentResponse = async (req, res) => {
 };
 
 exports.agentUpdatesOrderStatus = async (req, res) => {
+  const { agentId, orderId } = req.params;
+  console.log("Agent ID:", agentId, "Order ID:", orderId);
+  
+  const { newStatus } = req.body;
+  const io = req.app.get('io');
+
+  const allowedStatuses = [
+    "assigned_to_agent",
+    "picked_up",
+    "in_progress",
+    "completed",
+    "cancelled_by_customer",
+    "pending_agent_acceptance",
+    "available",
+    "arrived"
+  ];
+
+  if (!allowedStatuses.includes(newStatus)) {
+    return res.status(400).json({
+      error: `Invalid status. Allowed statuses: ${allowedStatuses.join(", ")}`,
+    });
+  }
+
   try {
-    const { agentId, orderId } = req.params;
-    const { status } = req.body;
-    const io = req.app.get('io');
+    const agent = await Agent.findById(agentId);
+    const order = await Order.findById(orderId)
+      .populate("customerId", "_id")
+      .populate("restaurantId", "_id");
 
-    // Validate required fields
-    if (!agentId || !orderId || !status) {
-      return res.status(400).json({ error: "agentId, orderId, and status are required" });
+    if (!agent) {
+      return res.status(404).json({ error: "Agent not found" });
     }
-
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({ error: "Invalid orderId format" });
-    }
-
-    const allowedStatuses = ['picked_up', 'in_progress', 'arrived', 'completed', "available"];
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({ error: "Invalid status value" });
-    }
-
-    const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    if (!order.assignedAgent || order.assignedAgent.toString() !== agentId) {
-      return res.status(403).json({ error: "You are not assigned to this order" });
+    // Update agent status
+    agent.status = newStatus;
+    await agent.save();
+
+    // Sync order model if needed
+    if (["picked_up", "in_progress", "arrived", "completed"].includes(newStatus)) {
+      order.orderStatus = newStatus;
+      await order.save();
     }
 
-    order.orderStatus = status;
-    await order.save();
-
-    // Broadcast order status update to all relevant parties
-    io.to(`user_${order.customerId.toString()}`)
-      .to(`restaurant_${order.restaurantId.toString()}`)
-      .to(`agent_${order.agentId?.toString()}`)  // Optional chaining in case no agent assigned yet
-      .emit("orderStatus", { 
-        message: "Order status updated", 
-        order 
-      });
-    // Award earnings if completed
-    if (status === "completed") {
-      // Award agent earnings
-      await addAgentEarnings({
-        agentId,
+    // Notify customer for picked_up, in_progress, completed
+    const notifyCustomerStatuses = ["picked_up", "in_progress", "arrived", "completed"];
+    if (notifyCustomerStatuses.includes(newStatus)) {
+      io.to(`user_${order.customerId._id}`).emit("order_status_update", {
         orderId,
-        amount: order.deliveryCharge,
-        type: "delivery_fee",
-        remarks: "Delivery fee for order"
-      });
-
-      await addRestaurantEarnings(orderId);
-
-      // Stop live location sharing for the customer
-      io.to(`user_${order.customerId.toString()}`).emit("stopLocationSharing");
-
-      // Notify restaurant about order completion (without stopping location sharing)
-      io.to(`restaurant_${order.restaurantId.toString()}`).emit("orderCompleted", { 
-        orderId: order._id.toString()  // Added ._id for clarity
-      });
-
-      //  Optionally update agent delivery status here if needed:
-      await Agent.findByIdAndUpdate(agentId, {
-        $pull: { 'deliveryStatus.currentOrderIds': orderId },
-        $inc: { 'deliveryStatus.currentOrderCount': -1 }
-      });
-
-      // Now check if agent still has active orders:
-      const updatedAgent = await Agent.findById(agentId);
-      const newStatus = (updatedAgent.deliveryStatus.currentOrderCount <= 0) ? 'available' : updatedAgent.deliveryStatus.status;
-
-      await Agent.findByIdAndUpdate(agentId, {
-        'deliveryStatus.status': newStatus,
+        newStatus,
+        timestamp: new Date()
       });
     }
+    console.log(`Emitting to room: user_${order.customerId._id}`);
 
 
-    return res.status(200).json({ message: "Order status updated successfully", order });
+    // Notify restaurant only when agent is done (agent is available again)
+    if (newStatus === "completed") {
+      io.to(`restaurant_${order.restaurantId._id}`).emit("agent_status_update", {
+        agentId,
+        newStatus: "available",
+        orderId,
+        timestamp: new Date()
+      });
+
+      // Also update agent status to "available" after delivery
+      agent.status = "available";
+      await agent.save();
+    }
+
+    res.status(200).json({
+      message: "Agent order status updated",
+      agentStatus: agent.status,
+      orderStatus: order.orderStatus
+    });
 
   } catch (error) {
-    console.error("Error updating order status", error);
-    res.status(500).json({ error: "Server error while updating order status" });
+    console.error("Error updating agent status:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
+
 // toggle availability and notify nearby restaurants
-exports.toggleAvailability = async (req, res) => {
+exports.  toggleAvailability = async (req, res) => {
   try {
     const { userId } = req.params;
     const { status, location } = req.body;
@@ -447,8 +451,19 @@ exports.toggleAvailability = async (req, res) => {
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
-    if (!location?.latitude || !location?.longitude) {
-      return res.status(400).json({ message: "Missing location coordinates" });
+    if (
+      !location ||
+      location.type !== "Point" ||
+      !Array.isArray(location.coordinates) ||
+      location.coordinates.length !== 2 ||
+      typeof location.coordinates[0] !== "number" ||
+      typeof location.coordinates[1] !== "number" ||
+      isNaN(location.coordinates[0]) ||
+      isNaN(location.coordinates[1])
+    ) {
+      return res.status(400).json({
+        message: "Invalid location format. Must be GeoJSON Point with numeric coordinates.",
+      });
     }
 
     // 1. Find user and associated agent
@@ -464,7 +479,7 @@ exports.toggleAvailability = async (req, res) => {
         availabilityStatus: status,
         location: {
           type: "Point",
-          coordinates: [location.longitude, location.latitude],
+          coordinates: location.coordinates,
         },
         updatedAt: new Date(),
       },
@@ -478,7 +493,7 @@ exports.toggleAvailability = async (req, res) => {
           $near: {
             $geometry: {
               type: "Point",
-              coordinates: [location.longitude, location.latitude],
+              coordinates: location.coordinates
             },
             $maxDistance: 3000, // 3km
           },

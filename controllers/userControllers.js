@@ -186,6 +186,7 @@ exports.loginUser = async (req, res) => {
       _id: userExist._id,
       name: userExist.name,
       email: userExist.email,
+      phone: userExist.phone,
       role: userExist.role,
     };
 
@@ -199,6 +200,42 @@ exports.loginUser = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+exports.updateUserProfile = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Build the update object based on what fields are present in req.body
+    const updateFields = {};
+    if (req.body.name !== undefined) updateFields.name = req.body.name;
+    if (req.body.email !== undefined) updateFields.email = req.body.email;
+    if (req.body.phone !== undefined) updateFields.phone = req.body.phone;
+
+    // Return an error if no fields are provided
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ message: "No fields to update" });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateFields,
+      { new: true, runValidators: true }
+    ).select("name email phone");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: "User profile updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    res.status(500).json({ message: "Something went wrong" });
+  }
+};
+
 
 // Logout user by deleting session
 
@@ -266,29 +303,31 @@ exports.addAddress = async (req, res) => {
 
 exports.deleteAddressById = async (req, res) => {
   try {
-    const { userId, addressId } = req.params;
+    const { addressId } = req.params;
+    const userId = req.user._id;
 
-    // Find the user by userId
+    // Find the user
     const userExist = await User.findById(userId);
     if (!userExist) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if the user has the specified addressId
-    const addressExists = userExist.address.id(addressId); // If it's a subdocument (array of addresses)
-    if (!addressExists) {
+    // Find index of the address to remove
+    const addressIndex = userExist.addresses.findIndex(
+      (addr) => addr._id.toString() === addressId
+    );
+
+    if (addressIndex === -1) {
       return res.status(404).json({ message: "Address not found" });
     }
 
-    // Remove the address
-    userExist.address.id(addressId).remove();
-
-    // Save the updated user
+    // Remove address and save
+    userExist.addresses.splice(addressIndex, 1);
     await userExist.save();
 
     res.json({ message: "Address deleted successfully" });
   } catch (error) {
-    console.error(error);
+    console.error("Delete Address Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -299,7 +338,8 @@ exports.deleteAddressById = async (req, res) => {
 
 exports.updateAddressById = async (req, res) => {
   try {
-    const { userId, addressId } = req.params;
+    const userId = req.user._id;
+    const { addressId } = req.params;
     const { street, city, state, zip, longitude, latitude, type } = req.body;
 
     // Validate required fields
@@ -363,7 +403,7 @@ exports.updateAddressById = async (req, res) => {
 
 exports.getAddress = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId  = req.user._id; 
 
     if (!userId) {
       return res.status(400).json({
