@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary');
+const Restaurant = require("../models/restaurantModel")
 
 
 exports.registerMerchant = async (req, res) => {
@@ -384,3 +385,112 @@ exports.createRestaurant = async (req, res) => {
     });
   }
 };
+
+
+
+exports.getRestaurantsByOwner = async(req,res) =>
+{
+  try {
+    const { ownerId } = req.params;
+
+    // Validate ownerId
+    if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+      return res.status(400).json({ success: false, message: "Invalid owner ID" });
+    }
+
+    const restaurants = await Restaurant.find({ ownerId })
+      .select("-products -categories -offers -pointsHistory") // Exclude large/unnecessary fields
+      .lean();
+
+    if (!restaurants || restaurants.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "No restaurants found for this owner" 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: restaurants.length,
+      data: restaurants
+    });
+  } catch (error) {
+    console.error("Error fetching restaurants by owner:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error", 
+      error: error.message 
+    });
+  }
+}
+
+
+
+exports.getRestaurantApprovalStatus = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.restaurantId)
+      .select('name approvalStatus approvalRejectionReason ownerId')
+
+
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: 'Restaurant not found'
+      });
+    }
+
+    // Verify the requesting merchant owns this restaurant
+    if (restaurant.ownerId.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to access this restaurant'
+      });
+    }
+
+    // Prepare response data
+    const responseData = {
+      id: restaurant._id,
+      name: restaurant.name,
+      approvalStatus: restaurant.approvalStatus,
+      approvalRejectionReason: restaurant.approvalRejectionReason || null
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responseData
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+
+
+
+exports.getRestaurantApprovalStatus = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.restaurantId)
+      .select('approvalStatus approvalRejectionReason')
+      .lean();
+
+    if (!restaurant) {
+      return res.status(404).json({ error: 'Restaurant not found' });
+    }
+
+    res.json({
+      status: restaurant.approvalStatus,
+      rejectionReason: restaurant.approvalRejectionReason
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+
