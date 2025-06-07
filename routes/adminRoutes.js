@@ -12,7 +12,9 @@ const {
 
 const { importMenuFromExcel } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
-const { getRestaurantStats } = require("../controllers/admin/restaurantController");
+
+const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
+
 const {getActiveOrdersStats} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
@@ -51,11 +53,11 @@ router.get('/change-requests/pending', protect, checkPermission('merchants.manag
 router.post('/change-requests/:requestId/review', protect, checkPermission('merchants.manage'), reviewChangeRequest);
 
 // Restaurant menu/category management
-router.get("/restaurant/:restaurantId/category", getRestaurantCategory);
-router.post("/restaurant/:restaurantId/category", upload.array('images', 5), createCategory);
-router.get("/restaurant/:restaurantId/category/:categoryId", getCategoryProducts);
-router.post("/restaurant/:restaurantId/product", upload.array('images', 5), createProduct);
-router.post("/restaurant/menu/import-excel", upload.single("file"), importMenuFromExcel);
+router.get("/restaurant/:restaurantId/category", protect, getRestaurantCategory);
+router.post("/restaurant/:restaurantId/category", protect, upload.array('images', 5), createCategory);
+router.get("/restaurant/:restaurantId/category/:categoryId", protect, getCategoryProducts);
+router.post("/restaurant/:restaurantId/product", protect, upload.array('images', 5), createProduct);
+router.post("/restaurant/menu/import-excel",  protect,upload.single("file"), importMenuFromExcel);
 
 // Access logs
 router.get("/access-logs", protect, checkRole('superAdmin'), getAllAccessLogs);
