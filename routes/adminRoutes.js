@@ -16,11 +16,19 @@ const { getRestaurantStats  } = require("../controllers/admin/restaurantControll
 const {getActiveOrdersStats} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
+const {createRestaurant} = require("../controllers/admin/restaurantController")
 
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
 router.post("/logout-all", protect, checkRole('admin', 'superAdmin'), logoutAll);
+
+router.post("/creat-restaurant",upload.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'fssaiDoc', maxCount: 1 },
+    { name: 'gstDoc', maxCount: 1 },
+    { name: 'aadharDoc', maxCount: 1 }
+  ]),createRestaurant)
 
 // Admin management routes (superAdmin only)
 router.post("/create-admin", protect, checkRole('superAdmin'), createAdmin);

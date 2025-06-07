@@ -23,6 +23,7 @@ exports.createRestaurant = async (req, res) => {
       "email",
       "password",
       "fssaiNumber",
+      "ownerId",
       "gstNumber",
       "aadharNumber",
       "address.street",
@@ -264,6 +265,17 @@ exports.createRestaurant = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
 
 
 

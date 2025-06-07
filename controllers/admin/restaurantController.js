@@ -1,5 +1,9 @@
 const Restaurant = require("../../models/restaurantModel");
 const xlsx = require('xlsx')
+const User = require("../../models/userModel")
+const {uploadOnCloudinary} =require("../../utils/cloudinary")
+const Permission = require("../../models/restaurantPermissionModel")
+
 exports.getRestaurantStats = async (req, res) => {
     try {
         // Get total approved restaurants
@@ -79,7 +83,6 @@ exports.importMenuFromExcel = async (req, res) => {
 
 
 
-
 exports.createRestaurant = async (req, res) => {
   try {
     // 1️⃣ Required fields validation
@@ -89,6 +92,7 @@ exports.createRestaurant = async (req, res) => {
       "phone",
       "email",
       "fssaiNumber",
+      "ownerId",
       "gstNumber",
       "aadharNumber",
       "address.street",
@@ -101,6 +105,7 @@ exports.createRestaurant = async (req, res) => {
     const missingFields = requiredFields.filter((field) => {
       const nestedFields = field.split(".");
       let value = req.body;
+      console.log(value)
       for (const f of nestedFields) {
         value = value?.[f];
         if (value === undefined) break;
@@ -116,7 +121,18 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-   
+    // Check if owner exists
+    const ownerExists = await User.findById(req.body.ownerId);
+    if (!ownerExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Owner does not exist",
+        code: "INVALID_OWNER_ID",
+      });
+    }
+
+    // Removed the check for existing restaurant for the same owner
+    // Now owners can have multiple restaurants
 
     const validFoodTypes = ["veg", "non-veg", "both"];
     if (!validFoodTypes.includes(req.body.foodType.trim())) {
@@ -244,9 +260,6 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(req.body.password, salt);
-
     const fssaiDoc = await uploadOnCloudinary(req.files.fssaiDoc[0].path);
     const gstDoc = await uploadOnCloudinary(req.files.gstDoc[0].path);
     const aadharDoc = await uploadOnCloudinary(req.files.aadharDoc[0].path);
@@ -259,6 +272,7 @@ exports.createRestaurant = async (req, res) => {
 
     const restaurantData = {
       name: req.body.name.trim(),
+      ownerId: req.body.ownerId, // Using the validated ownerId
       ownerName: req.body.ownerName.trim(),
       address: {
         street: req.body.address.street.trim(),
@@ -289,7 +303,7 @@ exports.createRestaurant = async (req, res) => {
         gstDocUrl: gstDoc.secure_url,
         aadharDocUrl: aadharDoc.secure_url,
       },
-
+      slug
     };
 
     const newRestaurant = await Restaurant.create(restaurantData);
@@ -323,4 +337,3 @@ exports.createRestaurant = async (req, res) => {
     });
   }
 };
-

@@ -22,8 +22,20 @@ const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     ownerName:String,
-    password: { type: String, required: true },
+
+     ownerId: {  // Add this field
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    ownerName: String,
+
+
+
     images: [String], // URLs of images (e.g. Cloudinary URLs)
+
+
+
 
     address: {
       street: String,
@@ -116,7 +128,7 @@ const restaurantSchema = new mongoose.Schema(
       default: "pending"
     },
     rating: { type: Number, default: 0 },
-    password:{type:String,required:true},
+
     serviceAreas: [
       {
         type: {
