@@ -182,6 +182,7 @@ exports.loginUser = async (req, res) => {
       _id: userExist._id,
       name: userExist.name,
       email: userExist.email,
+      phone: userExist.phone,
       role: userExist.role,
     };
 
@@ -195,6 +196,42 @@ exports.loginUser = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+exports.updateUserProfile = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Build the update object based on what fields are present in req.body
+    const updateFields = {};
+    if (req.body.name !== undefined) updateFields.name = req.body.name;
+    if (req.body.email !== undefined) updateFields.email = req.body.email;
+    if (req.body.phone !== undefined) updateFields.phone = req.body.phone;
+
+    // Return an error if no fields are provided
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ message: "No fields to update" });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateFields,
+      { new: true, runValidators: true }
+    ).select("name email phone");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: "User profile updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    res.status(500).json({ message: "Something went wrong" });
+  }
+};
+
 
 // Logout user by deleting session
 

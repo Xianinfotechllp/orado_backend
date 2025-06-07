@@ -40,7 +40,7 @@ const agentSchema = new mongoose.Schema(
 
     deliveryStatus: {
       currentOrderId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }], // current order they are delivering
-      status: { type: String, enum: ["assigned_to_agent", "picked_up", "in_progress", "completed", "cancelled_by_customer", "pending_agent_acceptance"], default: "assigned_to_agent" },
+      status: { type: String, enum: ["assigned_to_agent", "picked_up", "in_progress", "completed", "cancelled_by_customer", "pending_agent_acceptance", "arrived", "available"], default: "available" },
       estimatedDeliveryTime: { type: Date }, // estimated time of arrival
       location: {
         latitude: { type: Number },

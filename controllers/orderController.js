@@ -286,7 +286,7 @@ exports.placeOrder = async (req, res) => {
     const savedOrder = await newOrder.save();
 
 
-    if (restaurant.permissions.canAcceptRejectOrders) {
+    if (restaurant.permissions.canAcceptOrders) {
       return res.status(201).json({
         message: "Order placed successfully",
         orderId: savedOrder._id,
@@ -300,6 +300,8 @@ exports.placeOrder = async (req, res) => {
         latitude,
       });
     if (assignedAgent) {
+      console.log('agent mil gaya');
+      
       const updateData = {
         assignedAgent: assignedAgent._id,
       };
@@ -340,14 +342,18 @@ exports.placeOrder = async (req, res) => {
 
 
       await Order.findByIdAndUpdate(savedOrder._id, updateData);
+      console.log('Order assigned to agent:', assignedAgent._id, 'for order:', savedOrder._id);
     }
  else {
+      console.log('agent nhi mila');
+      
       await Order.findByIdAndUpdate(savedOrder._id, {
         orderStatus: "awaiting_agent_assignment"
       });
     }
 
-
+    console.log('final step');
+    
     return res.status(201).json({
       message: "Order placed successfully",
       orderId: savedOrder._id,
@@ -366,7 +372,7 @@ exports.placeOrder = async (req, res) => {
 exports.getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId).populate(
-      "customerId restaurantId orderItems.productId"
+      "customerId restaurantId orderItems.productId assignedAgent"
     );
 
     if (!order) return res.status(404).json({ error: "Order not found" });
@@ -783,6 +789,7 @@ exports.merchantRejectOrder = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
   const { newStatus } = req.body;
+  const io = req.app.get('io'); // Get socket.io instance
 
   const merchantAllowedStatuses = [
     "accepted_by_restaurant",
@@ -791,7 +798,6 @@ exports.updateOrderStatus = async (req, res) => {
     "ready",
   ];
 
-  // Optionally allow 'completed' for the system or other roles
   const allowedStatuses = [...merchantAllowedStatuses, "completed"];
 
   if (!allowedStatuses.includes(newStatus)) {
@@ -801,20 +807,76 @@ exports.updateOrderStatus = async (req, res) => {
   }
 
   try {
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId)
+      .populate('customerId', '_id')
+      .populate('restaurantId', '_id')
+      .populate('assignedAgent', '_id');
+
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
+    const previousStatus = order.orderStatus;
     order.orderStatus = newStatus;
     await order.save();
+
+    // Emit socket events based on status change
+    if (io) {
+      // Always notify the customer
+      io.to(`user_${order.customerId._id.toString()}`).emit('order_status_update', {
+        orderId: order._id,
+        newStatus,
+        previousStatus,
+        timestamp: new Date()
+      });
+
+      // Notify restaurant for certain statuses
+      if (['preparing', 'ready', 'rejected_by_restaurant'].includes(newStatus)) {
+        io.to(`restaurant_${order.restaurantId._id.toString()}`).emit('order_status_update', {
+          orderId: order._id,
+          newStatus,
+          previousStatus,
+          timestamp: new Date()
+        });
+      }
+
+      // Notify agent when order is ready
+      if (newStatus === 'ready' && order.assignedAgent) {
+        io.to(`agent_${order.assignedAgent._id.toString()}`).emit('order_ready_for_pickup', {
+          orderId: order._id,
+          restaurantId: order.restaurantId._id,
+          customerId: order.customerId._id,
+          timestamp: new Date()
+        });
+      }
+
+      // Notify all parties when order is completed
+      if (newStatus === 'completed') {
+        io.to(`user_${order.customerId._id.toString()}`).emit('order_completed', {
+          orderId: order._id,
+          timestamp: new Date()
+        });
+
+        if (order.assignedAgent) {
+          io.to(`agent_${order.assignedAgent._id.toString()}`).emit('delivery_completed', {
+            orderId: order._id,
+            timestamp: new Date()
+          });
+        }
+
+        io.to(`restaurant_${order.restaurantId._id.toString()}`).emit('order_completed', {
+          orderId: order._id,
+          timestamp: new Date()
+        });
+      }
+    }
 
     // Award points only when status is 'completed'
     if (newStatus === "completed") {
       // Award delivery points to agent
-      if (order.agentId) {
+      if (order.assignedAgent) {
         try {
-          await awardDeliveryPoints(order.agentId, 10); // 10 points per delivery
+          await awardDeliveryPoints(order.assignedAgent._id, 10);
         } catch (err) {
           console.error("Failed to award delivery points:", err);
         }
@@ -822,16 +884,15 @@ exports.updateOrderStatus = async (req, res) => {
 
       // Award milestone points to restaurant
       if (order.restaurantId) {
-        // Example: award 10 points every 5 completed orders
         const completedOrdersCount = await Order.countDocuments({
-          restaurantId: order.restaurantId,
+          restaurantId: order.restaurantId._id,
           orderStatus: "completed",
         });
 
         if (completedOrdersCount % 5 === 0) {
           try {
             await awardPointsToRestaurant(
-              order.restaurantId,
+              order.restaurantId._id,
               10,
               "Milestone: 5 deliveries",
               order._id

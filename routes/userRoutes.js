@@ -4,7 +4,7 @@ const router = express.Router();
 
 
 
-const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll  ,getNotificationPrefs,updateNotificationPrefs,getaddress,markAsRead, getUserNotifications, markAllAsRead} = require("../controllers/userControllers");
+const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editaddress, deleteAccount, updateAddressById , resendOtp,forgotPassword ,resetPassword, logoutUser, logoutAll  ,getNotificationPrefs,updateNotificationPrefs,getaddress,markAsRead, getUserNotifications, markAllAsRead, updateUserProfile} = require("../controllers/userControllers");
 
 
 
@@ -21,6 +21,8 @@ router.post("/verify-otp",verifyOtp);
 
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
+router.put("/update-profile", protect, updateUserProfile);
+
 router.get("/adderss", protect, getaddress)
 // router.post("/address", protect, checkRole('customer'), addAddress)
 router.post("/address", protect, addAddress)

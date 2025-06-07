@@ -8,11 +8,23 @@ const mongoose = require("mongoose");
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: { origin: "*" }
+  cors: {
+    origin: "http://localhost:5173", // exact origin of your frontend
+    methods: ["GET", "POST"],
+    credentials: true,
+  }
 });
 
+// Middlewares
+app.use(express.json());
+app.use(cors());
 // Attach io to app so it can be used in controllers
 app.set("io", io);
+
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
 // Load environment variables and DB config
 dotenv.config();
@@ -37,9 +49,7 @@ const chatRouter = require("./routes/chatRoutes");
 const faqRouter = require("./routes/faqRoutes");
 const adminRouter = require("./routes/adminRoutes");
 
-// Middlewares
-app.use(express.json());
-app.use(cors());
+
 
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
@@ -51,23 +61,24 @@ io.on("connection", (socket) => {
       return socket.emit("error", { message: "Invalid user ID" });
     }
 
-    let roomName;
     switch (userType) {
       case 'admin':
-        roomName = `admin_${userId}`;
+        socket.join(`admin_${userId}`);
+        socket.join(`admin_group`);
+        console.log(`Socket ${socket.id} joined rooms: admin_${userId} and admin_group`);
         break;
       case 'agent':
-        roomName = `agent_${userId}`;
+        socket.join(`agent_${userId}`);
+        console.log(`Socket ${socket.id} joined room: agent_${userId}`);
         break;
       case 'restaurant':
-        roomName = `restaurant_${userId}`;
+        socket.join(`restaurant_${userId}`);
+        console.log(`Socket ${socket.id} joined room: restaurant_${userId}`);
         break;
       default: // customer/user
-        roomName = `user_${userId}`;
+        socket.join(`user_${userId}`);
+        console.log(`Socket ${socket.id} joined room: user_${userId}`);
     }
-
-    socket.join(roomName);
-    console.log(`Socket ${socket.id} joined room: ${roomName}`);
   });
 
   // Agent live status + location
@@ -96,6 +107,7 @@ io.on("connection", (socket) => {
 
   // Real-time Chat Handler
   socket.on("sendMessage", async (data) => {
+    console.log("Received sendMessage event with data:", data);
     try {
       const {
         senderId,
@@ -105,6 +117,7 @@ io.on("connection", (socket) => {
         content,
         attachments = []
       } = data;
+      console.log("Received message:", data);
 
       // Validate fields
       if (!senderId || !receiverId || !content || !senderModel || !receiverModel) {
@@ -137,13 +150,14 @@ io.on("connection", (socket) => {
 
       // Create new message
       const newMessage = {
-        sender: senderId,
-        senderModel,
-        content,
-        attachments,
-        readBy: [senderId],
-        createdAt: new Date()
-      };
+      _id: new mongoose.Types.ObjectId(),
+      sender: senderId,
+      senderModel,
+      content,
+      attachments,
+      readBy: [senderId],
+      createdAt: new Date(),
+    };
 
 
       chatDoc.messages.push(newMessage);
@@ -155,7 +169,7 @@ io.on("connection", (socket) => {
       let receiverRoom;
       switch (receiverModel) {
         case 'admin':
-          receiverRoom = `admin_${receiverId}`;
+          receiverRoom = receiverId ? `admin_${receiverId}` : 'admin_group';
           break;
         case 'agent':
           receiverRoom = `agent_${receiverId}`;
@@ -172,7 +186,7 @@ io.on("connection", (socket) => {
         chatId: chatDoc._id,
         message: newMessage
       });
-
+      console.log("Emitted newMessage to room:", receiverRoom, "with message:", newMessage);
       // Also emit to sender if they're in a different room
       if (senderId !== receiverId) {
         let senderRoom;
@@ -287,7 +301,7 @@ io.on("connection", (socket) => {
 
       // Notify other participant
       const otherParticipant = chat.participants.find(
-        p => !p.id.equals(readerId) || p.modelType !== readerModel
+        p => !(p.id.equals(readerId) && p.modelType === readerModel)
       );
 
       if (otherParticipant) {

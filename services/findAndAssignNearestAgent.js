@@ -15,6 +15,7 @@ exports.findAndAssignNearestAgent = async (orderId, deliveryLocation, maxDistanc
   try {
     const { longitude, latitude } = deliveryLocation;
 
+
     const order = await Order.findById(orderId)
       .select("paymentMethod totalAmount rejectionHistory");
 
@@ -31,7 +32,7 @@ exports.findAndAssignNearestAgent = async (orderId, deliveryLocation, maxDistanc
             { "permissions.canAcceptOrRejectOrders": false },
             {
               "permissions.canAcceptOrRejectOrders": true,
-              "deliveryStatus.status": { $ne: "In Progress" }
+              "deliveryStatus.status": { $ne: "in_progress" }
             }
           ]
         },
@@ -64,8 +65,14 @@ exports.findAndAssignNearestAgent = async (orderId, deliveryLocation, maxDistanc
         }
       });
     }
+    console.log("Running agentQuery:", JSON.stringify(agentQuery, null, 2));
 
     const nearbyAgent = await Agent.findOne(agentQuery);
+
+    if (!nearbyAgent) {
+  console.log("No agent found. Double check all conditions.");
+}
+
 
     if (nearbyAgent) {
       let orderStatusUpdate;
@@ -73,10 +80,10 @@ exports.findAndAssignNearestAgent = async (orderId, deliveryLocation, maxDistanc
 
       if (nearbyAgent.permissions.canAcceptOrRejectOrders) {
         orderStatusUpdate = "pending_agent_acceptance";
-        agentStatusUpdate = "Pending Acceptance";
+        agentStatusUpdate = "pending_agent_acceptance";
       } else {
         orderStatusUpdate = "assigned_to_agent";
-        agentStatusUpdate = "Assigned";
+        agentStatusUpdate = "assigned_to_agent";
       }
 
       // Update Order
@@ -84,7 +91,7 @@ exports.findAndAssignNearestAgent = async (orderId, deliveryLocation, maxDistanc
         assignedAgent: nearbyAgent._id,
         orderStatus: orderStatusUpdate,
       });
-
+      console.log("Updated order:", orderId, "with agent:", nearbyAgent._id);
       // Update Agent
       const agentUpdate = {
         $inc: {
@@ -101,7 +108,8 @@ exports.findAndAssignNearestAgent = async (orderId, deliveryLocation, maxDistanc
 
 
       await Agent.findByIdAndUpdate(nearbyAgent._id, agentUpdate);
-
+      console.log("Assigned agent:", nearbyAgent._id, "to order:", orderId);
+      
       // ✅ Send FCM Notification
       const title = "New Order Assigned";
       const body = "You have a new delivery order. Please check the app.";
