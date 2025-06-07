@@ -27,7 +27,7 @@ const orderSchema = mongoose.Schema({
     ]
   },
 
-  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
+  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },  
 
   rejectionHistory: [{
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },

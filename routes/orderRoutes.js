@@ -40,7 +40,7 @@ router.get('/customer/:customerId/status', protect, getOrdersByCustomer);
 router.get('/agent/:agentId', protect, getOrdersByAgent);
 
 // updates and actions on orders
-router.put('/:orderId/status', protect, updateOrderStatus);
+router.put('/:orderId/status', updateOrderStatus);
 router.post('/:orderId/cancel', protect, cancelOrder);
 router.post(
   '/:orderId/review',
@@ -79,7 +79,7 @@ router.post("/pricesummary", protect, getOrderPriceSummary)
 
 
 //place order 
-router.post("/place-order", protect, placeOrder)
+router.post("/place-order",  placeOrder)
 
 // Reorder route
 router.post('/reorder/:orderId', protect, reorder);

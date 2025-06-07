@@ -8,14 +8,17 @@ const findOrCreateChat = async (participants) => {
       $all: participants.map(p => ({
         $elemMatch: { id: p.id, modelType: p.modelType }
       }))
-    },
-    $where: `this.participants.length === ${participants.length}`
+    }
   });
 
-  if (chat) return chat;
+  // Add manual check for exact length match
+  if (chat && chat.participants.length === participants.length) {
+    return chat;
+  }
 
   return await Chat.create({ participants });
 };
+
 
 // ====================== ADMIN-RESTAURANT CHAT ====================== //
 exports.getAdminRestaurantChats = async (req, res) => {
@@ -23,7 +26,7 @@ exports.getAdminRestaurantChats = async (req, res) => {
     const adminId = req.user._id;
     const chats = await Chat.find({
       participants: {
-        $elemMatch: { id: adminId, modelType: 'admin' }
+        $elemMatch: {  modelType: 'admin' }
       },
       'participants.modelType': 'restaurant'
     })
@@ -47,7 +50,7 @@ exports.getAdminRestaurantChat = async (req, res) => {
     const chat = await Chat.findOne({
       participants: {
         $all: [
-          { $elemMatch: { id: adminId, modelType: 'admin' } },
+          { $elemMatch: { modelType: 'admin' } },
           { $elemMatch: { id: restaurantId, modelType: 'restaurant' } }
         ]
       }
@@ -60,7 +63,7 @@ exports.getAdminRestaurantChat = async (req, res) => {
         success: true,
         data: {
           participants: [
-            { id: adminId, modelType: 'admin' },
+            { modelType: 'admin' },
             { id: restaurantId, modelType: 'restaurant' }
           ],
           messages: []
@@ -84,7 +87,7 @@ exports.sendAdminToRestaurantMessage = async (req, res) => {
     const { content, attachments = [] } = req.body;
 
     const chat = await findOrCreateChat([
-      { id: adminId, modelType: 'admin' },
+      { modelType: 'admin' },
       { id: restaurantId, modelType: 'restaurant' }
     ]);
 
@@ -119,12 +122,11 @@ exports.sendAdminToRestaurantMessage = async (req, res) => {
 exports.sendRestaurantToAdminMessage = async (req, res) => {
   try {
     const restaurantId = req.user._id;
-    const adminId = req.params.adminId;
     const { content, attachments = [] } = req.body;
 
     const chat = await findOrCreateChat([
       { id: restaurantId, modelType: 'restaurant' },
-      { id: adminId, modelType: 'admin' }
+      { modelType: 'admin' }
     ]);
 
     const newMessage = {
@@ -141,7 +143,7 @@ exports.sendRestaurantToAdminMessage = async (req, res) => {
     await chat.save();
 
     // Emit socket event
-    req.io.to(`admin_${adminId}`).emit('newMessage', {
+    req.io.to('admin_group').emit('newMessage', {
       chatId: chat._id,
       message: newMessage
     });
@@ -163,7 +165,7 @@ exports.getAgentUserChats = async (req, res) => {
       participants: {
         $elemMatch: { id: agentId, modelType: 'agent' }
       },
-      'participants.modelType': 'customer'
+      'participants.modelType': 'user'
     })
     .populate('participants.id', 'name email phone')
     .sort({ updatedAt: -1 });
@@ -186,7 +188,7 @@ exports.getAgentUserChat = async (req, res) => {
       participants: {
         $all: [
           { $elemMatch: { id: agentId, modelType: 'agent' } },
-          { $elemMatch: { id: userId, modelType: 'customer' } }
+          { $elemMatch: { id: userId, modelType: 'user' } }
         ]
       }
     })
@@ -199,7 +201,7 @@ exports.getAgentUserChat = async (req, res) => {
         data: {
           participants: [
             { id: agentId, modelType: 'agent' },
-            { id: userId, modelType: 'customer' }
+            { id: userId, modelType: 'user' }
           ],
           messages: []
         }
@@ -215,6 +217,45 @@ exports.getAgentUserChat = async (req, res) => {
   }
 };
 
+exports.getUserAgentChat = async (req, res) => {
+  try {
+    const userId = req.user._id; // Logged-in customer
+    const agentId = req.params.agentId;
+
+    const chat = await Chat.findOne({
+      participants: {
+        $all: [
+          { $elemMatch: { id: userId, modelType: 'user' } },
+          { $elemMatch: { id: agentId, modelType: 'agent' } }
+        ]
+      }
+    })
+    .populate('messages.sender', 'name')
+    .populate('participants.id', 'name email phone');
+
+    if (!chat) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          participants: [
+            { id: userId, modelType: 'user' },
+            { id: agentId, modelType: 'agent' }
+          ],
+          messages: []
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: chat
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
 exports.sendAgentToUserMessage = async (req, res) => {
   try {
     const agentId = req.user._id;
@@ -223,7 +264,7 @@ exports.sendAgentToUserMessage = async (req, res) => {
 
     const chat = await findOrCreateChat([
       { id: agentId, modelType: 'agent' },
-      { id: userId, modelType: 'customer' }
+      { id: userId, modelType: 'user' }
     ]);
 
     const newMessage = {
@@ -260,13 +301,13 @@ exports.sendUserToAgentMessage = async (req, res) => {
     const { content, attachments = [] } = req.body;
 
     const chat = await findOrCreateChat([
-      { id: userId, modelType: 'customer' },
+      { id: userId, modelType: 'user' },
       { id: agentId, modelType: 'agent' }
     ]);
 
     const newMessage = {
       sender: userId,
-      senderModel: 'customer',
+      senderModel: 'user',
       content,
       attachments,
       readBy: [userId]
@@ -299,9 +340,9 @@ exports.getAdminCustomerChats = async (req, res) => {
     const adminId = req.user._id;
     const chats = await Chat.find({
       participants: {
-        $elemMatch: { id: adminId, modelType: 'admin' }
+        $elemMatch: {  modelType: 'admin' }
       },
-      'participants.modelType': 'customer'
+      'participants.modelType': 'user'
     })
     .populate('participants.id', 'name email phone')
     .sort({ updatedAt: -1 });
@@ -323,8 +364,8 @@ exports.getAdminCustomerChat = async (req, res) => {
     const chat = await Chat.findOne({
       participants: {
         $all: [
-          { $elemMatch: { id: adminId, modelType: 'admin' } },
-          { $elemMatch: { id: userId, modelType: 'customer' } }
+          { $elemMatch: { modelType: 'admin' } },
+          { $elemMatch: { id: userId, modelType: 'user' } }
         ]
       }
     })
@@ -336,8 +377,8 @@ exports.getAdminCustomerChat = async (req, res) => {
         success: true,
         data: {
           participants: [
-            { id: adminId, modelType: 'admin' },
-            { id: userId, modelType: 'customer' }
+            { modelType: 'admin' },
+            { id: userId, modelType: 'user' }
           ],
           messages: []
         }
@@ -353,6 +394,46 @@ exports.getAdminCustomerChat = async (req, res) => {
   }
 };
 
+exports.getCustomerAdminChat = async (req, res) => {
+  try {
+    const userId = req.user._id; // Customer
+    // const adminId = req.params.adminId; // Admin ID passed via URL
+
+    // Try to find existing chat
+    let chat = await Chat.findOne({
+      participants: {
+        $all: [
+          { $elemMatch: { id: userId, modelType: 'user' } },
+          { $elemMatch: { modelType: 'admin' } }
+        ]
+      }
+    })
+      .populate('messages.sender', 'name')
+      .populate('participants.id', 'name email phone');
+
+    // If not found, create new chat
+    if (!chat) {
+      chat = await findOrCreateChat([
+        { id: userId, modelType: 'user' },
+        { modelType: 'admin' }
+      ]);
+
+      // Populate after creation
+      chat = await Chat.findById(chat._id)
+        .populate('messages.sender', 'name')
+        .populate('participants.id', 'name email phone');
+    }
+
+    res.status(200).json({
+      success: true,
+      data: chat
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
 exports.sendAdminToCustomerMessage = async (req, res) => {
   try {
     const adminId = req.user._id;
@@ -360,12 +441,12 @@ exports.sendAdminToCustomerMessage = async (req, res) => {
     const { content, attachments = [] } = req.body;
 
     const chat = await findOrCreateChat([
-      { id: adminId, modelType: 'admin' },
-      { id: userId, modelType: 'customer' }
+      {  modelType: 'admin' },
+      { id: userId, modelType: 'user' }
     ]);
 
     const newMessage = {
-      sender: adminId,
+      sender: req.user._id,
       senderModel: 'admin',
       content,
       attachments,
@@ -395,21 +476,22 @@ exports.sendAdminToCustomerMessage = async (req, res) => {
 exports.sendCustomerToAdminMessage = async (req, res) => {
   try {
     const userId = req.user._id;
-    const adminId = req.params.adminId;
+    // const adminId = req.params.adminId;
     const { content, attachments = [] } = req.body;
+    console.log("Received body:", req.body);
 
     const chat = await findOrCreateChat([
-      { id: userId, modelType: 'customer' },
-      { id: adminId, modelType: 'admin' }
+      { id: userId, modelType: 'user' },
+      { modelType: 'admin' }
     ]);
 
-    const newMessage = {
+    const newMessage = chat.messages.create({
       sender: userId,
-      senderModel: 'customer',
+      senderModel: 'user',
       content,
       attachments,
       readBy: [userId]
-    };
+    });
 
     chat.messages.push(newMessage);
     chat.lastMessage = newMessage._id;
@@ -417,7 +499,7 @@ exports.sendCustomerToAdminMessage = async (req, res) => {
     await chat.save();
 
     // Emit socket event to admin
-    req.io.to(`admin_${adminId}`).emit('newMessage', {
+    req.io.to('admin_group').emit('newMessage', {
       chatId: chat._id,
       message: newMessage
     });
@@ -438,7 +520,7 @@ exports.getAdminAgentChats = async (req, res) => {
     const adminId = req.user._id;
     const chats = await Chat.find({
       participants: {
-        $elemMatch: { id: adminId, modelType: 'admin' }
+        $elemMatch: { modelType: 'admin' }
       },
       'participants.modelType': 'agent'
     })
@@ -462,7 +544,7 @@ exports.getAdminAgentChat = async (req, res) => {
     const chat = await Chat.findOne({
       participants: {
         $all: [
-          { $elemMatch: { id: adminId, modelType: 'admin' } },
+          { $elemMatch: { modelType: 'admin' } },
           { $elemMatch: { id: agentId, modelType: 'agent' } }
         ]
       }
@@ -475,7 +557,7 @@ exports.getAdminAgentChat = async (req, res) => {
         success: true,
         data: {
           participants: [
-            { id: adminId, modelType: 'admin' },
+            { modelType: 'admin' },
             { id: agentId, modelType: 'agent' }
           ],
           messages: []
@@ -499,7 +581,7 @@ exports.sendAdminToAgentMessage = async (req, res) => {
     const { content, attachments = [] } = req.body;
 
     const chat = await findOrCreateChat([
-      { id: adminId, modelType: 'admin' },
+      { modelType: 'admin' },
       { id: agentId, modelType: 'agent' }
     ]);
 
@@ -534,7 +616,6 @@ exports.sendAdminToAgentMessage = async (req, res) => {
 exports.sendAgentToAdminMessage = async (req, res) => {
   try {
     const agentId = req.user._id;
-    const adminId = req.params.adminId;
     const { content, attachments = [] } = req.body;
 
     const chat = await findOrCreateChat([
@@ -556,7 +637,190 @@ exports.sendAgentToAdminMessage = async (req, res) => {
     await chat.save();
 
     // Emit socket event to admin
-    req.io.to(`admin_${adminId}`).emit('newMessage', {
+    req.io.to('admin_group').emit('newMessage', {
+      chatId: chat._id,
+      message: newMessage
+    });
+
+    res.status(201).json({
+      success: true,
+      data: newMessage
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+// ====================== RESTAURANT-CUSTOMER CHAT ====================== //
+
+exports.getRestaurantCustomerChats = async (req, res) => {
+  try {
+    const restaurantId = req.user._id;
+    const chats = await Chat.find({
+      participants: {
+        $elemMatch: { id: restaurantId, modelType: 'restaurant' }
+      },
+      'participants.modelType': 'user'
+    })
+      .populate('participants.id', 'name email phone')
+      .sort({ updatedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: chats
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// get chat for restruant from customer
+
+exports.getRestaurantCustomerChat = async (req, res) => {
+  try {
+    const restaurantId = req.user._id;
+    const userId = req.params.userId;
+
+    const chat = await Chat.findOne({
+      participants: {
+        $all: [
+          { $elemMatch: { id: restaurantId, modelType: 'restaurant' } },
+          { $elemMatch: { id: userId, modelType: 'user' } }
+        ]
+      }
+    })
+      .populate('messages.sender', 'name')
+      .populate('participants.id', 'name email phone');
+
+    if (!chat) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          participants: [
+            { id: restaurantId, modelType: 'restaurant' },
+            { id: userId, modelType: 'user' }
+          ],
+          messages: []
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: chat
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// get chat from customer to restruant
+
+exports.getCustomerRestruantChat = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const restaurantId = req.params.restaurantId;
+
+    // Try to find existing chat
+    let chat = await Chat.findOne({
+      participants: {
+        $all: [
+          { $elemMatch: { id: userId, modelType: 'user' } },
+          { $elemMatch: { id: restaurantId, modelType: 'restaurant' } }
+        ]
+      }
+    })
+      .populate('messages.sender', 'name')
+      .populate('participants.id', 'name email phone');
+
+    // If not found, create a new one
+    if (!chat) {
+      chat = await findOrCreateChat([
+        { id: userId, modelType: 'user' },
+        { id: restaurantId, modelType: 'restaurant' }
+      ]);
+
+      // Populate after creation
+      chat = await Chat.findById(chat._id)
+        .populate('messages.sender', 'name')
+        .populate('participants.id', 'name email phone');
+    }
+
+    res.status(200).json({
+      success: true,
+      data: chat
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+exports.sendRestaurantToCustomerMessage = async (req, res) => {
+  try {
+    const restaurantId = req.user._id;
+    const userId = req.params.userId;
+    const { content, attachments = [] } = req.body;
+
+    const chat = await findOrCreateChat([
+      { id: restaurantId, modelType: 'restaurant' },
+      { id: userId, modelType: 'user' }
+    ]);
+
+    const newMessage = {
+      sender: restaurantId,
+      senderModel: 'restaurant',
+      content,
+      attachments,
+      readBy: [restaurantId]
+    };
+
+    chat.messages.push(newMessage);
+    chat.lastMessage = newMessage._id;
+    chat.updatedAt = new Date();
+    await chat.save();
+
+    req.io.to(`user_${userId}`).emit('newMessage', {
+      chatId: chat._id,
+      message: newMessage
+    });
+
+    res.status(201).json({
+      success: true,
+      data: newMessage
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.sendCustomerToRestaurantMessage = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const restaurantId = req.params.restaurantId;
+    const { content, attachments = [] } = req.body;
+
+    const chat = await findOrCreateChat([
+      { id: userId, modelType: 'user' },
+      { id: restaurantId, modelType: 'restaurant' }
+    ]);
+
+    const newMessage = chat.messages.create({
+      sender: userId,
+      senderModel: 'user',
+      content,
+      attachments,
+      readBy: [userId]
+    });
+
+    chat.messages.push(newMessage);
+    chat.lastMessage = newMessage._id;
+    chat.updatedAt = new Date();
+    await chat.save();
+
+
+    req.io.to(`restaurant_${restaurantId}`).emit('newMessage', {
       chatId: chat._id,
       message: newMessage
     });
@@ -572,13 +836,14 @@ exports.sendAgentToAdminMessage = async (req, res) => {
 
 
 
+
 // ====================== COMMON FUNCTIONS ====================== //
 exports.markMessagesAsRead = async (req, res) => {
   try {
     const { chatId } = req.params;
     const userId = req.user._id;
     const userModel = req.user.userType === 'admin' ? 'admin' : 
-                     req.user.userType === 'agent' ? 'agent' : 'customer';
+                     req.user.userType === 'agent' ? 'agent' : 'user';
 
     const chat = await Chat.findById(chatId);
     if (!chat) {
@@ -605,6 +870,7 @@ exports.markMessagesAsRead = async (req, res) => {
         readerId: userId
       });
     }
+
 
     res.status(200).json({ success: true });
   } catch (error) {
