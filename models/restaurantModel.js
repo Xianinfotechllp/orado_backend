@@ -114,10 +114,6 @@ const restaurantSchema = new mongoose.Schema(
       enum: ["pending", "approved", "rejected"],
       default: "pending"
     },
-    permissions: {
-      canAcceptOrders: { type: Boolean, default: false },
-      canManageMenu: { type: Boolean, default: false },
-    },
     rating: { type: Number, default: 0 },
     password:{type:String,required:true},
     serviceAreas: [

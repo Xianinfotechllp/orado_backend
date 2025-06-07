@@ -270,96 +270,26 @@ if (req.body.openingHours) {
   }
 };
 
+
+
 exports.loginRestaurant = async (req, res) => {
   // 1. Validate input
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
+
 
   const { email, password } = req.body;
 
   try {
     // 2. Check if restaurant exists
-    const restaurant = await Restaurant.findOne({ email }).select(" -password");
-    
+    const restaurant = await Restaurant.findOne({ email }).select(' -kycDocuments')
+
     if (!restaurant) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
-
-    // 3. Check approval status
-    if (restaurant.approvalStatus !== "approved") {
-      return res.status(403).json({
-        success: false,
-        message: `Restaurant account is ${restaurant.approvalStatus}`,
-        status: restaurant.approvalStatus,
-      });
-    }
-
-    // 4. Verify password
-    const isMatch = await bcrypt.compare(password, restaurant.password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
-
-    // 5. Generate JWT token
-    const payload = {
-      restaurant: {
-        id: restaurant._id,
-        role: "restaurant",
-      },
-    };
-
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRE || "24h",
-    });
-
-    // 6. Remove sensitive data before sending response
-    restaurant.password = undefined;
-
-    res.status(200).json({
-      success: true,
-      token,
-      restaurant,
-      message: "Login successful",
-    });
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
-};
-
-
-
-exports.loginRestaurant = async (req, res) => {
-  // 1. Validate input
- 
-  console.log(req.body)
-
-  const { email, password } = req.body;
-
-  try {
-    // 2. Check if restaurant exists
-    const restaurant = await Restaurant.findOne({ email })
-    console.log(restaurant)
-    if (!restaurant) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
-
-
-   
+    const permissions = await Permission.findOne({ restaurantId: restaurant._id });
+       console.log(permissions)
     // 4. Verify password
     const isMatch = await bcrypt.compare(password, restaurant.password);
     if (!isMatch) {
@@ -383,6 +313,7 @@ exports.loginRestaurant = async (req, res) => {
       success: true,
       token,
       data:restaurant,
+      permissions:permissions.permissions,
       message: "Login successful",
     });
   } catch (err) {
