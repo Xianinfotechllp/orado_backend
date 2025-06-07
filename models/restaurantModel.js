@@ -1,9 +1,28 @@
 const mongoose = require("mongoose");
-
+const openingHourSchema = new mongoose.Schema({
+  day: {
+    type: String,
+    enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    required: true
+  },
+  openingTime: {
+    type: String, // e.g. '09:00'
+    required: true
+  },
+  closingTime: {
+    type: String, // e.g. '22:00'
+    required: true
+  },
+  isClosed: {
+    type: Boolean,
+    default: false
+  }
+});
 const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     ownerName:String,
+    password: { type: String, required: true },
     images: [String], // URLs of images (e.g. Cloudinary URLs)
 
     address: {
@@ -40,10 +59,7 @@ const restaurantSchema = new mongoose.Schema(
       }
     ]
     ,
-    openingHours: {
-      startTime: { type: String },
-      endTime: { type: String },
-    },
+     openingHours: [openingHourSchema],
 
     businessHours: {
       type: Map,
@@ -71,14 +87,14 @@ const restaurantSchema = new mongoose.Schema(
     banners: [String],
     merchantSearchName: { type: String },
     kyc: {
-    fssaiNumber: { type: String, required: true },
-    gstNumber: { type: String, required: true },
-    aadharNumber: { type: String, required: true },
+    fssaiNumber: { type: String },
+    gstNumber: { type: String},
+    aadharNumber: { type: String},
     },
     kycDocuments: {
-      fssaiDocUrl: { type: String, required: true },
-      gstDocUrl: { type: String, required: true },
-      aadharDocUrl: { type: String, required: true },
+      fssaiDocUrl: { type: String },
+      gstDocUrl: { type: String},
+      aadharDocUrl: { type: String},
     },
     kycStatus: {
       type: String,
@@ -89,16 +105,18 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+     approvalRejectionReason: {
+      type: String,
+      default: null,
+    },
+    
     approvalStatus: {
       type: String,
       enum: ["pending", "approved", "rejected"],
       default: "pending"
     },
-    permissions: {
-      canAcceptOrders: { type: Boolean, default: false },
-      canManageMenu: { type: Boolean, default: false },
-    },
     rating: { type: Number, default: 0 },
+    password:{type:String,required:true},
     serviceAreas: [
       {
         type: {
@@ -113,9 +131,9 @@ const restaurantSchema = new mongoose.Schema(
         },
       },
     ],
-    minOrderAmount: { type: Number, required: true },
+    minOrderAmount: { type: Number },
     paymentMethods: [
-      { type: String, enum: ["cash", "online", "wallet"], required: true },
+      { type: String, enum: ["cash", "online", "wallet"] },
     ],
   },
   { timestamps: true }

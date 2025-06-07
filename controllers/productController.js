@@ -331,4 +331,40 @@ exports.toggleProductActive = async (req, res) => {
 
 
 
+exports.getCategoryProducts = async (req, res) => {
+  try {
+    const { restaurantId, categoryId } = req.params;
+
+    // Validate IDs
+    if (!isValidObjectId(restaurantId) || !isValidObjectId(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid restaurant or category ID'
+      });
+    }
+
+    // Find all active products in this category and restaurant
+    const products = await Product.find({
+      restaurantId,
+      categoryId
+    })
+    .sort({ name: 1 }) // Sort alphabetically
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      data: products
+    });
+
+  } catch (error) {
+    console.error('Error fetching category products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch products',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+
 

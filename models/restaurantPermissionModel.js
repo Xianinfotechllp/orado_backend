@@ -25,7 +25,7 @@ const permissionSchema = new mongoose.Schema({
     },
     canViewReports: {
       type: Boolean,
-      default: false
+      default: true
     }
   }
 }, { timestamps: true });

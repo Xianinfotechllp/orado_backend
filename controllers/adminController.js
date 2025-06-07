@@ -1,6 +1,7 @@
 const User = require("../models/userModel");
 const Agent = require("../models/agentModel");
 const Session = require("../models/session");
+
 const Permission = require('../models/restaurantPermissionModel');
 const Restaurant = require("../models/restaurantModel");
 const ChangeRequest = require("../models/changeRequest");
@@ -13,7 +14,10 @@ const { sendSms } = require("../utils/sendSms")
 const permissionsList = require('../utils/adminPermissions')
 const logAccess = require('../utils/logAccess')
 const AccessLog = require('../models/accessLogModel')
-
+const { isValidObjectId } = require("mongoose");
+const {uploadOnCloudinary} = require("../utils/cloudinary")
+const fs = require('fs');
+const path = require('path');
 exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
 
@@ -367,23 +371,22 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
     restaurant.approvalStatus = action;
     if (action === "rejected") {
       restaurant.kycRejectionReason = reason || "Not specified";
+      restaurant.approvalRejectionReason = reason || "Not specified"
     } else {
       restaurant.kycRejectionReason = undefined; // clear any previous rejection reason
     }
 
     await restaurant.save();
 
-    // For logging this
-    await logAccess({
-      userId: req.user._id,
-      action: "restaurant.registration",
-      description: `${action} restaurant registration for restaurant named ${restaurant.name} with id ${restaurantId}`,
-      req,
-    });
+    // // For logging this
+    // await logAccess({
+    //   userId: req.user._id,
+    //   action: "restaurant.registration",
+    //   description: `${action} restaurant registration for restaurant named ${restaurant.name} with id ${restaurantId}`,
+    //   req,
+    // });
     const message = `Hello ${restaurant.name}, your restaurant application has been ${restaurant.approvalStatus.toUpperCase()}.`;
-    if (restaurant.phone) {
-      await sendSms(restaurant.phone, message);
-    }
+   
 
     res.status(200).json({
       message: `Restaurant KYC ${action} successfully.`,
@@ -418,6 +421,71 @@ exports.getPermissions = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+
+
+exports.toggleRestaurantPermission = async (req, res) => {
+  try {
+    const { restaurantId, permissionKey, value } = req.body;
+
+    // Validate input
+    if (!restaurantId || !permissionKey || typeof value !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'restaurantId, permissionKey and boolean value are required.',
+      });
+    }
+
+    // Check if restaurant exists
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found.',
+      });
+    }
+
+    // Find or create permission document for the restaurant
+    let permissionDoc = await Permission.findOne({ restaurantId });
+    if (!permissionDoc) {
+      permissionDoc = await Permission.create({
+        restaurantId,
+        permissions: {} // will auto-default to schema defaults
+      });
+    }
+
+    // Check if permissionKey is valid
+    if (!Object.keys(permissionDoc.permissions.toObject()).includes(permissionKey)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid permission key: ${permissionKey}`,
+      });
+    }
+
+    // Update the specific permission
+    permissionDoc.permissions[permissionKey] = value;
+    await permissionDoc.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Permission ${permissionKey} updated successfully.`,
+      data: permissionDoc.permissions
+    });
+
+  } catch (error) {
+    console.error('Toggle permission error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error.'
+    });
+  }
+};
+
+
+
+
+
+
 
 
 
@@ -743,3 +811,533 @@ exports.getRestaurantById = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+
+exports.updatePermissionsRestuarants = async (req, res) => {
+  try {
+       
+    const { restaurantId, permissions } = req.body;
+ 
+
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ message: 'Invalid restaurant ID' });
+    }
+
+    const validPermissions = [
+      'canManageMenu',
+      'canAcceptOrder',
+      'canRejectOrder',
+      'canManageOffers',
+      'canViewReports'
+    ];
+
+    const invalidKeys = Object.keys(permissions).filter(
+      (key) => !validPermissions.includes(key)
+    );
+
+    if (invalidKeys.length > 0) {
+      return res.status(400).json({ message: `Invalid permission keys: ${invalidKeys.join(', ')}` });
+    }
+
+    let permissionDoc = await Permission.findOne({ restaurantId });
+ 
+
+    if (!permissionDoc) {
+      permissionDoc = await Permission.create({
+        restaurantId,
+        permissions
+      });
+      // console.log("Created new permission doc: ", permissionDoc); 
+    } else {
+      Object.keys(permissions).forEach((key) => {
+        permissionDoc.permissions[key] = permissions[key];
+      });
+      await permissionDoc.save();
+      // console.log("Updated permission doc: ", permissionDoc);
+    }
+
+    res.status(200).json({
+      message: 'Permissions updated successfully',
+      permissions: permissionDoc.permissions
+    });
+
+  } catch (error) {
+    console.error("Error while updating permissions: ", error);
+    res.status(500).json({ message: 'Server Error', error });
+  }
+};
+
+
+
+
+exports.getRestaurantsWithPermissions = async (req, res) => {
+  try {
+      console.log("correct api call")
+    // Fetch all restaurants
+    const restaurants = await Restaurant.find();
+
+    // Fetch permissions for each restaurant and attach
+    const restaurantList = await Promise.all(
+      restaurants.map(async (restaurant) => {
+        const permissionDoc = await Permission.findOne({ restaurantId: restaurant._id });
+
+        return {
+          _id: restaurant._id,
+          name: restaurant.name,
+          email: restaurant.email, // if exists
+          permissions: permissionDoc ? permissionDoc.permissions : {
+            canManageMenu: false,
+            canAcceptOrder: false,
+            canRejectOrder: false,
+            canManageOffers: false,
+            canViewReports: true
+          }
+        };
+      })
+    );
+  
+    
+    
+
+    res.status(200).json({
+      message: 'Restaurant list with permissions fetched successfully',
+      data: restaurantList
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error', error });
+  }
+};
+
+
+
+
+exports.createCategory = async (req, res) => {
+  try {
+    const { name, restaurantId, active = true, autoOnOff = false, description = '', images = [] } = req.body;
+
+    if (!name?.trim() || !restaurantId) {
+      return res.status(400).json({ message: 'Category name and restaurantId are required' });
+    }
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: 'Restaurant not found' });
+    }
+
+    const category = new Category({
+      name: name.trim(),
+      restaurantId,
+      active,
+      autoOnOff,
+      description,
+      images
+    });
+
+    await category.save();
+
+    res.status(201).json({
+      message: 'Category created successfully',
+      category
+    });
+
+  } catch (error) {
+    console.error('Error creating category:', error.message);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+
+
+
+
+exports.updateRestaurant = async (req, res) => {
+  try {
+    if (!req.body) return res.status(400).json({ message: 'Request body is missing.' });
+
+    const { restaurantId } = req.params;
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
+
+    const {
+      name,
+      address,
+      phone,
+      email,
+      openingHours,
+      foodType,
+      merchantSearchName,
+      minOrderAmount,
+      paymentMethods,
+      isActive,
+      status
+    } = req.body;
+
+    // Update basic fields if they exist
+    if (name) restaurant.name = name;
+    if (phone) restaurant.phone = phone;
+    if (email) restaurant.email = email;
+    if (foodType) restaurant.foodType = foodType;
+    if (merchantSearchName) restaurant.merchantSearchName = merchantSearchName;
+    if (minOrderAmount) restaurant.minOrderAmount = minOrderAmount;
+    if (paymentMethods) restaurant.paymentMethods = paymentMethods;
+    if (openingHours) restaurant.openingHours = openingHours;
+    if (isActive !== undefined) restaurant.isActive = isActive;
+    if (status) restaurant.status = status;
+
+    // 🧭 Address and Location
+    if (address) {
+      restaurant.address.street = address?.street || restaurant.address.street;
+      restaurant.address.city = address?.city || restaurant.address.city;
+      restaurant.address.state = address?.state || restaurant.address.state;
+      restaurant.address.zip = address?.pincode || restaurant.address.zip;
+
+      if (address.coordinates && address.coordinates.length === 2) {
+        restaurant.location = {
+          type: "Point",
+          coordinates: [address.coordinates[1], address.coordinates[0]],
+        };
+      }
+    }
+
+    if (req.files && req.files.length > 0) {
+      const uploads = await Promise.all(
+        req.files.map(file => uploadOnCloudinary(file.path))
+      );
+      const newImageUrls = uploads
+        .filter(result => result && result.secure_url)
+        .map(result => result.secure_url);
+
+      // Replace images
+      restaurant.images = newImageUrls;
+    }
+
+    await restaurant.save();
+    res.status(200).json({
+      message: 'Restaurant updated successfully.',
+      restaurant
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error.', error });
+  }
+};
+
+
+
+
+exports.getRestaurantCategory = async (req, res) => {
+  try {
+    const { restaurantId } = req.params; 
+     console.log(restaurantId)
+    // Validate the restaurantId
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid restaurant ID"
+      });
+    }
+
+    // Find all active categories for the given restaurant
+    const categories = await Category.find({
+      restaurantId: restaurantId
+     
+    }) // Excluding the version key
+
+    if (!categories || categories.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No categories found for this restaurant",
+        data: []
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: categories.length,
+      data: categories
+    });
+
+  } catch (error) {
+    console.error("Error fetching restaurant categories:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+exports.createCategory = async (req, res) => {
+  try {
+   const {restaurantId} = req.params
+        
+    const { name, description = "", autoOnOff = false } = req.body;
+    // 1. Validate Inputs
+    if (!restaurantId || !name?.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Restaurant ID and name are required." 
+      });
+    }
+
+    if (!isValidObjectId(restaurantId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid Restaurant ID." 
+      });
+    }
+
+    // 2. Check for Duplicate Category
+    const existingCategory = await Category.findOne({
+      restaurantId,
+      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+    });
+
+    if (existingCategory) {
+      // Clean up uploaded files if duplicate found
+      if (req.files?.length) {
+        await Promise.all(req.files.map(file => 
+          fs.promises.unlink(file.path).catch(console.error)
+        ));
+      }
+      return res.status(409).json({ 
+        success: false, 
+        message: "Category name already exists." 
+      });
+    }
+
+    // 3. Process and Upload Images to Cloudinary
+    const imageUrls = [];
+    if (req.files?.length) {
+      // Upload each file to Cloudinary
+      const uploadResults = await Promise.all(
+        req.files.map(file => 
+          uploadOnCloudinary(file.path, 'restaurant_categories')
+        )
+      );
+      
+      // Extract secure URLs from successful uploads
+      for (const result of uploadResults) {
+        if (result?.secure_url) {
+          imageUrls.push(result.secure_url);
+        }
+      }
+    }
+
+    // 4. Create Category with Cloudinary URLs
+    const newCategory = await Category.create({
+      restaurantId,
+      name: name.trim(),
+      description: description.trim(),
+      images: imageUrls, // Store array of Cloudinary image objects
+      autoOnOff,
+    });
+
+    // 5. Send Response
+    const { __v, ...categoryData } = newCategory.toObject();
+
+    return res.status(201).json({
+      success: true,
+      message: "Category created successfully with images!",
+      data: categoryData,
+    });
+
+  } catch (error) {
+    console.error("🚨 Create Category Error:", error);
+
+    // Clean up any uploaded files on error
+    if (req.files?.length) {
+      await Promise.all(req.files.map(file => 
+        fs.promises.unlink(file.path).catch(console.error)
+      ));
+    }
+
+    // Handle specific errors
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: "File size too large. Maximum 5MB per image.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+
+
+
+
+
+
+exports.createProduct = async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      price,
+      categoryId,
+      foodType,
+      addOns = [],
+      specialOffer = {},
+      attributes = [],
+      unit = "piece",
+      stock = 0,
+      reorderLevel = 0,
+      revenueShare = { type: "percentage", value: 10 }
+    } = req.body;
+
+    const { restaurantId } = req.params;
+
+    // Validate required fields
+    if (!name || !price || !categoryId || !restaurantId || !foodType) {
+      return res.status(400).json({
+        success: false,
+        message: "name, price, categoryId, restaurantId and foodType are required fields"
+      });
+    }
+
+    // Validate ObjectIds
+    if (!mongoose.isValidObjectId(restaurantId)) {
+      return res.status(400).json({ success: false, message: "Invalid restaurant ID format" });
+    }
+
+    if (!mongoose.isValidObjectId(categoryId)) {
+      return res.status(400).json({ success: false, message: "Invalid category ID format" });
+    }
+
+    // Validate food type
+    if (!["veg", "non-veg"].includes(foodType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Food type must be either "veg" or "non-veg"'
+      });
+    }
+
+    // Upload images to Cloudinary
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      const uploadResults = await Promise.all(
+        req.files.map(file => uploadOnCloudinary(file.path, "restaurant_products"))
+      );
+
+      imageUrls = uploadResults
+        .filter(result => result?.secure_url)
+        .map(result => result.secure_url);
+    }
+
+    // Create Product
+    const newProduct = await Product.create({
+      name: name.trim(),
+      description: description?.trim(),
+      price: parseFloat(price),
+      categoryId,
+      restaurantId,
+      images: imageUrls,
+      foodType,
+      addOns,
+      attributes,
+      unit,
+      stock: parseInt(stock),
+      reorderLevel: parseInt(reorderLevel),
+      revenueShare
+    });
+
+    const response = newProduct.toObject();
+    delete response.__v;
+
+    return res.status(201).json({
+      success: true,
+      message: "Product created successfully",
+      data: response
+    });
+
+  } catch (error) {
+    console.error("Error creating product:", error);
+
+    if (req.files?.length) {
+      await Promise.all(req.files.map(file =>
+        fs.promises.unlink(file.path).catch(console.error)
+      ));
+    }
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: Object.values(error.errors).map(err => err.message)
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+
+
+exports.getCategoryProducts = async (req, res) => {
+  try {
+    const { restaurantId, categoryId } = req.params;
+
+    // Validate IDs
+    if (!isValidObjectId(restaurantId) || !isValidObjectId(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid restaurant or category ID'
+      });
+    }
+
+    // Find all active products in this category and restaurant
+    const products = await Product.find({
+      restaurantId,
+      categoryId
+    })
+    .sort({ name: 1 }) // Sort alphabetically
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      data: products
+    });
+
+  } catch (error) {
+    console.error('Error fetching category products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch products',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
