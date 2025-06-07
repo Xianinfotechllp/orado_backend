@@ -8,7 +8,7 @@ const {protect, checkRole} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
 
 
-const {createRestaurant, loginRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary}  = require('../controllers/restaurantController')
+const {createRestaurant, loginRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary,getRestaurantOrders}  = require('../controllers/restaurantController')
 
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
@@ -71,6 +71,8 @@ router.get("/:restaurantId/menu",getRestaurantMenu)
 
 // get restaurant earnigs
 router.get("/:restaurantId/earnigs",getRestaurantEarningSummary)
+
+router.get("/:restaurantId/myorders",getRestaurantOrders)
 
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)

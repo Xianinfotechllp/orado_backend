@@ -801,4 +801,48 @@ exports.getRestaurantEarningSummary = async (req, res) => {
 };
 
 
+// Get all orders for a specific restaurant (with pagination, filtering, and sorting)
+exports.getRestaurantOrders = async (req, res) => {
+  try {
+
+    const { restaurantId } = req.params;
+    const { 
+      page = 1, 
+      limit = 10, 
+    
+    
+
+    } = req.query;
+
+    // Validate restaurantId
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ error: "Invalid restaurant ID" });
+    }
+
+    // Build query filters
+ 
+    
+   
+
+    // Execute query with pagination
+    const orders = await Order.find({restaurantId:restaurantId}).limit(parseInt(limit)).skip((parseInt(page) - 1) * parseInt(limit));
+
+    const totalOrders = await Order.countDocuments({restaurantId:restaurantId});
+
+    res.status(200).json({
+      success: true,
+      data: orders,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalOrders / limit),
+        totalOrders,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Server error: " + error.message });
+  }
+};
+
+
+
 
