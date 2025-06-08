@@ -1065,13 +1065,7 @@ exports.getRestaurantCategory = async (req, res) => {
      
     }) // Excluding the version key
 
-    if (!categories || categories.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No categories found for this restaurant",
-        data: []
-      });
-    }
+  
 
     res.status(200).json({
       success: true,
