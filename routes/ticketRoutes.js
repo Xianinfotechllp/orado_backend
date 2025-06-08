@@ -9,8 +9,8 @@ router.get("/my", protect, checkRole('customer', 'agent'), ticketController.getM
 router.post("/:ticketId/message", checkRole('customer', 'agent'), protect, ticketController.addMessage);
 
 // Admin routes
-router.get("/", protect, checkRole('admin'), ticketController.getAllTickets);
-router.patch("/:ticketId/status", protect, checkRole('admin'), ticketController.updateTicketStatus);
+router.get("/", protect,ticketController.getAllTickets);
+router.patch("/:ticketId/status", protect, ticketController.updateTicketStatus);
 
 
 module.exports = router;
