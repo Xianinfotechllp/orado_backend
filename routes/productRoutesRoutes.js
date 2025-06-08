@@ -6,9 +6,13 @@ const router = express.Router();
 
 router.post('/:restaurantId/products', protect, checkRole('merchant'), upload.array('images',5),checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), createProduct);
 router.get('/:restaurantId/products', protect, checkRole('merchant', 'customer'), getRestaurantProducts);
-router.put('/:restaurantId/products/:productId', protect, checkRole('merchant',"admin"),  upload.array('images'),checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), updateProduct);
-router.delete('/products/:productId', protect, checkRole('merchant'),checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), deleteProduct);
-router.put('/:restaurantId/products/:productId/active', protect, checkRole('merchant'), toggleProductActive);
+
+
+
+router.put('/products/:productId', protect, checkRole('merchant','superAdmin'),  upload.array('images'), updateProduct);
+router.delete('/products/:productId', protect, checkRole('merchant','superAdmin'), deleteProduct);
+router.put('/products/:productId/auto-on-off', protect, checkRole('merchant'), toggleProductActive);
+
 
 router.get("/:restaurantId/products/category/:categoryId",getCategoryProducts)
 
