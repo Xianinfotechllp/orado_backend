@@ -8,7 +8,8 @@ const {
   getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs,
   getMyLogs, getRestaurantById, updatePermissionsRestuarants, getRestaurantsWithPermissions,
   updateRestaurant, getRestaurantCategory, createCategory, getCategoryProducts, createProduct,updateProduct,
-  updateCategory
+  updateCategory,
+  deleteCategory
 } = require("../controllers/adminController");
 
 const { importMenuFromExcel } = require("../controllers/admin/restaurantController");
@@ -65,6 +66,8 @@ router.post('/change-requests/:requestId/review', protect, checkPermission('merc
 router.get("/restaurant/:restaurantId/category", protect, getRestaurantCategory);
 router.post("/restaurant/:restaurantId/category", protect, upload.array('images', 5), createCategory);
 router.put("/restaurant/:restaurantId/category/:categoryId", protect, upload.array('images', 5), updateCategory)
+router.delete("/restaurant/:restaurantId/category/:categoryId", protect, upload.array('images', 5), deleteCategory)
+
 
 router.get("/restaurant/:restaurantId/category/:categoryId", protect, getCategoryProducts);
 router.post("/restaurant/:restaurantId/product", protect, upload.array('images', 5), createProduct);

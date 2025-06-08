@@ -1264,6 +1264,38 @@ exports.updateCategory = async (req, res) => {
   }
 };
 
+exports.deleteCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    // Validate categoryId
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ success: false, message: "Invalid categoryId format" });
+    }
+
+    // Find existing category
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    // Delete category
+    await Category.deleteOne({ _id: categoryId });
+
+    return res.status(200).json({
+      success: true,
+      message: "Category deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error deleting category:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
 
 
 
@@ -1493,6 +1525,10 @@ exports.updateProduct = async (req, res) => {
     });
   }
 };
+
+
+
+
 
 
 
