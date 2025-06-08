@@ -223,6 +223,9 @@ exports.placeOrder = async (req, res) => {
     });
 
     const restaurant = await Restaurant.findById(cart.restaurantId);
+    console.log("id", cart.restaurantId);
+    
+    // const permission = await Permission.findOne({ restaurantId: cart.restaurantId });
     if (!restaurant) return res.status(404).json({ 
       message: "Restaurant not found",
       messageType: "failure" 
@@ -287,7 +290,7 @@ exports.placeOrder = async (req, res) => {
     const savedOrder = await newOrder.save();
     const io = req.app.get("io");
 
-    if (restaurant.permissions.canAcceptOrders) {
+    if (restaurant.permissions.canAcceptOrder) {
       return res.status(201).json({
         message: "Order placed successfully",
         orderId: savedOrder._id,

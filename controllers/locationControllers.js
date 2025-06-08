@@ -176,52 +176,61 @@ exports.getNearbyCategories = async (req, res) => {
 
 exports.getRestaurantsByLocationAndCategory = async (req, res) => {
   try {
-    const { categoryId } = req.params;
+    const { categoryName } = req.params;
     const { latitude, longitude, distance = 5000 } = req.query;
 
     if (!latitude || !longitude) {
-      return res.status(400).json({ message: "Latitude and longitude are required.", messageType: "error", statusCode: 400 });
+      return res.status(400).json({
+        message: "Latitude and longitude are required.",
+        messageType: "error",
+        statusCode: 400
+      });
     }
 
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
     const dist = parseFloat(distance);
 
-    // Validate categoryId format
-    if (categoryId && !mongoose.Types.ObjectId.isValid(categoryId)) {
-      return res.status(400).json({ message: "Invalid categoryId format.", messageType: "error", statusCode: 400 });
-    }
-
-    // Fetch nearby restaurants
+    // Step 1: Find nearby restaurants
     const nearbyRestaurants = await Restaurant.find({
       location: {
         $near: {
           $geometry: { type: "Point", coordinates: [lng, lat] },
-          $maxDistance: dist,
-        },
+          $maxDistance: dist
+        }
       },
-      active: true,
+      active: true
     }).select("_id name address openingHours minOrderAmount foodType phone rating images location");
 
     if (!nearbyRestaurants.length) {
-      return res.status(200).json({ message: "No nearby restaurants found.", messageType: "success", statusCode: 200, count: 0, data: [] });
+      return res.status(200).json({
+        message: "No nearby restaurants found.",
+        messageType: "success",
+        statusCode: 200,
+        count: 0,
+        data: []
+      });
     }
 
+    // Step 2: Fuzzy match category name in nearby restaurants
     let finalRestaurants = nearbyRestaurants;
 
-    // If categoryId is provided — filter by product category
-    if (categoryId) {
+    if (categoryName) {
       const restaurantIds = nearbyRestaurants.map(r => r._id);
 
-      const products = await Product.find({
+      const matchedCategories = await Category.find({
         restaurantId: { $in: restaurantIds },
-        categoryId: new mongoose.Types.ObjectId(categoryId),
-        active: true,
+        name: { $regex: new RegExp(categoryName, "i") }, // fuzzy match
+        active: true
       }).select("restaurantId");
 
-      const restaurantIdsWithProducts = [...new Set(products.map(p => p.restaurantId.toString()))];
+      const restaurantIdsFromCategories = [
+        ...new Set(matchedCategories.map(cat => cat.restaurantId.toString()))
+      ];
 
-      finalRestaurants = nearbyRestaurants.filter(r => restaurantIdsWithProducts.includes(r._id.toString()));
+      finalRestaurants = nearbyRestaurants.filter(r =>
+        restaurantIdsFromCategories.includes(r._id.toString())
+      );
     }
 
     return res.status(200).json({
@@ -229,14 +238,20 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
       messageType: "success",
       statusCode: 200,
       count: finalRestaurants.length,
-      data: finalRestaurants,
+      data: finalRestaurants
     });
 
   } catch (error) {
     console.error("Error fetching restaurants by location and category:", error);
-    return res.status(500).json({ message: "Server error while fetching restaurants.", messageType: "error", statusCode: 500 });
+    return res.status(500).json({
+      message: "Server error while fetching restaurants.",
+      messageType: "error",
+      statusCode: 500
+    });
   }
 };
+
+
 
 exports.getRecommendedRestaurants = async (req, res) => {
   try {
