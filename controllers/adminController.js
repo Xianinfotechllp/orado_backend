@@ -1189,6 +1189,81 @@ exports.createCategory = async (req, res) => {
 
 
 
+exports.updateCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    // Validate categoryId
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ success: false, message: "Invalid categoryId format" });
+    }
+
+    // Find existing category
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    const { name, description, active, autoOnOff, replaceImageIndex } = req.body;
+
+    // Update fields if provided
+    if (name) category.name = name.trim();
+    if (description) category.description = description.trim();
+    if (active !== undefined) category.active = active;
+    if (autoOnOff !== undefined) category.autoOnOff = autoOnOff;
+
+    // Image handling
+    if (req.files && req.files.length > 0) {
+      if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
+        // Replace single image at given index
+        const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_categories');
+        if (uploadResult?.secure_url) {
+          const idx = parseInt(replaceImageIndex);
+          if (idx >= 0 && idx < category.images.length) {
+            category.images[idx] = uploadResult.secure_url;
+          } else {
+            category.images.push(uploadResult.secure_url);
+          }
+        }
+      } else {
+        // No replaceImageIndex — replace all images
+        category.images = []; // Clear old images
+
+        for (const file of req.files) {
+          const uploadResult = await uploadOnCloudinary(file.path, 'restaurant_categories');
+          if (uploadResult?.secure_url) {
+            category.images.push(uploadResult.secure_url);
+          }
+        }
+      }
+    }
+
+    await category.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Category updated successfully",
+      data: category
+    });
+
+  } catch (error) {
+    console.error("Error updating category:", error);
+
+    // Cleanup uploaded files on error
+    if (req.files?.length) {
+      await Promise.all(req.files.map(file =>
+        fs.promises.unlink(file.path).catch(console.error)
+      ));
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
 
 
 
