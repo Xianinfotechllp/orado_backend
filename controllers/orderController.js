@@ -3,6 +3,7 @@ const Order = require("../models/orderModel");
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
 const Cart = require("../models/cartModel");
 const Product = require("../models/productModel");
+const Permission = require("../models/restaurantPermissionModel")
 const { calculateOrderCost } = require("../services/orderCostCalculator");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const { haversineDistance } = require("../utils/distanceCalculator");
@@ -13,7 +14,7 @@ const firebaseAdmin = require("../config/firebaseAdmin");
 const {
   findAndAssignNearestAgent,
 } = require("../services/findAndAssignNearestAgent");
-const Permission = require("../models/restaurantPermissionModel");
+
 
 const Restaurant = require("../models/restaurantModel");
 const { sendPushNotification } = require("../utils/sendPushNotification");
@@ -922,29 +923,48 @@ exports.updateOrderStatus = async (req, res) => {
 exports.getOrdersByMerchant = async (req, res) => {
   try {
     const { restaurantId } = req.params;
+    // Pagination params from query: page and limit, with defaults
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
     if (!restaurantId) {
-      return res.status(400).json({ error: "restaurantId is required" });
+      return res.status(400).json({ success: false, message: "restaurantId is required" });
     }
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ error: "Invalid restaurantId format" });
+      return res.status(400).json({ success: false, message: "Invalid restaurantId format" });
     }
 
+    // Fetch total count for pagination info
+    const totalOrders = await Order.countDocuments({ restaurantId });
+
+    // Fetch orders with pagination and populate customer and assignedAgent
     const orders = await Order.find({ restaurantId })
       .populate("customerId", "name email")
-      .sort({ createdAt: -1 });
+      .populate({
+        path: "assignedAgent",
+        select: "fullName phoneNumber email", // Fields from Agent schema to include
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
+      success: true,
       message: "Orders fetched successfully",
-      totalOrders: orders.length,
+      totalOrders,
+      currentPage: page,
+      totalPages: Math.ceil(totalOrders / limit),
       orders,
     });
-  } catch (err) {
-    console.error("getOrdersByMerchant error:", err);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch orders", details: err.message });
+  } catch (error) {
+    console.error("getOrdersByMerchant error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch orders",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 
@@ -1151,5 +1171,92 @@ exports.reorder = async (req, res) => {
   } catch (error) {
     console.error('Error in reorder:', error);
     res.status(500).json({ message: 'Something went wrong while reordering.' });
+  }
+};
+
+
+
+
+
+
+
+
+exports.updateRestaurantOrderStatus = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    // Validate orderId
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ success: false, message: "Invalid orderId format" });
+    }
+
+    // Validate order existence
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // Order already completed/cancelled check
+    if (["completed", "cancelled_by_customer"].includes(order.orderStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Order already ${order.orderStatus}, status update not allowed.`
+      });
+    }
+
+    // Allowed statuses restaurant can request
+    const allowedRestaurantStatuses = [
+      "accepted_by_restaurant",
+      "rejected_by_restaurant",
+      "preparing",
+      "ready"
+    ];
+
+    // Validate status against enum
+    if (!allowedRestaurantStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Allowed statuses: ${allowedRestaurantStatuses.join(", ")}`
+      });
+    }
+
+    // Fetch restaurant permissions
+    const permission = await Permission.findOne({ restaurantId: order.restaurantId });
+    if (!permission) {
+      return res.status(404).json({ success: false, message: "Restaurant permissions not found" });
+    }
+
+    // Permission-based status update
+    if (["accepted_by_restaurant", "rejected_by_restaurant"].includes(status)) {
+      if (permission.permissions.canAcceptOrder) {
+        order.orderStatus = status;
+      } else {
+        // If restaurant lacks accept/reject permission — auto-accept logic
+        return res.status(403).json({
+          success: false,
+          message: "Restaurant is not permitted to accept or reject orders. Auto-accepted on placement."
+        });
+      }
+    } else {
+      // For 'preparing', 'ready'
+      order.orderStatus = status;
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Order status updated to ${order.orderStatus}`,
+      data: order
+    });
+
+  } catch (error) {
+    console.error("updateRestaurantOrderStatus error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
   }
 };

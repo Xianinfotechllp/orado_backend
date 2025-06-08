@@ -919,6 +919,9 @@ exports.getRestaurantsWithPermissions = async (req, res) => {
 
 
 
+
+
+
 exports.createCategory = async (req, res) => {
   try {
     const { name, restaurantId, active = true, autoOnOff = false, description = '', images = [] } = req.body;
@@ -930,6 +933,12 @@ exports.createCategory = async (req, res) => {
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found' });
+    }
+
+    // ✅ Check if category with same name exists for the restaurant
+    const existingCategory = await Category.findOne({ name: name.trim(), restaurantId });
+    if (existingCategory) {
+      return res.status(400).json({ message: 'Category with this name already exists for this restaurant' });
     }
 
     const category = new Category({
@@ -950,6 +959,9 @@ exports.createCategory = async (req, res) => {
 
   } catch (error) {
     console.error('Error creating category:', error.message);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -1330,6 +1342,99 @@ exports.getCategoryProducts = async (req, res) => {
     });
   }
 };
+
+
+
+
+exports.updateProduct = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    console.log(productId)
+    // Find the existing product
+    const product = await Product.findOne({_id:productId});
+    console.log(product)
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    const {
+      name,
+      description,
+      price,
+      categoryId,
+      foodType,
+      addOns,
+      attributes,
+      unit,
+      stock,
+      reorderLevel,
+      revenueShare,
+      replaceImageIndex  // index of the image to replace (optional)
+    } = req.body;
+
+    // Update fields only if they exist in req.body
+    if (name) product.name = name.trim();
+    if (description) product.description = description.trim();
+    if (price) product.price = parseFloat(price);
+    if (categoryId) product.categoryId = categoryId;
+    if (foodType) product.foodType = foodType;
+    if (addOns) product.addOns = addOns;
+    if (attributes) product.attributes = attributes;
+    if (unit) product.unit = unit;
+    if (stock) product.stock = parseInt(stock);
+    if (reorderLevel) product.reorderLevel = parseInt(reorderLevel);
+    if (revenueShare) product.revenueShare = revenueShare;
+
+    // Handle image upload & replacement
+    if (req.files && req.files.length > 0) {
+      // For simplicity, handle one image replacement at a time
+      const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_products');
+
+      if (uploadResult?.secure_url) {
+        const newImageUrl = uploadResult.secure_url;
+
+        if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
+          const idx = parseInt(replaceImageIndex);
+          if (idx >= 0 && idx < product.images.length) {
+            // Replace existing image at index
+            product.images[idx] = newImageUrl;
+          } else {
+            // Index invalid, append new image instead
+            product.images.push(newImageUrl);
+          }
+        } else {
+          // No replace index provided, append new image(s)
+          product.images.push(newImageUrl);
+        }
+      }
+    }
+
+    await product.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Product updated successfully',
+      data: product
+    });
+
+  } catch (error) {
+    console.error('Error updating product:', error);
+
+    // Cleanup uploaded files on error
+    if (req.files?.length) {
+      await Promise.all(req.files.map(file =>
+        fs.promises.unlink(file.path).catch(console.error)
+      ));
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 
 
 

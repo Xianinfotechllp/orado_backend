@@ -23,11 +23,13 @@ const {
   getOrdersByMerchant,
   getOrderPriceSummary,
   placeOrder,
-  reorder
+  reorder,updateRestaurantOrderStatus
+  
   
 } = require('../controllers/orderController');
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, checkRestaurantPermission } = require('../middlewares/authMiddleware');
+const { TrustProductsEvaluationsContextImpl } = require('twilio/lib/rest/trusthub/v1/trustProducts/trustProductsEvaluations');
 
 // orders
 router.post('/create', protect, createOrder); // Create new order
@@ -84,6 +86,7 @@ router.post("/place-order",  placeOrder)
 // Reorder route
 router.post('/reorder/:orderId', protect, reorder);
 
+router.put('/restaurant/:restaurantId/orders/:orderId/status', protect , updateRestaurantOrderStatus);
 
 
 

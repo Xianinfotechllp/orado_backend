@@ -34,6 +34,11 @@ const product = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  
+preparationTime: {
+  type: Number, // in minutes
+  default: 10,  // default 10 mins
+},
   foodType: {
     type: String,
     enum: ['veg', 'non-veg'],
