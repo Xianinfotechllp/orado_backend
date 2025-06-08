@@ -67,7 +67,7 @@ router.post("/restaurant/:restaurantId/category", protect, upload.array('images'
 router.get("/restaurant/:restaurantId/category/:categoryId", protect, getCategoryProducts);
 router.post("/restaurant/:restaurantId/product", protect, upload.array('images', 5), createProduct);
 
-router.put("/restaurant/:restaurantId/product",protect, upload.array('images', 5), updateProduct)
+router.put("/restaurant/:restaurantId/product/:productId",protect, upload.array('images', 5), updateProduct)
 router.post("/restaurant/menu/import-excel",  protect,upload.single("file"), importMenuFromExcel);
 
 // Access logs
