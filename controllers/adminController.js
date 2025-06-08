@@ -1343,30 +1343,18 @@ exports.getCategoryProducts = async (req, res) => {
 exports.updateProduct = async (req, res) => {
   try {
     const { productId } = req.params;
-    console.log(productId)
-    // Find the existing product
-    const product = await Product.findOne({_id:productId});
-    console.log(product)
+
+    // Find product
+    const product = await Product.findById(productId);
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
     const {
-      name,
-      description,
-      price,
-      categoryId,
-      foodType,
-      addOns,
-      attributes,
-      unit,
-      stock,
-      reorderLevel,
-      revenueShare,
-      replaceImageIndex  // index of the image to replace (optional)
+      name, description, price, categoryId, foodType, addOns, attributes, unit, stock, reorderLevel, revenueShare, replaceImageIndex
     } = req.body;
 
-    // Update fields only if they exist in req.body
+    // Update fields if provided
     if (name) product.name = name.trim();
     if (description) product.description = description.trim();
     if (price) product.price = parseFloat(price);
@@ -1379,26 +1367,28 @@ exports.updateProduct = async (req, res) => {
     if (reorderLevel) product.reorderLevel = parseInt(reorderLevel);
     if (revenueShare) product.revenueShare = revenueShare;
 
-    // Handle image upload & replacement
+    // Image handling
     if (req.files && req.files.length > 0) {
-      // For simplicity, handle one image replacement at a time
-      const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_products');
-
-      if (uploadResult?.secure_url) {
-        const newImageUrl = uploadResult.secure_url;
-
-        if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
+      if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
+        // Replace single image at given index
+        const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_products');
+        if (uploadResult?.secure_url) {
           const idx = parseInt(replaceImageIndex);
           if (idx >= 0 && idx < product.images.length) {
-            // Replace existing image at index
-            product.images[idx] = newImageUrl;
+            product.images[idx] = uploadResult.secure_url;
           } else {
-            // Index invalid, append new image instead
-            product.images.push(newImageUrl);
+            product.images.push(uploadResult.secure_url);
           }
-        } else {
-          // No replace index provided, append new image(s)
-          product.images.push(newImageUrl);
+        }
+      } else {
+        // No replaceImageIndex — replace all images
+        product.images = []; // Clear old images
+
+        for (const file of req.files) {
+          const uploadResult = await uploadOnCloudinary(file.path, 'restaurant_products');
+          if (uploadResult?.secure_url) {
+            product.images.push(uploadResult.secure_url);
+          }
         }
       }
     }
@@ -1428,7 +1418,6 @@ exports.updateProduct = async (req, res) => {
     });
   }
 };
-
 
 
 
