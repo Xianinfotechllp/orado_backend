@@ -154,10 +154,22 @@ const restaurantSchema = new mongoose.Schema(
       },
     ],
     minOrderAmount: { type: Number },
+    commission: {
+  type: {
+    type: String,
+    enum: ["percentage", "fixed"],
+    default: "percentage"
+  },
+  value: {
+    type: Number,
+    default: 20 // 20% commission
+  }
+},
     paymentMethods: [
       { type: String, enum: ["cash", "online", "wallet"] },
     ],
   },
+  
   { timestamps: true }
 );
 

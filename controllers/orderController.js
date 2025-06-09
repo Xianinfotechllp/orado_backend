@@ -5,7 +5,7 @@ const Cart = require("../models/cartModel");
 const  User = require("../models/userModel")
 const Product = require("../models/productModel");
 const Permission = require("../models/restaurantPermissionModel")
-const { calculateOrderCost } = require("../services/orderCostCalculator");
+const { calculateOrderCost,calculateOrderCost2 } = require("../services/orderCostCalculator");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const { haversineDistance } = require("../utils/distanceCalculator");
 const { deliveryFeeCalculator } = require("../utils/deliveryFeeCalculator");
@@ -378,7 +378,6 @@ exports.createOrder = async (req, res) => {
     }
   };
 
-
 exports.placeOrderWithAddressId = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -399,29 +398,54 @@ exports.placeOrderWithAddressId = async (req, res) => {
       return res.status(404).json({ message: "Address not found", messageType: "failure" });
     }
 
-    const { latitude, longitude, street, area, landmark, city, state, pincode, country } = selectedAddress;
+    const { location } = selectedAddress;
+    const [userLongitude, userLatitude] = location.coordinates;
 
-    // Call shared order placement service logic
-    const result = await placeOrderService({
-      userId,
-      cartId,
-      paymentMethod,
-      couponCode,
-      instructions,
+    // Fetch cart
+    const cart = await Cart.findById(cartId);
+    if (!cart) {
+      return res.status(404).json({ message: "Cart not found", messageType: "failure" });
+    }
+
+    // Fetch restaurant
+    const restaurant = await Restaurant.findById(cart.restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found for this cart", messageType: "failure" });
+    }
+
+    const [restaurantLongitude, restaurantLatitude] = restaurant.location.coordinates;
+    const restaurantCoords = { latitude: restaurantLatitude, longitude: restaurantLongitude };
+
+    // Prepare cart products
+    const cartProducts = cart.products.map(item => ({
+      price: item.price,
+      quantity: item.quantity
+    }));
+
+    // Calculate bill
+    const bill = calculateOrderCost2({
+      cartProducts,
       tipAmount,
-      deliveryAddress: { latitude, longitude, street, area, landmark, city, state, pincode, country }
+      couponCode,
+      restaurantCoords,
+      userCoords: { latitude: userLatitude, longitude: userLongitude }
     });
 
-    return res.status(201).json(result);
+    console.log("Calculated Bill 👉", bill);
 
-  } catch (err) {
-    console.error("Error placing order with addressId:", err);
-    res.status(500).json({ message: "Failed to place order", messageType: "failure" });
+    // Proceed to create order, deduct stock, clear cart, etc.
+
+    return res.json({
+      message: "Order cost calculated successfully",
+      messageType: "success",
+      bill
+    });
+
+  } catch (error) {
+    console.error('Error placing order:', error);
+    res.status(500).json({ message: "Internal server error", messageType: "failure" });
   }
 };
-
-
-
 
 
 
