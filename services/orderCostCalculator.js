@@ -7,9 +7,20 @@ exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode
 
   // Subtotal
   let subtotal = 0;
-  cartProducts.forEach((item) => {
-    if (!item.price || !item.quantity) {
-      throw new Error("Each cart item must have price and quantity");
+  // console.log("🛒 Incoming cart items:", cartProducts);
+
+  cartProducts.forEach((item, index) => {
+      console.log(`Checking item ${index}:`, item);
+    if (
+      item.price == null ||
+      item.quantity == null ||
+      typeof item.price !== "number" ||
+      typeof item.quantity !== "number" ||
+      item.quantity <= 0 ||
+      item.price < 0
+    ) {
+        console.log("🚨 Invalid cart item:", item);
+      throw new Error(`Each cart item must have price and quantity (check item at index ${index})`);
     }
     subtotal += item.price * item.quantity;
   });
@@ -42,6 +53,8 @@ exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode
 
   // Final total
   const total = taxableAmount + tax + deliveryFee;
+  console.log("Subtotal:", subtotal, "Tax:", tax, "Total:", total);
+
 
   return {
     subtotal,
