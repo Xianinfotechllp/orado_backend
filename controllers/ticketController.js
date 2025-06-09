@@ -88,17 +88,16 @@ exports.updateTicketStatus = async (req, res) => {
 // Admin fetch all tickets
 exports.getAllTickets = async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
+  
+    
     const tickets = await Ticket.find()
-      .populate("userId", "name email")
+      .populate("user", "name email")
       .sort({ createdAt: -1 })
       .lean();
 
     res.status(200).json({ tickets });
   } catch (err) {
+    console.log(err)
     res.status(500).json({ error: "Server error" });
   }
 };

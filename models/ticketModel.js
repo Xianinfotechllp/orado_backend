@@ -17,7 +17,7 @@ const ticketSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   replies: [
     {
-      sender: { type: String, enum: ["user", "admin"], required: true },
+      sender: { type: String, enum: ["user", "admin"] },
       message: String,
       timestamp: { type: Date, default: Date.now }
     }

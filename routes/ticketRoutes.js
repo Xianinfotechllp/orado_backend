@@ -4,12 +4,12 @@ const ticketController = require("../controllers/ticketController");
 const { protect, isAdmin } = require("../middlewares/authMiddleware");
 
 // User routes
-router.post("/", protect, ticketController.createTicket);
+router.post("/create", protect, ticketController.createTicket);
 router.get("/my", protect, ticketController.getMyTickets);
 router.post("/:ticketId/message", protect, ticketController.addMessage);
 
 // Admin routes
-router.get("/", protect, ticketController.getAllTickets);
+router.get("/admin/getall", protect, ticketController.getAllTickets);
 router.patch("/:ticketId/status", protect, ticketController.updateTicketStatus);
 
 
