@@ -73,16 +73,6 @@ const restaurantSchema = new mongoose.Schema(
     ,
      openingHours: [openingHourSchema],
 
-    businessHours: {
-      type: Map,
-      of: {
-        startTime: { type: String }, // "HH:mm"
-        endTime: { type: String },
-        closed: { type: Boolean, default: false } // optional field to mark a day closed
-      },
-      default: {}
-    },
-
     categories: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
     ],

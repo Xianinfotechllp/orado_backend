@@ -363,3 +363,30 @@ exports.createRestaurant = async (req, res) => {
     });
   }
 };
+
+
+
+exports.setRestaurantCommission = async (req, res) => {
+   try {
+    const { restaurantId } = req.params;
+    const { type, value } = req.body
+
+    // Find restaurant
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+    // Validate commission value
+    if (type === "percentage" && (value < 0 || value > 100)) {
+      return res.status(400).json({ error: "Percentage must be 0-100" });
+    }
+
+    // Update commission
+    restaurant.commission = { type, value };
+    await restaurant.save();
+
+    res.json({ message: "Commission updated", restaurant });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};

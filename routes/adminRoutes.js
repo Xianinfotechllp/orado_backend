@@ -9,10 +9,11 @@ const {
   getMyLogs, getRestaurantById, updatePermissionsRestuarants, getRestaurantsWithPermissions,
   updateRestaurant, getRestaurantCategory, createCategory, getCategoryProducts, createProduct,updateProduct,
   updateCategory,
-  deleteCategory
+  deleteCategory,
+  
 } = require("../controllers/adminController");
 
-const { importMenuFromExcel } = require("../controllers/admin/restaurantController");
+const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
@@ -81,7 +82,11 @@ router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLo
 
 // Stats routes
 router.get("/user/user-stats", getUserStats);
-router.get("/restauranteee/restaurant-stats", getRestaurantStats);
+router.get("/restaurant/restaurant-stats", getRestaurantStats);
 router.get("/order/order-stats", getActiveOrdersStats);
+
+
+// Set restaurant commission (admin only)
+router.patch("/restaurant/:restaurantId/commission", setRestaurantCommission); 
 
 module.exports = router;
