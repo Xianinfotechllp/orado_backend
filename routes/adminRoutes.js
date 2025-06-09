@@ -18,7 +18,7 @@ const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
 
-const {getActiveOrdersStats} = require("../controllers/admin/orderController")
+const {getActiveOrdersStats,getSimpleRectOrderStats} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
@@ -84,6 +84,7 @@ router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLo
 router.get("/user/user-stats", getUserStats);
 router.get("/restaurant/stats/restaurant-stats", getRestaurantStats);
 router.get("/order/order-stats", getActiveOrdersStats);
+router.get("/order/order-stats/recent",getSimpleRectOrderStats)
 
 
 // Set restaurant commission (admin only)
