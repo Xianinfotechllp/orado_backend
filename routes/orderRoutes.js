@@ -23,7 +23,8 @@ const {
   getOrdersByMerchant,
   getOrderPriceSummary,
   placeOrder,
-  reorder,updateRestaurantOrderStatus
+  reorder,updateRestaurantOrderStatus,
+  placeOrderWithAddressId
   
   
 } = require('../controllers/orderController');
@@ -81,7 +82,10 @@ router.post("/pricesummary", protect, getOrderPriceSummary)
 
 
 //place order 
-router.post("/place-order",  placeOrder)
+router.post("/place-order", protect ,  placeOrder)
+
+// place order with addressId no need to manualy enter address ,  lat , long
+router.post("/place-order/by-address", protect ,placeOrderWithAddressId)
 
 // Reorder route
 router.post('/reorder/:orderId', protect, reorder);
