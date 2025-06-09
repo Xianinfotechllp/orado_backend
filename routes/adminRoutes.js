@@ -82,7 +82,7 @@ router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLo
 
 // Stats routes
 router.get("/user/user-stats", getUserStats);
-router.get("/restaurant/restaurant-stats", getRestaurantStats);
+router.get("/restaurant/stats/restaurant-stats", getRestaurantStats);
 router.get("/order/order-stats", getActiveOrdersStats);
 
 
