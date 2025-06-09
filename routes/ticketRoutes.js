@@ -13,7 +13,7 @@ router.post("/:ticketId/message", protect, ticketController.addMessage);
 
 // Admin routes
 router.get("/admin/getall", protect, ticketController.getAllTickets);
-router.patch("/:ticketId/status", protect, ticketController.updateTicketStatus);
+router.patch("/admin/ticket/:ticketId/status", protect, ticketController.updateTicketStatus);
 
 
 module.exports = router;

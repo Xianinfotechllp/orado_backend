@@ -61,13 +61,10 @@ exports.addMessage = async (req, res) => {
 // Admin updates ticket status
 exports.updateTicketStatus = async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Access denied" });
-    }
 
     const { ticketId } = req.params;
     const { status } = req.body;
-    const validStatuses = ["Open", "In Progress", "Resolved", "Closed"];
+    const validStatuses = ["open", "in_progress", "resolved", "closed"]
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
@@ -91,7 +88,7 @@ exports.getAllTickets = async (req, res) => {
   
     
     const tickets = await Ticket.find()
-      .populate("user", "name email")
+      .populate("user", "name email phone")
       .sort({ createdAt: -1 })
       .lean();
 
