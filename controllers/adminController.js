@@ -79,6 +79,7 @@ exports.adminLogin = async (req, res) => {
         name: user.name,
         email: user.email,
         userType: user.userType,
+        adminPermissions:user.adminPermissions
       },
     });
   } catch (error) {
