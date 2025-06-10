@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const { sendEmail } = require("../utils/sendEmail");
+const Restaurant = require("../models/restaurantModel")
 
 const Favourite = require("../models/favouriteModel")
 
@@ -831,7 +832,7 @@ exports.getUserNotifications = async (req, res) => {
       type: { $in: enabledTypes },
     }).sort({ createdAt: -1 });
 
-    res.json(notifications);
+    res.json({message:"notification feted"  ,  notifications});
   } catch (error) {
     console.error('Error fetching notifications:', error);
     res.status(500).json({ message: 'Failed to fetch notifications' });

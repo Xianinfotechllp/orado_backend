@@ -8,8 +8,7 @@ const feedbackSchema = new mongoose.Schema({
   },
   orderId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Order',
-    required: true,
+    ref: 'Order'
   },
   restaurantId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -34,6 +33,11 @@ const feedbackSchema = new mongoose.Schema({
     type: String,
     maxlength: 1000,
   },
+  images: [
+    {
+      type: String, // Image URL or Cloudinary public ID
+    }
+  ],
   createdAt: {
     type: Date,
     default: Date.now,

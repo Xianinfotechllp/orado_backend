@@ -34,6 +34,7 @@ const { TrustProductsEvaluationsContextImpl } = require('twilio/lib/rest/trusthu
 
 // orders
 router.post('/create', protect, createOrder); // Create new order
+router.post("/place-order",protect,placeOrder)
 router.get('/', protect, getAllOrders); // Admin - get all orders
 router.get('/:orderId', protect, getOrderById); // Get specific order
 
