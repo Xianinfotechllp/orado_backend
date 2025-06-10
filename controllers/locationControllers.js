@@ -420,8 +420,8 @@ exports.getNearbyProducts = async (req, res) => {
 
 
 exports.searchRestaurants = async (req, res) => {
-  try {
-    const { query, location, radius = 5000, limit = 10, page = 1 } = req.query;
+ try {
+    const { query, latitude, longitude, radius = 5000, limit = 10, page = 1 } = req.query;
 
     if (!query) {
       return res.status(400).json({ message: "Search query is required" });
@@ -458,7 +458,7 @@ exports.searchRestaurants = async (req, res) => {
         ...categoryRestaurantIds.map(id => id.toString())
       ])
     ];
-   console.log( allRestaurantIds)
+
     // 5️⃣ Fetch restaurants for those IDs
     const relatedRestaurants = await Restaurant.find({
       _id: { $in: allRestaurantIds },
@@ -466,29 +466,25 @@ exports.searchRestaurants = async (req, res) => {
       approvalStatus: "approved"
     }).select("-approvalStatus -kycDocuments -commission");
 
-     console.log(relatedRestaurants)
     // 6️⃣ Combine and deduplicate both results
     let restaurants = [...nameResults];
-   
     relatedRestaurants.forEach(rest => {
       if (!restaurants.some(r => r._id.equals(rest._id))) {
         restaurants.push(rest);
       }
     });
 
-    // 7️⃣ If location provided, apply proximity filtering
-    if (location) {
-      const [lng, lat] = location.split(',').map(Number);
-
+    // 7️⃣ If latitude and longitude provided, apply proximity filter
+    if (latitude && longitude) {
       restaurants = await Restaurant.find({
         _id: { $in: restaurants.map(r => r._id) },
         location: {
           $near: {
             $geometry: {
               type: "Point",
-              coordinates: [lng, lat]
+              coordinates: [parseFloat(longitude), parseFloat(latitude)]
             },
-            $maxDistance: radius
+            $maxDistance: parseFloat(radius)
           }
         },
         active: true,
@@ -496,7 +492,7 @@ exports.searchRestaurants = async (req, res) => {
       }).select("-approvalStatus -kycDocuments -commission");
     }
 
-    // 8️⃣ Pagination logic
+    // 8️⃣ Pagination
     const paginatedResults = restaurants.slice(skip, skip + limit);
     const totalResults = restaurants.length;
 
