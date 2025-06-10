@@ -17,6 +17,7 @@ const fs = require("fs");
 const firebaseAdmin = require("../config/firebaseAdmin");
 const {
   findAndAssignNearestAgent,
+  assignNearestAgentSimple
 } = require("../services/findAndAssignNearestAgent");
 
 const { placeOrderService } = require("../services/orderService");
@@ -465,7 +466,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
      let orderStatus = "pending";
       const permission = await Permission.findOne({ restaurantId: restaurant._id });
      if (permission && !permission.permissions.canAcceptOrder) {
-      orderStatus = "accepted";
+      orderStatus = "accepted_by_restaurant";
 }
 
 
@@ -507,6 +508,24 @@ exports.placeOrderWithAddressId = async (req, res) => {
     });
      await newOrder.save();
     // Proceed to create order, deduct stock, clear cart, etc.
+try {
+  const assignmentResult = await assignNearestAgentSimple(newOrder._id);
+  
+  if (!assignmentResult.success) {
+    console.warn('Agent assignment failed:', assignmentResult.error);
+    // Optionally update order status if assignment failed
+    await Order.updateOne(
+      { _id: newOrder._id },
+      { $set: { orderStatus: 'awaiting_agent_assignment' } }
+    );
+  } else {
+    console.log(`Agent ${assignmentResult.agentId} assigned to order`);
+  }
+} catch (error) {
+  console.error('Error during agent assignment:', error);
+}
+
+
 
     return res.json({
       message: "Order placed suucss",

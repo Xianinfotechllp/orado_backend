@@ -352,11 +352,8 @@ exports.handleAgentResponse = async (req, res) => {
     res.status(500).json({ error: "Failed to process agent response" });
   }
 };
-
 exports.agentUpdatesOrderStatus = async (req, res) => {
   const { agentId, orderId } = req.params;
-  console.log("Agent ID:", agentId, "Order ID:", orderId);
-
   const { newStatus } = req.body;
   const io = req.app.get("io");
 
@@ -368,7 +365,9 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     "cancelled_by_customer",
     "pending_agent_acceptance",
     "available",
-    "arrived"
+    "arrived",
+    "on_the_way"
+    
   ];
 
   if (!allowedStatuses.includes(newStatus)) {
@@ -378,29 +377,34 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
   }
 
   try {
-    const agent = await Agent.findById(agentId);
-    const order = await Order.findById(orderId)
-      .populate("customerId", "_id")
-      .populate("restaurantId", "_id");
+    // Fetch agent and order
+    const [agent, order] = await Promise.all([
+      Agent.findById(agentId),
+      Order.findById(orderId).populate("customerId", "_id").populate("restaurantId", "_id"),
+    ]);
 
-    if (!agent) {
-      return res.status(404).json({ error: "Agent not found" });
-    }
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    // ✅ Restrict status update if agent is not the assigned agent
+    if (String(order.assignedAgent) !== String(agent._id)) {
+      return res.status(403).json({
+        error: "You are not authorized to update the status of this order.",
+      });
     }
 
     // Update agent status
     agent.status = newStatus;
     await agent.save();
 
-    // Update order status where needed
-    if (["picked_up", "in_progress", "arrived", "delivered"].includes(newStatus)) {
+    // Update order status where relevant
+    const orderStatusUpdatable = ["picked_up", "in_progress", "arrived", "delivered"];
+    if (orderStatusUpdatable.includes(newStatus)) {
       order.orderStatus = newStatus;
       await order.save();
     }
 
-    // Notify customer for relevant status changes
+    // Notify customer (if relevant)
     const notifyCustomerStatuses = ["picked_up", "in_progress", "arrived", "delivered"];
     if (notifyCustomerStatuses.includes(newStatus)) {
       io.to(`user_${order.customerId._id}`).emit("order_status_update", {
@@ -408,19 +412,17 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
         newStatus,
         timestamp: new Date()
       });
-      console.log(`Emitting to room: user_${order.customerId._id}`);
+      console.log(`Notified customer room: user_${order.customerId._id}`);
     }
 
-    // If order delivered, calculate restaurant earning and update restaurant total earnings
+    // Handle 'delivered' specific logic
     if (newStatus === "delivered") {
+      try {
+        await createRestaurantEarning(order);
+      } catch (err) {
+        console.error("Error creating restaurant earning:", err);
+      }
 
-      await createRestaurantEarning(order)
- 
-  
-   
-
-
-      // Notify restaurant room about agent becoming available
       io.to(`restaurant_${order.restaurantId._id}`).emit("agent_status_update", {
         agentId,
         newStatus: "available",
@@ -434,16 +436,17 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     }
 
     res.status(200).json({
-      message: "Agent order status updated",
+      message: "Agent order status updated successfully",
       agentStatus: agent.status,
       orderStatus: order.orderStatus
     });
 
   } catch (error) {
-    console.error("Error updating agent status:", error);
+    console.error("Error updating agent/order status:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 
 

@@ -124,3 +124,46 @@ exports.findAndAssignNearestAgent = async (orderId, deliveryLocation, maxDistanc
     throw error;
   }
 };
+
+
+
+exports.assignNearestAgentSimple = async (orderId) => {
+  try {
+    // 1. Get the order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    // 2. Find any available agent (no filters)
+    const agent = await Agent.findOne({
+      availabilityStatus: "Available"
+    });
+
+    if (!agent) {
+      throw new Error('No available agents');
+    }
+
+    // 3. Update the order
+    order.assignedAgent = agent._id;
+    await order.save();
+
+    // 4. Update agent's status (minimal fields)
+    agent.deliveryStatus.status = 'assigned_to_agent';
+    await agent.save();
+
+    return {
+      success: true,
+      agentId: agent._id,
+      orderStatus: order.orderStatus
+    };
+  } catch (error) {
+    console.error('Simple agent assignment error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+

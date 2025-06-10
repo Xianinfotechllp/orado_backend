@@ -22,7 +22,7 @@ const orderSchema = mongoose.Schema({
     default: 'pending',
     enum: [
       'pending', 'pending_agent_acceptance', 'accepted_by_restaurant', 'rejected_by_restaurant',
-      'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'in_progress',
+      'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'on_the_way','in_progress',
       'arrived', 'completed',"delivered", 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
     ]
   },
