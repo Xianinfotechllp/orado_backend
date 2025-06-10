@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const {getRestaurantsInServiceArea,getNearbyCategories,getRestaurantsByLocationAndCategory,getRecommendedRestaurants,getNearbyProducts} = require('../controllers/locationControllers')
+const {getRestaurantsInServiceArea,getNearbyCategories,getRestaurantsByLocationAndCategory,getRecommendedRestaurants,getNearbyProducts,searchRestaurants} = require('../controllers/locationControllers')
 router.get("/nearby-restaurants",getRestaurantsInServiceArea)
 router.get("/nearby-categories",getNearbyCategories)
 router.get("/nearby-restaurants/category/:categoryName",getRestaurantsByLocationAndCategory)
 router.get("/nearby-restaurants/recommended", getRecommendedRestaurants);
 router.get("/nearby-products",getNearbyProducts)
+router.get("/nerat-by/restaurants",searchRestaurants)
 module.exports = router;

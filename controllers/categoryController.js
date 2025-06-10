@@ -3,62 +3,130 @@ const Restaurant = require('../models/restaurantModel');
 const Category = require('../models/categoryModel')
 const mongoose = require('mongoose');
 const { uploadOnCloudinary } = require('../utils/cloudinary');
-
 exports.createCategory = async (req, res) => {
   try {
-    const {restaurantId} = req.params
-    const { name, active = true, autoOnOff = false, description = ''} = req.body;
+    const { restaurantId } = req.params;
+    const { name, active = true, autoOnOff = false, description} = req.body;
 
-    if (!name?.trim() || !restaurantId) {
-      return res.status(400).json({ message: 'Category name and restaurantId are required' });
+    // Validate required fields
+    if (!restaurantId) {
+      return res.status(400).json({ message: 'Restaurant ID is required' });
     }
 
+    if (!name?.trim()) {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+
+    // Validate field types and formats
+    if (typeof name !== 'string') {
+      return res.status(400).json({ message: 'Category name must be a string' });
+    }
+
+    if (typeof active !== 'boolean') {
+      return res.status(400).json({ message: 'Active must be a boolean' });
+    }
+
+    if (typeof autoOnOff !== 'boolean') {
+      return res.status(400).json({ message: 'autoOnOff must be a boolean' });
+    }
+
+    
+
+    if (description && typeof description !== 'string') {
+      return res.status(400).json({ message: 'Description must be a string' });
+    }
+
+   if (!description || description.trim() === "") {
+  return res.status(400).json({
+    message: "Description is required",
+    messageType: "failure"
+  });
+}
+
+    // Validate description length if provided
+    if (description && description.length > 500) {
+      return res.status(400).json({ 
+        message: 'Description cannot exceed 500 characters' 
+      });
+    }
+
+    // Validate restaurant exists
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found' });
     }
+    const trimmedName = name.trim();
 
-    // ✅ Check if category with same name exists for the restaurant
-    const existingCategory = await Category.findOne({ name: name.trim(), restaurantId });
+    // Check for duplicate category name (case-insensitive)
+    const existingCategory = await Category.findOne({ 
+      name: { $regex: new RegExp(`^${trimmedName}$`, 'i') }, 
+      restaurantId 
+    });
+    
     if (existingCategory) {
-      return res.status(400).json({ message: 'Category with this name already exists for this restaurant' });
+      return res.status(400).json({ 
+        message: 'Category with this name already exists for this restaurant' 
+      });
     }
 
-
-     let images = [];
+    // Process images if any
+    let images = [];
     if (req.files && req.files.length > 0) {
+      // Validate number of images
+      if (req.files.length > 5) {
+        return res.status(400).json({ 
+          message: 'Maximum of 5 images allowed per category' 
+        });
+      }
+
+      // Validate image types and upload
+    
       for (const file of req.files) {
-        
+
         const uploadResult = await uploadOnCloudinary(file.path, 'category_images');
         if (uploadResult) {
           images.push(uploadResult.secure_url);
         }
       }
     }
-    console.log(images)
 
+    // Create and save the category
     const category = new Category({
-      name: name.trim(),
+      name: name,
       restaurantId,
       active,
       autoOnOff,
-      description,
-      images:images
+      description: description.trim(),
+      images
     });
 
     await category.save();
 
     res.status(201).json({
       message: 'Category created successfully',
-      data:category
+      data: category
     });
 
   } catch (error) {
     console.error('Error creating category:', error.message);
+    
     if (error.name === 'ValidationError') {
-      return res.status(400).json({ message: error.message });
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: error.errors 
+      });
     }
-    res.status(500).json({ message: 'Server error', error: error.message });
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        message: 'Invalid ID format' 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message 
+    });
   }
 };
 exports.getAResturantCategories = async (req, res) => {
