@@ -397,6 +397,7 @@ exports.getOrdersByCustomer = async (req, res) => {
     const customerId = req.user._id;
     const orders = await Order.find({ customerId })
                   .populate("restaurantId", "name location address")
+                  .populate("assignedAgent", "fullName phone")
                   .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
