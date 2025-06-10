@@ -1,5 +1,5 @@
 const { haversineDistance } = require("../utils/distanceCalculator");
-const {deliveryFeeCalculator} = require("../utils/deliveryFeeCalculator")
+const {deliveryFeeCalculator,deliveryFeeCalculator2} = require("../utils/deliveryFeeCalculator")
 const TAX_PERCENTAGE = 5;
 
 exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode }) => {
@@ -65,3 +65,60 @@ exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode
     distanceKm,
   };
 };
+
+
+
+
+exports.calculateOrderCost2 = ({
+  cartProducts,
+  tipAmount = 0,
+  couponCode,
+  restaurantCoords,
+  userCoords,
+  revenueShare = { type: 'percentage', value: 10 } // default if not provided
+}) => {
+  let cartTotal = 0;
+  cartProducts.forEach(item => {
+    cartTotal += item.price * item.quantity;
+  });
+
+  // Delivery Fee based on distance
+  const deliveryFee = deliveryFeeCalculator2(restaurantCoords, userCoords);
+
+  // Dummy discount logic (can replace with DB coupon lookup)
+  let discount = 0;
+  if (couponCode) {
+    if (couponCode === "WELCOME50") {
+      discount = 50;
+    } else if (couponCode === "FREEDLV") {
+      discount = deliveryFee;
+    }
+  }
+
+  // Calculate final amount before revenue share
+  const finalAmountBeforeRevenueShare = cartTotal + deliveryFee + tipAmount - discount;
+
+  // Calculate revenue share
+  let revenueShareAmount = 0;
+  if (revenueShare.type === 'percentage') {
+    revenueShareAmount = (finalAmountBeforeRevenueShare * revenueShare.value) / 100;
+  } else if (revenueShare.type === 'fixed') {
+    revenueShareAmount = revenueShare.value;
+  }
+
+  // Optional: You can either return revenueShareAmount separately for reporting,
+  // or if you want it included in the final cost the customer pays, add it here:
+  // const finalAmount = finalAmountBeforeRevenueShare + revenueShareAmount;
+
+  // But usually revenue share is platform’s cut, not charged extra to customer:
+  const finalAmount = finalAmountBeforeRevenueShare;
+
+  return {
+    cartTotal,
+    deliveryFee,
+    tipAmount,
+    discount,
+    revenueShareAmount,
+    finalAmount
+  };
+}

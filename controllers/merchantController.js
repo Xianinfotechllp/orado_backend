@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary');
+const Restaurant = require("../models/restaurantModel")
 
 
 exports.registerMerchant = async (req, res) => {
@@ -132,7 +133,6 @@ exports.logoutAll = async (req, res) => {
   res.json({ message: "Logged out from all sessions" });
 };
 
-
 exports.createRestaurant = async (req, res) => {
   try {
     // 1️⃣ Required fields validation
@@ -141,8 +141,8 @@ exports.createRestaurant = async (req, res) => {
       "ownerName",
       "phone",
       "email",
-      "password",
       "fssaiNumber",
+      "ownerId",
       "gstNumber",
       "aadharNumber",
       "address.street",
@@ -155,6 +155,7 @@ exports.createRestaurant = async (req, res) => {
     const missingFields = requiredFields.filter((field) => {
       const nestedFields = field.split(".");
       let value = req.body;
+      console.log(value)
       for (const f of nestedFields) {
         value = value?.[f];
         if (value === undefined) break;
@@ -170,13 +171,18 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    if (req.body.password.length < 8) {
+    // Check if owner exists
+    const ownerExists = await User.findById(req.body.ownerId);
+    if (!ownerExists) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters long",
-        code: "WEAK_PASSWORD",
+        message: "Owner does not exist",
+        code: "INVALID_OWNER_ID",
       });
     }
+
+    // Removed the check for existing restaurant for the same owner
+    // Now owners can have multiple restaurants
 
     const validFoodTypes = ["veg", "non-veg", "both"];
     if (!validFoodTypes.includes(req.body.foodType.trim())) {
@@ -304,9 +310,6 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(req.body.password, salt);
-
     const fssaiDoc = await uploadOnCloudinary(req.files.fssaiDoc[0].path);
     const gstDoc = await uploadOnCloudinary(req.files.gstDoc[0].path);
     const aadharDoc = await uploadOnCloudinary(req.files.aadharDoc[0].path);
@@ -314,11 +317,37 @@ exports.createRestaurant = async (req, res) => {
     if (!fssaiDoc || !gstDoc || !aadharDoc) {
       throw new Error("Document upload failed");
     }
+    if (req.files?.images && req.files.images.length > 5) {
+  return res.status(400).json({
+    success: false,
+    message: "Maximum 5 images allowed",
+    code: "TOO_MANY_IMAGES",
+  });
+}
+
+
+ let imageUrls = [];
+    if (req.files?.images) {
+      // Upload each image to Cloudinary
+      const uploadPromises = req.files.images.map(file => 
+        uploadOnCloudinary(file.path)
+      );
+      
+      const uploadResults = await Promise.all(uploadPromises);
+      imageUrls = uploadResults
+        .filter(result => result !== undefined)
+        .map(result => result.secure_url);
+    }
+    
+
+
+
 
     const slug = `${req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${req.body.address.city.toLowerCase()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const restaurantData = {
       name: req.body.name.trim(),
+      ownerId: req.body.ownerId, // Using the validated ownerId
       ownerName: req.body.ownerName.trim(),
       address: {
         street: req.body.address.street.trim(),
@@ -335,7 +364,6 @@ exports.createRestaurant = async (req, res) => {
       },
       phone: req.body.phone.trim(),
       email: req.body.email.trim(),
-      password: hashedPassword,
       openingHours,
       foodType: req.body.foodType.trim(),
       minOrderAmount: req.body.minOrderAmount || 100,
@@ -350,6 +378,7 @@ exports.createRestaurant = async (req, res) => {
         gstDocUrl: gstDoc.secure_url,
         aadharDocUrl: aadharDoc.secure_url,
       },
+      images: imageUrls,
       slug
     };
 
@@ -384,3 +413,111 @@ exports.createRestaurant = async (req, res) => {
     });
   }
 };
+
+
+exports.getRestaurantsByOwner = async(req,res) =>
+{
+  try {
+    const { ownerId } = req.params;
+
+    // Validate ownerId
+    if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+      return res.status(400).json({ success: false, message: "Invalid owner ID" });
+    }
+
+    const restaurants = await Restaurant.find({ ownerId })
+      .select("-products -categories -offers -pointsHistory") // Exclude large/unnecessary fields
+      .lean();
+
+    if (!restaurants || restaurants.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "No restaurants found for this owner" 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: restaurants.length,
+      data: restaurants
+    });
+  } catch (error) {
+    console.error("Error fetching restaurants by owner:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error", 
+      error: error.message 
+    });
+  }
+}
+
+
+
+exports.getRestaurantApprovalStatus = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.restaurantId)
+      .select('name approvalStatus approvalRejectionReason ownerId')
+
+
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: 'Restaurant not found'
+      });
+    }
+
+    // Verify the requesting merchant owns this restaurant
+    if (restaurant.ownerId.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to access this restaurant'
+      });
+    }
+
+    // Prepare response data
+    const responseData = {
+      id: restaurant._id,
+      name: restaurant.name,
+      approvalStatus: restaurant.approvalStatus,
+      approvalRejectionReason: restaurant.approvalRejectionReason || null
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responseData
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+
+
+
+exports.getRestaurantApprovalStatus = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.restaurantId)
+      .select('approvalStatus approvalRejectionReason')
+      .lean();
+
+    if (!restaurant) {
+      return res.status(404).json({ error: 'Restaurant not found' });
+    }
+
+    res.json({
+      status: restaurant.approvalStatus,
+      rejectionReason: restaurant.approvalRejectionReason
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+

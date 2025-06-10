@@ -818,16 +818,14 @@ exports.getRestaurantEarningSummary = async (req, res) => {
 
 
 // Get all orders for a specific restaurant (with pagination, filtering, and sorting)
+
 exports.getRestaurantOrders = async (req, res) => {
   try {
-
     const { restaurantId } = req.params;
     const { 
       page = 1, 
-      limit = 10, 
-    
-    
-
+      limit = 10,
+      status // Optional status filter
     } = req.query;
 
     // Validate restaurantId
@@ -836,14 +834,18 @@ exports.getRestaurantOrders = async (req, res) => {
     }
 
     // Build query filters
- 
-    
-   
+    const query = { restaurantId };
+    if (status) query.status = status;
 
     // Execute query with pagination
-    const orders = await Order.find({restaurantId:restaurantId}).populate("customerId", "name email").sort({ createdAt: -1 }).limit(parseInt(limit)).skip((parseInt(page) - 1) * parseInt(limit));
+    const orders = await Order.find(query)
+      .populate("customerId", "name email phone")
+      .populate("assignedAgent", "name email phone") // Added agent population
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit));
 
-    const totalOrders = await Order.countDocuments({restaurantId:restaurantId});
+    const totalOrders = await Order.countDocuments(query);
 
     res.status(200).json({
       success: true,
@@ -852,10 +854,16 @@ exports.getRestaurantOrders = async (req, res) => {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalOrders / limit),
         totalOrders,
+        hasNextPage: (parseInt(page) * parseInt(limit)) < totalOrders,
       },
     });
   } catch (error) {
-    res.status(500).json({ error: "Server error: " + error.message });
+    console.error("Order fetch error:", error);
+    res.status(500).json({ 
+      success: false,
+      error: "Server error",
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 

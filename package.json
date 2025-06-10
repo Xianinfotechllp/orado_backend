@@ -28,6 +28,7 @@
     "express-rate-limit": "^7.5.0",
     "firebase": "^11.7.3",
     "firebase-admin": "^13.4.0",
+    "haversine-distance": "^1.2.3",
     "jsonwebtoken": "^9.0.2",
     "mongodb-connection-string-url": "^3.0.2",
     "mongoose": "^8.14.2",

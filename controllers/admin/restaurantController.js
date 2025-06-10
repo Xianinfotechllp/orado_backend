@@ -267,6 +267,31 @@ exports.createRestaurant = async (req, res) => {
     if (!fssaiDoc || !gstDoc || !aadharDoc) {
       throw new Error("Document upload failed");
     }
+    if (req.files?.images && req.files.images.length > 5) {
+  return res.status(400).json({
+    success: false,
+    message: "Maximum 5 images allowed",
+    code: "TOO_MANY_IMAGES",
+  });
+}
+
+
+ let imageUrls = [];
+    if (req.files?.images) {
+      // Upload each image to Cloudinary
+      const uploadPromises = req.files.images.map(file => 
+        uploadOnCloudinary(file.path)
+      );
+      
+      const uploadResults = await Promise.all(uploadPromises);
+      imageUrls = uploadResults
+        .filter(result => result !== undefined)
+        .map(result => result.secure_url);
+    }
+    
+
+
+
 
     const slug = `${req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${req.body.address.city.toLowerCase()}-${Math.random().toString(36).substring(2, 6)}`;
 
@@ -303,6 +328,7 @@ exports.createRestaurant = async (req, res) => {
         gstDocUrl: gstDoc.secure_url,
         aadharDocUrl: aadharDoc.secure_url,
       },
+      images: imageUrls,
       slug
     };
 
@@ -335,5 +361,32 @@ exports.createRestaurant = async (req, res) => {
       message: "Something went wrong",
       error: err.message,
     });
+  }
+};
+
+
+
+exports.setRestaurantCommission = async (req, res) => {
+   try {
+    const { restaurantId } = req.params;
+    const { type, value } = req.body
+
+    // Find restaurant
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+    // Validate commission value
+    if (type === "percentage" && (value < 0 || value > 100)) {
+      return res.status(400).json({ error: "Percentage must be 0-100" });
+    }
+
+    // Update commission
+    restaurant.commission = { type, value };
+    await restaurant.save();
+
+    res.json({ message: "Commission updated", restaurant });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };

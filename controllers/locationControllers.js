@@ -419,4 +419,94 @@ exports.getNearbyProducts = async (req, res) => {
 
 
 
+exports.searchRestaurants = async (req, res) => {
+ try {
+    const { query, latitude, longitude, radius = 5000, limit = 10, page = 1 } = req.query;
 
+    if (!query) {
+      return res.status(400).json({ message: "Search query is required" });
+    }
+
+    const skip = (page - 1) * limit;
+
+    // 1️⃣ Find restaurants by name/merchantSearchName directly
+    const nameResults = await Restaurant.find({
+      $or: [
+        { name: { $regex: query, $options: "i" } },
+        { merchantSearchName: { $regex: query, $options: "i" } }
+      ],
+      active: true,
+      approvalStatus: "approved"
+    }).select("-approvalStatus -kycDocuments -commission");
+
+    // 2️⃣ Get restaurantIds from products matching query
+    const productRestaurantIds = await Product.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 3️⃣ Get restaurantIds from categories matching query
+    const categoryRestaurantIds = await Category.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 4️⃣ Combine unique restaurantIds
+    const allRestaurantIds = [
+      ...new Set([
+        ...productRestaurantIds.map(id => id.toString()),
+        ...categoryRestaurantIds.map(id => id.toString())
+      ])
+    ];
+
+    // 5️⃣ Fetch restaurants for those IDs
+    const relatedRestaurants = await Restaurant.find({
+      _id: { $in: allRestaurantIds },
+      active: true,
+      approvalStatus: "approved"
+    }).select("-approvalStatus -kycDocuments -commission");
+
+    // 6️⃣ Combine and deduplicate both results
+    let restaurants = [...nameResults];
+    relatedRestaurants.forEach(rest => {
+      if (!restaurants.some(r => r._id.equals(rest._id))) {
+        restaurants.push(rest);
+      }
+    });
+
+    // 7️⃣ If latitude and longitude provided, apply proximity filter
+    if (latitude && longitude) {
+      restaurants = await Restaurant.find({
+        _id: { $in: restaurants.map(r => r._id) },
+        location: {
+          $near: {
+            $geometry: {
+              type: "Point",
+              coordinates: [parseFloat(longitude), parseFloat(latitude)]
+            },
+            $maxDistance: parseFloat(radius)
+          }
+        },
+        active: true,
+        approvalStatus: "approved"
+      }).select("-approvalStatus -kycDocuments -commission");
+    }
+
+    // 8️⃣ Pagination
+    const paginatedResults = restaurants.slice(skip, skip + limit);
+    const totalResults = restaurants.length;
+
+    res.json({
+      success: true,
+      count: paginatedResults.length,
+      total: totalResults,
+      page: parseInt(page),
+      pages: Math.ceil(totalResults / limit),
+      data: paginatedResults
+    });
+
+  } catch (error) {
+    console.error("Search error:", error);
+    res.status(500).json({ success: false, message: "Server error during search" });
+  }
+};

@@ -49,6 +49,7 @@ const chatRouter = require("./routes/chatRoutes");
 const faqRouter = require("./routes/faqRoutes");
 const adminRouter = require("./routes/adminRoutes");
 const merchantRouter = require("./routes/merchantRoutes")
+const TicketRouter = require("./routes/ticketRoutes")
 
 
 
@@ -355,6 +356,7 @@ app.use("/feedback", feedbackRoutes);
 app.use("/cart", cartRoutes);
 app.use("/faq", faqRouter);
 app.use("/merchant",merchantRouter)
+app.use("/tickets",TicketRouter)
 
 
 // Default route

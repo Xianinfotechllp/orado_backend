@@ -7,15 +7,18 @@ const {
   updatePermissions, reviewChangeRequest, createAdmin, deleteAdmin, updateAdminPermissions,
   getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs,
   getMyLogs, getRestaurantById, updatePermissionsRestuarants, getRestaurantsWithPermissions,
-  updateRestaurant, getRestaurantCategory, createCategory, getCategoryProducts, createProduct
+  updateRestaurant, getRestaurantCategory, createCategory, getCategoryProducts, createProduct,updateProduct,
+  updateCategory,
+  deleteCategory,
+  
 } = require("../controllers/adminController");
 
-const { importMenuFromExcel } = require("../controllers/admin/restaurantController");
+const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
 
-const {getActiveOrdersStats} = require("../controllers/admin/orderController")
+const {getActiveOrdersStats,getSimpleRectOrderStats} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
@@ -63,8 +66,14 @@ router.post('/change-requests/:requestId/review', protect, checkPermission('merc
 // Restaurant menu/category management
 router.get("/restaurant/:restaurantId/category", protect, getRestaurantCategory);
 router.post("/restaurant/:restaurantId/category", protect, upload.array('images', 5), createCategory);
+router.put("/restaurant/:restaurantId/category/:categoryId", protect, upload.array('images', 5), updateCategory)
+router.delete("/restaurant/:restaurantId/category/:categoryId", protect, upload.array('images', 5), deleteCategory)
+
+
 router.get("/restaurant/:restaurantId/category/:categoryId", protect, getCategoryProducts);
 router.post("/restaurant/:restaurantId/product", protect, upload.array('images', 5), createProduct);
+
+router.put("/restaurant/:restaurantId/product/:productId",protect, upload.array('images', 5), updateProduct)
 router.post("/restaurant/menu/import-excel",  protect,upload.single("file"), importMenuFromExcel);
 
 // Access logs
@@ -73,7 +82,12 @@ router.get("/access-logs/me", protect, checkRole('admin', 'superAdmin'), getMyLo
 
 // Stats routes
 router.get("/user/user-stats", getUserStats);
-router.get("/restauranteee/restaurant-stats", getRestaurantStats);
+router.get("/restaurant/stats/restaurant-stats", getRestaurantStats);
 router.get("/order/order-stats", getActiveOrdersStats);
+router.get("/order/order-stats/recent",getSimpleRectOrderStats)
+
+
+// Set restaurant commission (admin only)
+router.patch("/restaurant/:restaurantId/commission", setRestaurantCommission); 
 
 module.exports = router;

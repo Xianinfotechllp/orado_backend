@@ -12,3 +12,20 @@ exports.deliveryFeeCalculator = ({ distanceKm, orderAmount, baseFee = 25, baseDi
   // Round to 2 decimal places
   return Number(deliveryFee.toFixed(2));
 };
+
+
+
+const haversine = require('haversine-distance');
+
+exports.deliveryFeeCalculator2 = (restaurantCoords, userCoords) => {
+  // Format: { lat: number, lon: number }
+  const distanceInMeters = haversine(
+    { lat: restaurantCoords.lat, lon: restaurantCoords.lon },
+    { lat: userCoords.lat, lon: userCoords.lon }
+  );
+
+  // Example delivery fee logic
+  if (distanceInMeters <= 2000) return 30;       // ₹30 for <= 2km
+  if (distanceInMeters <= 5000) return 50;       // ₹50 for 2-5km
+  return 70;                                      // ₹70 beyond 5km
+}

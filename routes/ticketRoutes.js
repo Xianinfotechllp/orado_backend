@@ -1,16 +1,25 @@
+
+
+
 const express = require("express");
 const router = express.Router();
 const ticketController = require("../controllers/ticketController");
-const { protect, checkRole } = require("../middlewares/authMiddleware");
+const { protect, isAdmin,checkPermission } = require("../middlewares/authMiddleware");
 
 // User routes
-router.post("/", protect, checkRole('customer', 'agent'), ticketController.createTicket);
-router.get("/my", protect, checkRole('customer', 'agent'), ticketController.getMyTickets);
-router.post("/:ticketId/message", checkRole('customer', 'agent'), protect, ticketController.addMessage);
+router.post("/create", protect, ticketController.createTicket);
+router.get("/my", protect, ticketController.getMyTickets);
+router.post("/:ticketId/message", protect, ticketController.addMessage);
 
 // Admin routes
-router.get("/", protect, checkRole('admin'), ticketController.getAllTickets);
-router.patch("/:ticketId/status", protect, checkRole('admin'), ticketController.updateTicketStatus);
+router.get("/admin/getall", protect, ticketController.getAllTickets);
+router.patch("/admin/ticket/:ticketId/status", protect,checkPermission("disputes.manage"), ticketController.updateTicketStatus);
+
 
 
 module.exports = router;
+
+
+
+
+

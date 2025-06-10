@@ -93,16 +93,21 @@ exports.checkPermission = (...requiredPermissions) => {
 
 
 // for restaurant permissions
-
-exports.checkRestaurantPermission = (permissionKey, allowRequest = false) => {
+exports.checkRestaurantPermission = (permissionKey, allowRequest = false, customMessage = null) => {
   return async (req, res, next) => {
     try {
-      const restaurant = await Restaurant.findOne({ ownerId: req.user._id });
-      if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
+      const restaurantId = req.body.restaurantId || req.params.restaurantId || req.query.restaurantId;
+      if (!restaurantId) {
+        return res.status(400).json({ message: "restaurantId is required" });
       }
 
+      const restaurant = await Restaurant.findOne({ _id: restaurantId, ownerId: req.user._id });
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found for this merchant." });
+      }
+      
       const permissionDoc = await Permission.findOne({ restaurantId: restaurant._id });
+   
 
       if (permissionDoc && permissionDoc.permissions?.[permissionKey]) {
         req.restaurant = restaurant;
@@ -110,10 +115,11 @@ exports.checkRestaurantPermission = (permissionKey, allowRequest = false) => {
       }
 
       if (!allowRequest) {
-        return res.status(403).json({ message: "Permission denied." });
+        return res.status(403).json({
+          message: customMessage || "Permission denied."
+        });
       }
 
-      // Automatically create a permission change request
       await ChangeRequest.create({
         restaurantId: restaurant._id,
         requestedBy: req.user._id,
@@ -123,7 +129,7 @@ exports.checkRestaurantPermission = (permissionKey, allowRequest = false) => {
       });
 
       return res.status(403).json({
-        message: `You don't have permission for "${permissionKey}". We've notified the admin.`
+        message: customMessage || `You don't have permission for "${permissionKey}". We've notified the admin.`
       });
 
     } catch (err) {
@@ -131,4 +137,4 @@ exports.checkRestaurantPermission = (permissionKey, allowRequest = false) => {
       return res.status(500).json({ message: "Server error" });
     }
   };
-};
+};   

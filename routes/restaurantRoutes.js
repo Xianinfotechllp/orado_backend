@@ -3,7 +3,7 @@ const router = express.Router()
 
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
 const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
-const {protect, checkRole} = require('../middlewares/authMiddleware')
+const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
 
 const {upload} = require('../middlewares/multer')
 
@@ -59,10 +59,10 @@ router.get('/kyc/:restaurantId', protect, checkRole('merchant'), getKyc);
 
 
 //categories routes
-router.post("/:restaurantId/categories", upload.single('images'), protect, checkRole('merchant'), createCategory);
+router.post("/:restaurantId/categories",upload.array('images', 5), protect, checkRole('merchant'), checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), createCategory);
 router.get("/:restaurantId/categories", protect, checkRole('merchant'), getAResturantCategories)
 router.put('/categories/:categoryId', upload.single('images'), protect, checkRole('merchant'), editResturantCategory);
-router.delete('/categories/:categoryId', protect, checkRole('merchant'), deleteResturantCategory)
+router.delete('/:restaurantId/categories/:categoryId', protect, checkRole('merchant'), deleteResturantCategory)
 
 
 //get restaurant menu
@@ -70,9 +70,9 @@ router.delete('/categories/:categoryId', protect, checkRole('merchant'), deleteR
 router.get("/:restaurantId/menu",getRestaurantMenu)
 
 // get restaurant earnigs
-router.get("/:restaurantId/earnigs",getRestaurantEarningSummary)
+router.get("/:restaurantId/earnigs",protect,checkRole('merchant'),getRestaurantEarningSummary)
 
-router.get("/:restaurantId/myorders",getRestaurantOrders)
+router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders)
 
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)

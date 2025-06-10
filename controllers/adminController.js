@@ -79,6 +79,7 @@ exports.adminLogin = async (req, res) => {
         name: user.name,
         email: user.email,
         userType: user.userType,
+        adminPermissions:user.adminPermissions
       },
     });
   } catch (error) {
@@ -919,6 +920,9 @@ exports.getRestaurantsWithPermissions = async (req, res) => {
 
 
 
+
+
+
 exports.createCategory = async (req, res) => {
   try {
     const { name, restaurantId, active = true, autoOnOff = false, description = '', images = [] } = req.body;
@@ -930,6 +934,12 @@ exports.createCategory = async (req, res) => {
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found' });
+    }
+
+    // ✅ Check if category with same name exists for the restaurant
+    const existingCategory = await Category.findOne({ name: name.trim(), restaurantId });
+    if (existingCategory) {
+      return res.status(400).json({ message: 'Category with this name already exists for this restaurant' });
     }
 
     const category = new Category({
@@ -950,6 +960,9 @@ exports.createCategory = async (req, res) => {
 
   } catch (error) {
     console.error('Error creating category:', error.message);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -1053,13 +1066,7 @@ exports.getRestaurantCategory = async (req, res) => {
      
     }) // Excluding the version key
 
-    if (!categories || categories.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No categories found for this restaurant",
-        data: []
-      });
-    }
+  
 
     res.status(200).json({
       success: true,
@@ -1183,6 +1190,113 @@ exports.createCategory = async (req, res) => {
 
 
 
+exports.updateCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    // Validate categoryId
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ success: false, message: "Invalid categoryId format" });
+    }
+
+    // Find existing category
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    const { name, description, active, autoOnOff, replaceImageIndex } = req.body;
+
+    // Update fields if provided
+    if (name) category.name = name.trim();
+    if (description) category.description = description.trim();
+    if (active !== undefined) category.active = active;
+    if (autoOnOff !== undefined) category.autoOnOff = autoOnOff;
+
+    // Image handling
+    if (req.files && req.files.length > 0) {
+      if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
+        // Replace single image at given index
+        const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_categories');
+        if (uploadResult?.secure_url) {
+          const idx = parseInt(replaceImageIndex);
+          if (idx >= 0 && idx < category.images.length) {
+            category.images[idx] = uploadResult.secure_url;
+          } else {
+            category.images.push(uploadResult.secure_url);
+          }
+        }
+      } else {
+        // No replaceImageIndex — replace all images
+        category.images = []; // Clear old images
+
+        for (const file of req.files) {
+          const uploadResult = await uploadOnCloudinary(file.path, 'restaurant_categories');
+          if (uploadResult?.secure_url) {
+            category.images.push(uploadResult.secure_url);
+          }
+        }
+      }
+    }
+
+    await category.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Category updated successfully",
+      data: category
+    });
+
+  } catch (error) {
+    console.error("Error updating category:", error);
+
+    // Cleanup uploaded files on error
+    if (req.files?.length) {
+      await Promise.all(req.files.map(file =>
+        fs.promises.unlink(file.path).catch(console.error)
+      ));
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+exports.deleteCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    // Validate categoryId
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ success: false, message: "Invalid categoryId format" });
+    }
+
+    // Find existing category
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    // Delete category
+    await Category.deleteOne({ _id: categoryId });
+
+    return res.status(200).json({
+      success: true,
+      message: "Category deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error deleting category:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
 
 
 
@@ -1330,6 +1444,92 @@ exports.getCategoryProducts = async (req, res) => {
     });
   }
 };
+
+
+
+
+exports.updateProduct = async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    // Find product
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    const {
+      name, description, price, categoryId, foodType, addOns, attributes, unit, stock, reorderLevel, revenueShare, replaceImageIndex
+    } = req.body;
+
+    // Update fields if provided
+    if (name) product.name = name.trim();
+    if (description) product.description = description.trim();
+    if (price) product.price = parseFloat(price);
+    if (categoryId) product.categoryId = categoryId;
+    if (foodType) product.foodType = foodType;
+    if (addOns) product.addOns = addOns;
+    if (attributes) product.attributes = attributes;
+    if (unit) product.unit = unit;
+    if (stock) product.stock = parseInt(stock);
+    if (reorderLevel) product.reorderLevel = parseInt(reorderLevel);
+    if (revenueShare) product.revenueShare = revenueShare;
+
+    // Image handling
+    if (req.files && req.files.length > 0) {
+      if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
+        // Replace single image at given index
+        const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_products');
+        if (uploadResult?.secure_url) {
+          const idx = parseInt(replaceImageIndex);
+          if (idx >= 0 && idx < product.images.length) {
+            product.images[idx] = uploadResult.secure_url;
+          } else {
+            product.images.push(uploadResult.secure_url);
+          }
+        }
+      } else {
+        // No replaceImageIndex — replace all images
+        product.images = []; // Clear old images
+
+        for (const file of req.files) {
+          const uploadResult = await uploadOnCloudinary(file.path, 'restaurant_products');
+          if (uploadResult?.secure_url) {
+            product.images.push(uploadResult.secure_url);
+          }
+        }
+      }
+    }
+
+    await product.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Product updated successfully',
+      data: product
+    });
+
+  } catch (error) {
+    console.error('Error updating product:', error);
+
+    // Cleanup uploaded files on error
+    if (req.files?.length) {
+      await Promise.all(req.files.map(file =>
+        fs.promises.unlink(file.path).catch(console.error)
+      ));
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+
+
+
 
 
 

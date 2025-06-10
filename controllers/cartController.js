@@ -7,6 +7,7 @@ exports.addToCart = async (req, res) => {
   const { restaurantId, products } = req.body;
 
   try {
+    // Validate IDs
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       throw { status: 400, message: "Invalid userId format" };
     }
@@ -17,14 +18,10 @@ exports.addToCart = async (req, res) => {
       throw { status: 400, message: "Products must be a non-empty array" };
     }
 
+    // Find existing cart or create new
     let cart = await Cart.findOne({ user: userId });
-
     if (!cart) {
-      cart = new Cart({
-        user: userId,
-        restaurantId,
-        products: []
-      });
+      cart = new Cart({ user: userId, restaurantId, products: [] });
     } else if (cart.restaurantId.toString() !== restaurantId) {
       cart.products = [];
       cart.restaurantId = restaurantId;
@@ -65,16 +62,23 @@ exports.addToCart = async (req, res) => {
       throw { status: 400, message: "No valid products found to add to cart" };
     }
 
+    // Calculate total price
     cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
     await cart.save();
 
-    return res.status(200).json({ message: "Cart updated successfully", cart });
+    return res.status(200).json({
+      success: true,
+      messageType: "success",
+      message: "Cart updated successfully",
+      cart
+    });
+
   } catch (error) {
     console.error("Error inside addToCart service:", error);
     res.status(error.status || 500).json({ message: error.message || "Something went wrong" });
   }
 };
-
+// Get user's cart
 exports.getCart = async (req, res) => {
   try {
     const userId = req.user._id;

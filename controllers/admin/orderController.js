@@ -46,3 +46,29 @@ exports.getActiveOrdersStats = async (req, res) => {
     });
   }
 };
+
+
+exports.getSimpleRectOrderStats = async (req, res) => {
+  try {
+    // Get last 4 orders (or adjust limit as needed)
+    const orders = await Order.find()
+      .sort({ orderTime: -1 }) // Newest first
+      .limit(4)
+      .populate('restaurantId', 'name') // Only get restaurant name
+      .lean();
+    
+    // Format to match your exact requirements
+    const formattedOrders = orders.map(order => ({
+      id: order._id.toString().substring(18, 22), // Short ID like 1001
+      restaurant: order.restaurantId?.name || 'Unknown',
+      amount: order.totalAmount,
+      status: order.orderStatus === 'delivered' ? 'Completed' : 'Pending'
+    }));
+    
+    res.json(formattedOrders);
+    
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    res.status(500).json([]); // Return empty array on error
+  }
+};

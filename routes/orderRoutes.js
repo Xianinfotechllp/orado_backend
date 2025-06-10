@@ -23,11 +23,14 @@ const {
   getOrdersByMerchant,
   getOrderPriceSummary,
   placeOrder,
-  reorder
+  reorder,updateRestaurantOrderStatus,
+  placeOrderWithAddressId
+  
   
 } = require('../controllers/orderController');
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, checkRestaurantPermission } = require('../middlewares/authMiddleware');
+const { TrustProductsEvaluationsContextImpl } = require('twilio/lib/rest/trusthub/v1/trustProducts/trustProductsEvaluations');
 
 // orders
 router.post('/create', protect, createOrder); // Create new order
@@ -79,11 +82,15 @@ router.post("/pricesummary", protect, getOrderPriceSummary)
 
 
 //place order 
-router.post("/place-order",  placeOrder)
+router.post("/place-order", protect ,  placeOrder)
+
+// place order with addressId no need to manualy enter address ,  lat , long
+router.post("/place-order/by-address", protect ,placeOrderWithAddressId)
 
 // Reorder route
 router.post('/reorder/:orderId', protect, reorder);
 
+router.put('/restaurant/:restaurantId/orders/:orderId/status', protect , updateRestaurantOrderStatus);
 
 
 
