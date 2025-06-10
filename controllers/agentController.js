@@ -7,7 +7,7 @@ const Restaurant = require("../models/restaurantModel");
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose')
-const {addAgentEarnings,addRestaurantEarnings} = require("../services/earningService")
+const {addAgentEarnings,addRestaurantEarnings ,createRestaurantEarning} = require("../services/earningService")
 const { uploadOnCloudinary } = require('../utils/cloudinary');
 const { findAndAssignNearestAgent } = require('../services/findAndAssignNearestAgent');
 const { sendPushNotification } = require('../utils/sendPushNotification');
@@ -356,15 +356,15 @@ exports.handleAgentResponse = async (req, res) => {
 exports.agentUpdatesOrderStatus = async (req, res) => {
   const { agentId, orderId } = req.params;
   console.log("Agent ID:", agentId, "Order ID:", orderId);
-  
+
   const { newStatus } = req.body;
-  const io = req.app.get('io');
+  const io = req.app.get("io");
 
   const allowedStatuses = [
     "assigned_to_agent",
     "picked_up",
     "in_progress",
-    "completed",
+    "delivered",
     "cancelled_by_customer",
     "pending_agent_acceptance",
     "available",
@@ -394,26 +394,33 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     agent.status = newStatus;
     await agent.save();
 
-    // Sync order model if needed
-    if (["picked_up", "in_progress", "arrived", "completed"].includes(newStatus)) {
+    // Update order status where needed
+    if (["picked_up", "in_progress", "arrived", "delivered"].includes(newStatus)) {
       order.orderStatus = newStatus;
       await order.save();
     }
 
-    // Notify customer for picked_up, in_progress, completed
-    const notifyCustomerStatuses = ["picked_up", "in_progress", "arrived", "completed"];
+    // Notify customer for relevant status changes
+    const notifyCustomerStatuses = ["picked_up", "in_progress", "arrived", "delivered"];
     if (notifyCustomerStatuses.includes(newStatus)) {
       io.to(`user_${order.customerId._id}`).emit("order_status_update", {
         orderId,
         newStatus,
         timestamp: new Date()
       });
+      console.log(`Emitting to room: user_${order.customerId._id}`);
     }
-    console.log(`Emitting to room: user_${order.customerId._id}`);
+
+    // If order delivered, calculate restaurant earning and update restaurant total earnings
+    if (newStatus === "delivered") {
+
+      await createRestaurantEarning(order)
+ 
+  
+   
 
 
-    // Notify restaurant only when agent is done (agent is available again)
-    if (newStatus === "completed") {
+      // Notify restaurant room about agent becoming available
       io.to(`restaurant_${order.restaurantId._id}`).emit("agent_status_update", {
         agentId,
         newStatus: "available",
@@ -421,7 +428,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
         timestamp: new Date()
       });
 
-      // Also update agent status to "available" after delivery
+      // Mark agent available after delivery
       agent.status = "available";
       await agent.save();
     }
@@ -437,6 +444,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 
 // toggle availability and notify nearby restaurants

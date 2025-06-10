@@ -91,6 +91,165 @@ exports.addToCart = async (req, res) => {
   }
 };
 
+
+exports.addToCart2 = async (req, res) => {
+ 
+  
+  const userId = req.user._id;
+  const { restaurantId, products } = req.body;
+
+  try {
+    // Validate IDs
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ success: false, message: "Invalid restaurantId" });
+    }
+
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ success: false, message: "Products array required" });
+    }
+
+    // Validate each product item
+    const invalidProducts = [];
+    const validProductIds = [];
+
+    for (const prod of products) {
+      if (
+        !prod.productId ||
+        !mongoose.Types.ObjectId.isValid(prod.productId) ||
+        typeof prod.quantity !== "number" ||
+        prod.quantity < 0
+      ) {
+        invalidProducts.push(prod);
+      } else {
+        validProductIds.push(prod.productId);
+      }
+    }
+
+    if (validProductIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid products provided",
+        invalidProducts,
+      });
+    }
+
+    // Fetch valid products
+    const productsData = await Product.find({
+      _id: { $in: validProductIds },
+      restaurantId: restaurantId,
+      active: true,
+    }).lean();
+
+    const availableProductIds = productsData.map(p => p._id.toString());
+
+    const unavailableProducts = products.filter(
+      p => !availableProductIds.includes(p.productId)
+    );
+
+    if (unavailableProducts.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Some products unavailable or not from this restaurant",
+        invalidProducts: unavailableProducts,
+      });
+    }
+
+    // Get existing cart or create new
+    let cart = await Cart.findOne({ user: userId });
+
+    if (cart) {
+      const currentRestaurantId = cart.restaurantId.toString();
+      if (currentRestaurantId !== restaurantId) {
+        await Cart.findByIdAndDelete(cart._id);
+        cart = null;
+      }
+    }
+
+    if (!cart) {
+      cart = new Cart({
+        user: userId,
+        restaurantId,
+        products: [],
+        totalPrice: 0,
+      });
+    }
+
+    const productMap = new Map(productsData.map(p => [p._id.toString(), p]));
+
+    // Add or update products in cart
+    for (const prod of products) {
+      const productData = productMap.get(prod.productId);
+      if (!productData) continue;
+
+      const quantity = Math.max(0, Math.floor(prod.quantity));
+      const price = productData.price;
+      const total = quantity * price;
+
+      const existingIndex = cart.products.findIndex(
+        p => p.productId.toString() === prod.productId
+      );
+
+      if (quantity === 0) {
+        if (existingIndex > -1) {
+          cart.products.splice(existingIndex, 1);
+        }
+      } else {
+        if (existingIndex > -1) {
+          cart.products[existingIndex].quantity = quantity;
+          cart.products[existingIndex].total = total;
+        } else {
+          cart.products.push({
+            productId: prod.productId,
+            name: productData.name,
+            price: price,
+            quantity: quantity,
+            total: total,
+            image: productData.images[0],
+          });
+        }
+      }
+    }
+
+    // If cart is empty after update, delete it
+    if (cart.products.length === 0) {
+      await Cart.findByIdAndDelete(cart._id);
+      return res.status(200).json({
+        success: true,
+        message: "Cart is now empty",
+        cart: null,
+      });
+    }
+
+    // Update total price
+    cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
+    cart.updatedAt = new Date();
+
+    await cart.save();
+
+    // Populate products for return
+    const resultCart = await Cart.findById(cart._id)
+      .populate({
+        path: "products.productId",
+        select: "name price image",
+      })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Cart updated successfully",
+      cart: resultCart,
+    });
+
+  } catch (error) {
+    console.error("Error in addToCart controller:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+
+
+
+
 // exports.addToCart = async (req, res) => {
 //   const { userId, restaurantId, products } = req.body;
 //   console.log(userId, restaurantId, products);

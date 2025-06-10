@@ -108,7 +108,7 @@ exports.checkRestaurantPermission = (permissionKey, allowRequest = false, custom
       
       const permissionDoc = await Permission.findOne({ restaurantId: restaurant._id });
    
-
+      
       if (permissionDoc && permissionDoc.permissions?.[permissionKey]) {
         req.restaurant = restaurant;
         return next();

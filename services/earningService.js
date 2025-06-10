@@ -2,6 +2,7 @@ const AgentEarning = require("../models/AgentEarningModel")
 const Order =  require("../models/orderModel")
 const RestaurantEarning = require("../models/RestaurantEarningModel")
 const Product = require("../models/productModel")
+const Restaurant = require("../models/restaurantModel")
 
 
 exports.addAgentEarnings = async ({ agentId, orderId, amount, type, remarks = null }) => {
@@ -69,4 +70,50 @@ exports.addRestaurantEarnings = async (orderId) => {
   await earningRecord.save();
 
   return earningRecord;
+};
+
+
+
+
+exports.createRestaurantEarning = async (order) => {
+  try {
+    const restaurant = await Restaurant.findById(order.restaurantId);
+
+    if (!restaurant) {
+      throw new Error("Restaurant not found for earning calculation.");
+    }
+
+    const commissionType = restaurant.commission?.type || "percentage";
+    const commissionValue = restaurant.commission?.value || 20; // default 20%
+
+    let commissionAmount = 0;
+    let restaurantNetEarning = 0;
+
+    if (commissionType === "percentage") {
+      commissionAmount = (order.subtotal * commissionValue) / 100;
+    } else if (commissionType === "fixed") {
+      commissionAmount = commissionValue;
+    }
+
+    restaurantNetEarning = order.subtotal - commissionAmount;
+
+    const newEarning = new RestaurantEarning({
+      restaurantId: order.restaurantId,
+      orderId: order._id,
+      totalOrderAmount: order.subtotal,
+      commissionAmount,
+      commissionType,
+      commissionValue,
+      restaurantNetEarning
+    });
+
+    await newEarning.save();
+
+    console.log(`Restaurant earning record created for order ${order._id}`);
+
+    return newEarning;
+  } catch (error) {
+    console.error("Error creating restaurant earning:", error);
+    throw error;
+  }
 };

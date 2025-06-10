@@ -465,7 +465,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
      let orderStatus = "pending";
       const permission = await Permission.findOne({ restaurantId: restaurant._id });
      if (permission && !permission.permissions.canAcceptOrder) {
-  orderStatus = "accepted";
+      orderStatus = "accepted";
 }
 
 
@@ -497,7 +497,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
         landmark: selectedAddress.landmark || "",
         city: selectedAddress.city,
         state: selectedAddress.state || "",
-        pincode: selectedAddress.pincode,
+        pincode: selectedAddress.pincode || "2323",
         country: selectedAddress.country || "India",
       },
 
@@ -505,7 +505,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
       couponCode,
       distanceKm: bill.distanceKm,
     });
-
+     await newOrder.save();
     // Proceed to create order, deduct stock, clear cart, etc.
 
     return res.json({
@@ -1398,6 +1398,7 @@ exports.updateRestaurantOrderStatus = async (req, res) => {
     const permission = await Permission.findOne({
       restaurantId: order.restaurantId,
     });
+    console.log(permission)
     if (!permission) {
       return res
         .status(404)
