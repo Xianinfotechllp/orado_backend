@@ -10,6 +10,8 @@ const {
   updateRestaurant, getRestaurantCategory, createCategory, getCategoryProducts, createProduct,updateProduct,
   updateCategory,
   deleteCategory,
+getApprovedRestaurants 
+  
   
 } = require("../controllers/adminController");
 
@@ -89,5 +91,7 @@ router.get("/order/order-stats/recent",getSimpleRectOrderStats)
 
 // Set restaurant commission (admin only)
 router.patch("/restaurant/:restaurantId/commission", setRestaurantCommission); 
+
+router.get("/restaurant/approved/list",getApprovedRestaurants)
 
 module.exports = router;
