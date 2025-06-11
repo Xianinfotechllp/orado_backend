@@ -25,7 +25,7 @@ const {getActiveOrdersStats,getSimpleRectOrderStats} = require("../controllers/a
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
-
+const {createOffer} = require("../controllers/offerController")
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -102,5 +102,9 @@ router.put('/profile', protect, updateAdminProfile);
 router.put('/profile/password', protect, updateAdminPassword);
 
 router.get("/merchant/getallmerchants",getAllMerchants)
+
+
+
+router.post("/offer",createOffer)
 
 module.exports = router;
