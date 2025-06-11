@@ -1,8 +1,8 @@
 const express = require("express");
 const dotenv = require("dotenv");
-const socketIo = require('socket.io');
+const socketIo = require("socket.io");
 const http = require("http");
-const cors = require('cors');
+const cors = require("cors");
 const mongoose = require("mongoose");
 
 const app = express();
@@ -12,7 +12,7 @@ const io = socketIo(server, {
     origin: "http://localhost:5173", // exact origin of your frontend
     methods: ["GET", "POST"],
     credentials: true,
-  }
+  },
 });
 
 // Middlewares
@@ -32,7 +32,7 @@ require("./config/dbConfig")();
 
 // Import models
 const Agent = require("./models/agentModel");
-const Chat = require("./models/chatModel"); 
+const Chat = require("./models/chatModel");
 
 // Import routes
 const userRouter = require("./routes/userRoutes");
@@ -48,10 +48,8 @@ const cartRoutes = require("./routes/cartRoutes");
 const chatRouter = require("./routes/chatRoutes");
 const faqRouter = require("./routes/faqRoutes");
 const adminRouter = require("./routes/adminRoutes");
-const merchantRouter = require("./routes/merchantRoutes")
-const TicketRouter = require("./routes/ticketRoutes")
-
-
+const merchantRouter = require("./routes/merchantRoutes");
+const TicketRouter = require("./routes/ticketRoutes");
 
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
@@ -64,16 +62,18 @@ io.on("connection", (socket) => {
     }
 
     switch (userType) {
-      case 'admin':
+      case "admin":
         socket.join(`admin_${userId}`);
         socket.join(`admin_group`);
-        console.log(`Socket ${socket.id} joined rooms: admin_${userId} and admin_group`);
+        console.log(
+          `Socket ${socket.id} joined rooms: admin_${userId} and admin_group`
+        );
         break;
-      case 'agent':
+      case "agent":
         socket.join(`agent_${userId}`);
         console.log(`Socket ${socket.id} joined room: agent_${userId}`);
         break;
-      case 'restaurant':
+      case "restaurant":
         socket.join(`restaurant_${userId}`);
         console.log(`Socket ${socket.id} joined room: restaurant_${userId}`);
         break;
@@ -84,28 +84,39 @@ io.on("connection", (socket) => {
   });
 
   // Agent live status + location
-  socket.on("agentStatusUpdate", async ({ agentId, availabilityStatus, location }) => {
-    if (!agentId || !availabilityStatus || !location?.latitude || !location?.longitude) {
-      return socket.emit("statusUpdateError", { error: "Missing required fields" });
+  socket.on(
+    "agentStatusUpdate",
+    async ({ agentId, availabilityStatus, location }) => {
+      if (
+        !agentId ||
+        !availabilityStatus ||
+        !location?.latitude ||
+        !location?.longitude
+      ) {
+        return socket.emit("statusUpdateError", {
+          error: "Missing required fields",
+        });
+      }
+
+      try {
+        await Agent.findByIdAndUpdate(agentId, {
+          availabilityStatus,
+          location: {
+            type: "Point",
+            coordinates: [location.longitude, location.latitude],
+          },
+          updatedAt: new Date(),
+        });
+
+        socket.emit("statusUpdateSuccess", {
+          message: "Agent status and location updated",
+        });
+      } catch (err) {
+        console.error("Error updating agent status/location:", err);
+        socket.emit("statusUpdateError", { error: "Internal server error" });
+      }
     }
-
-    try {
-      await Agent.findByIdAndUpdate(agentId, {
-        availabilityStatus,
-        location: {
-          type: "Point",
-          coordinates: [location.longitude, location.latitude]
-        },
-        updatedAt: new Date()
-      });
-
-      socket.emit("statusUpdateSuccess", { message: "Agent status and location updated" });
-
-    } catch (err) {
-      console.error("Error updating agent status/location:", err);
-      socket.emit("statusUpdateError", { error: "Internal server error" });
-    }
-  });
+  );
 
   // Real-time Chat Handler
   socket.on("sendMessage", async (data) => {
@@ -117,12 +128,18 @@ io.on("connection", (socket) => {
         receiverId,
         receiverModel,
         content,
-        attachments = []
+        attachments = [],
       } = data;
       console.log("Received message:", data);
 
       // Validate fields
-      if (!senderId || !receiverId || !content || !senderModel || !receiverModel) {
+      if (
+        !senderId ||
+        !receiverId ||
+        !content ||
+        !senderModel ||
+        !receiverModel
+      ) {
         return socket.emit("chatError", { error: "Missing required fields" });
       }
 
@@ -131,9 +148,9 @@ io.on("connection", (socket) => {
         participants: {
           $all: [
             { $elemMatch: { id: senderId, modelType: senderModel } },
-            { $elemMatch: { id: receiverId, modelType: receiverModel } }
-          ]
-        }
+            { $elemMatch: { id: receiverId, modelType: receiverModel } },
+          ],
+        },
       });
 
       let newChat;
@@ -141,26 +158,24 @@ io.on("connection", (socket) => {
         newChat = await Chat.create({
           participants: [
             { id: senderId, modelType: senderModel },
-            { id: receiverId, modelType: receiverModel }
+            { id: receiverId, modelType: receiverModel },
           ],
-          messages: []
+          messages: [],
         });
       }
 
       const chatDoc = chat || newChat;
 
-
       // Create new message
       const newMessage = {
-      _id: new mongoose.Types.ObjectId(),
-      sender: senderId,
-      senderModel,
-      content,
-      attachments,
-      readBy: [senderId],
-      createdAt: new Date(),
-    };
-
+        _id: new mongoose.Types.ObjectId(),
+        sender: senderId,
+        senderModel,
+        content,
+        attachments,
+        readBy: [senderId],
+        createdAt: new Date(),
+      };
 
       chatDoc.messages.push(newMessage);
       chatDoc.lastMessage = newMessage._id;
@@ -170,13 +185,13 @@ io.on("connection", (socket) => {
       // Determine receiver room based on modelType
       let receiverRoom;
       switch (receiverModel) {
-        case 'admin':
-          receiverRoom = receiverId ? `admin_${receiverId}` : 'admin_group';
+        case "admin":
+          receiverRoom = receiverId ? `admin_${receiverId}` : "admin_group";
           break;
-        case 'agent':
+        case "agent":
           receiverRoom = `agent_${receiverId}`;
           break;
-        case 'restaurant':
+        case "restaurant":
           receiverRoom = `restaurant_${receiverId}`;
           break;
         default: // customer/user
@@ -186,20 +201,25 @@ io.on("connection", (socket) => {
       // Emit to both participants
       io.to(receiverRoom).emit("newMessage", {
         chatId: chatDoc._id,
-        message: newMessage
+        message: newMessage,
       });
-      console.log("Emitted newMessage to room:", receiverRoom, "with message:", newMessage);
+      console.log(
+        "Emitted newMessage to room:",
+        receiverRoom,
+        "with message:",
+        newMessage
+      );
       // Also emit to sender if they're in a different room
       if (senderId !== receiverId) {
         let senderRoom;
         switch (senderModel) {
-          case 'admin':
+          case "admin":
             senderRoom = `admin_${senderId}`;
             break;
-          case 'agent':
+          case "agent":
             senderRoom = `agent_${senderId}`;
             break;
-          case 'restaurant':
+          case "restaurant":
             senderRoom = `restaurant_${senderId}`;
             break;
           default: // customer/user
@@ -207,15 +227,14 @@ io.on("connection", (socket) => {
         }
         io.to(senderRoom).emit("newMessage", {
           chatId: chatDoc._id,
-          message: newMessage
+          message: newMessage,
         });
       }
       // Confirm to sender that the message was sent
       socket.emit("messageSent", {
         chatId: chatDoc._id,
-        message: newMessage
+        message: newMessage,
       });
-
     } catch (err) {
       console.error("Chat message error:", err);
       socket.emit("chatError", { error: "Failed to send message" });
@@ -223,65 +242,71 @@ io.on("connection", (socket) => {
   });
 
   // Typing indicators
-  socket.on("typingStart", ({ senderId, senderModel, receiverId, receiverModel, chatId }) => {
-    if (!senderId || !receiverId || !senderModel || !receiverModel) {
-      return socket.emit("typingError", { error: "Missing required fields" });
+  socket.on(
+    "typingStart",
+    ({ senderId, senderModel, receiverId, receiverModel, chatId }) => {
+      if (!senderId || !receiverId || !senderModel || !receiverModel) {
+        return socket.emit("typingError", { error: "Missing required fields" });
+      }
+
+      // Determine receiver room based on modelType
+      let receiverRoom;
+      switch (receiverModel) {
+        case "admin":
+          receiverRoom = `admin_${receiverId}`;
+          break;
+        case "agent":
+          receiverRoom = `agent_${receiverId}`;
+          break;
+        case "restaurant":
+          receiverRoom = `restaurant_${receiverId}`;
+          break;
+        default: // customer/user
+          receiverRoom = `user_${receiverId}`;
+      }
+
+      // Emit to the receiver
+      io.to(receiverRoom).emit("typingIndicator", {
+        chatId,
+        senderId,
+        senderModel,
+        isTyping: true,
+      });
     }
+  );
 
-    // Determine receiver room based on modelType
-    let receiverRoom;
-    switch (receiverModel) {
-      case 'admin':
-        receiverRoom = `admin_${receiverId}`;
-        break;
-      case 'agent':
-        receiverRoom = `agent_${receiverId}`;
-        break;
-      case 'restaurant':
-        receiverRoom = `restaurant_${receiverId}`;
-        break;
-      default: // customer/user
-        receiverRoom = `user_${receiverId}`;
+  socket.on(
+    "typingStop",
+    ({ senderId, senderModel, receiverId, receiverModel, chatId }) => {
+      if (!senderId || !receiverId || !senderModel || !receiverModel) {
+        return socket.emit("typingError", { error: "Missing required fields" });
+      }
+
+      // Determine receiver room based on modelType
+      let receiverRoom;
+      switch (receiverModel) {
+        case "admin":
+          receiverRoom = `admin_${receiverId}`;
+          break;
+        case "agent":
+          receiverRoom = `agent_${receiverId}`;
+          break;
+        case "restaurant":
+          receiverRoom = `restaurant_${receiverId}`;
+          break;
+        default: // customer/user
+          receiverRoom = `user_${receiverId}`;
+      }
+
+      // Emit to the receiver
+      io.to(receiverRoom).emit("typingIndicator", {
+        chatId,
+        senderId,
+        senderModel,
+        isTyping: false,
+      });
     }
-
-    // Emit to the receiver
-    io.to(receiverRoom).emit("typingIndicator", {
-      chatId,
-      senderId,
-      senderModel,
-      isTyping: true
-    });
-  });
-
-  socket.on("typingStop", ({ senderId, senderModel, receiverId, receiverModel, chatId }) => {
-    if (!senderId || !receiverId || !senderModel || !receiverModel) {
-      return socket.emit("typingError", { error: "Missing required fields" });
-    }
-
-    // Determine receiver room based on modelType
-    let receiverRoom;
-    switch (receiverModel) {
-      case 'admin':
-        receiverRoom = `admin_${receiverId}`;
-        break;
-      case 'agent':
-        receiverRoom = `agent_${receiverId}`;
-        break;
-      case 'restaurant':
-        receiverRoom = `restaurant_${receiverId}`;
-        break;
-      default: // customer/user
-        receiverRoom = `user_${receiverId}`;
-    }
-
-    // Emit to the receiver
-    io.to(receiverRoom).emit("typingIndicator", {
-      chatId,
-      senderId,
-      senderModel,
-      isTyping: false
-    });
-  });
+  );
 
   // Mark messages as read
   socket.on("markMessagesRead", async ({ chatId, readerId, readerModel }) => {
@@ -292,44 +317,42 @@ io.on("connection", (socket) => {
       }
 
       // Mark all unread messages as read
-      chat.messages.forEach(message => {
+      chat.messages.forEach((message) => {
         if (!message.readBy.includes(readerId)) {
           message.readBy.push(readerId);
         }
       });
 
-
       await chat.save();
 
       // Notify other participant
       const otherParticipant = chat.participants.find(
-        p => !(p.id.equals(readerId) && p.modelType === readerModel)
+        (p) => !(p.id.equals(readerId) && p.modelType === readerModel)
       );
 
       if (otherParticipant) {
         let otherRoom;
         switch (otherParticipant.modelType) {
-          case 'admin':
+          case "admin":
             otherRoom = `admin_${otherParticipant.id}`;
             break;
-          case 'agent':
+          case "agent":
             otherRoom = `agent_${otherParticipant.id}`;
             break;
-          case 'restaurant':
+          case "restaurant":
             otherRoom = `restaurant_${otherParticipant.id}`;
             break;
           default: // customer/user
             otherRoom = `user_${otherParticipant.id}`;
         }
-        
-        io.to(otherRoom).emit('messagesRead', {
+
+        io.to(otherRoom).emit("messagesRead", {
           chatId,
-          readerId
+          readerId,
         });
       }
 
       socket.emit("messagesReadSuccess", { chatId });
-
     } catch (err) {
       console.error("Error marking messages as read:", err);
       socket.emit("error", { message: "Failed to mark messages as read" });
@@ -355,13 +378,35 @@ app.use("/agent", agentRouter);
 app.use("/feedback", feedbackRoutes);
 app.use("/cart", cartRoutes);
 app.use("/faq", faqRouter);
-app.use("/merchant",merchantRouter)
-app.use("/tickets",TicketRouter)
-
+app.use("/merchant", merchantRouter);
+app.use("/tickets", TicketRouter);
 
 // Default route
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
+});
+
+app.post("/socket-test", (req, res) => {
+  const testData = {
+    orderId: req.body.orderId, // Replace with a real order ID
+    newStatus: req.body.status, // Test status
+  };
+
+  // Send to all clients (broadcast)
+  io.emit("order_status_update", testData);
+
+  io.on("connection", (socket) => {
+    console.log("A client connected:", socket.id);
+
+    // Example: Let clients join order-specific rooms
+    socket.on("join_order_room", (orderId) => {
+      socket.join(`order_${orderId}`);
+      console.log(`Client joined room: order_${orderId}`);
+    });
+  });
+
+  res.json({hi:"socket"})
+
 });
 
 // Start server
@@ -369,4 +414,3 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-

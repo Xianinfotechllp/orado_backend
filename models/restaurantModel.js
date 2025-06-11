@@ -154,11 +154,15 @@ const restaurantSchema = new mongoose.Schema(
     type: Number,
     default: 20 // 20% commission
   }
-},
+}, preparationTime: {
+    type: Number, // in minutes
+    default: 20,
+  },
     paymentMethods: [
       { type: String, enum: ["cash", "online", "wallet"] },
     ],
   },
+  
   
   { timestamps: true }
 );

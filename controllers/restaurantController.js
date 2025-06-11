@@ -780,39 +780,219 @@ exports.updateRestaurantOrderStatus = async (req, res) => {
     });
   }
 };
-
 exports.getRestaurantEarningSummary = async (req, res) => {
   try {
     const { restaurantId } = req.params;
+    const { timeFrame } = req.query; // 'day', 'week', 'month', 'year'
 
-    // Find all earnings for the restaurant
-    const totalEarnings = await RestaurantEarning.find({
-      restaurantId: restaurantId,
+    // Validate restaurantId
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid restaurant ID" 
+      });
+    }
+
+    // Base query
+    const baseQuery = { restaurantId };
+
+    // Add time filtering based on the requested timeFrame
+    let dateFilter = {};
+    const now = new Date();
+    
+    if (timeFrame) {
+      switch(timeFrame.toLowerCase()) {
+        case 'day':
+          dateFilter = { 
+            createdAt: { 
+              $gte: new Date(now.setHours(0, 0, 0, 0)),
+              $lt: new Date(now.setHours(23, 59, 59, 999))
+            }
+          };
+          break;
+        case 'week':
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - now.getDay());
+          startOfWeek.setHours(0, 0, 0, 0);
+          
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setDate(startOfWeek.getDate() + 6);
+          endOfWeek.setHours(23, 59, 59, 999);
+          
+          dateFilter = {
+            createdAt: {
+              $gte: startOfWeek,
+              $lt: endOfWeek
+            }
+          };
+          break;
+        case 'month':
+          dateFilter = {
+            createdAt: {
+              $gte: new Date(now.getFullYear(), now.getMonth(), 1),
+              $lt: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+            }
+          };
+          break;
+        case 'year':
+          dateFilter = {
+            createdAt: {
+              $gte: new Date(now.getFullYear(), 0, 1),
+              $lt: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
+            }
+          };
+          break;
+        default:
+          // No time filter if invalid timeFrame provided
+          break;
+      }
+    }
+
+    // Get earnings with time filter
+    const earnings = await RestaurantEarning.find({
+      ...baseQuery,
+      ...dateFilter
     });
 
-    // Calculate totals manually since find() returns array of docs
-    const summary = totalEarnings.reduce(
-      (acc, curr) => {
-        acc.totalAmount += curr.totalOrderAmount || 0;
-        acc.totalRevenue += curr.revenueShareAmount || 0;
-        return acc;
-      },
-      { totalAmount: 0, totalRevenue: 0 }
-    );
+    if (earnings.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: `No earnings found for this restaurant${timeFrame ? ` in the current ${timeFrame}` : ''}` 
+      });
+    }
+
+    // Calculate comprehensive summary
+    const summary = earnings.reduce((acc, curr) => {
+      acc.totalOrders += 1;
+      acc.totalAmount += curr.totalOrderAmount || 0;
+      acc.totalCommission += curr.commissionAmount || 0;
+      acc.totalNetEarnings += curr.restaurantNetEarning || 0;
+      
+      // Track payout status counts
+      acc.payoutStatusCounts[curr.payoutStatus] = 
+        (acc.payoutStatusCounts[curr.payoutStatus] || 0) + 1;
+      
+      // Track commission types
+      if (curr.commissionType === 'percentage') {
+        acc.percentageCommissionOrders += 1;
+      } else {
+        acc.fixedCommissionOrders += 1;
+      }
+      
+      return acc;
+    }, {
+      totalOrders: 0,
+      totalAmount: 0,
+      totalCommission: 0,
+      totalNetEarnings: 0,
+      payoutStatusCounts: {},
+      percentageCommissionOrders: 0,
+      fixedCommissionOrders: 0,
+      averageCommissionRate: 0
+    });
+
+    // Calculate average commission rate
+    summary.averageCommissionRate = earnings.length > 0 
+      ? (summary.totalCommission / summary.totalAmount * 100).toFixed(2)
+      : 0;
+
+    // Get time-based breakdown
+    const timeBreakdown = await getTimeBreakdown(restaurantId, timeFrame);
 
     res.status(200).json({
       success: true,
-      summary,
+      timeFrame: timeFrame || 'all',
+      summary: {
+        ...summary,
+        ...timeBreakdown
+      },
+      currency: 'INR'
     });
-  } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to fetch earning summary" });
 
+  } catch (error) {
+    console.error('Error fetching earning summary:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch earning summary",
+      error: error.message 
+    });
   }
 };
 
+// Helper function to get time-based breakdown
+async function getTimeBreakdown(restaurantId, timeFrame) {
+  const breakdown = {};
+  
+  // For weekly/monthly/yearly breakdowns
+  if (timeFrame === 'year') {
+    // Group by month
+    const monthlyEarnings = await RestaurantEarning.aggregate([
+      { $match: { restaurantId: mongoose.Types.ObjectId(restaurantId) } },
+      { 
+        $group: {
+          _id: { $month: "$createdAt" },
+          totalAmount: { $sum: "$totalOrderAmount" },
+          totalNetEarnings: { $sum: "$restaurantNetEarning" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+    
+    breakdown.monthlyBreakdown = monthlyEarnings.map(month => ({
+      month: month._id,
+      totalAmount: month.totalAmount,
+      totalNetEarnings: month.totalNetEarnings,
+      orderCount: month.count
+    }));
+  } 
+  else if (timeFrame === 'month') {
+    // Group by day
+    const dailyEarnings = await RestaurantEarning.aggregate([
+      { $match: { restaurantId: mongoose.Types.ObjectId(restaurantId) } },
+      { 
+        $group: {
+          _id: { $dayOfMonth: "$createdAt" },
+          totalAmount: { $sum: "$totalOrderAmount" },
+          totalNetEarnings: { $sum: "$restaurantNetEarning" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+    
+    breakdown.dailyBreakdown = dailyEarnings.map(day => ({
+      day: day._id,
+      totalAmount: day.totalAmount,
+      totalNetEarnings: day.totalNetEarnings,
+      orderCount: day.count
+    }));
+  }
+  else if (timeFrame === 'week') {
+    // Group by day of week
+    const weeklyEarnings = await RestaurantEarning.aggregate([
+      { $match: { restaurantId: mongoose.Types.ObjectId(restaurantId) } },
+      { 
+        $group: {
+          _id: { $dayOfWeek: "$createdAt" },
+          totalAmount: { $sum: "$totalOrderAmount" },
+          totalNetEarnings: { $sum: "$restaurantNetEarning" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+    
+    breakdown.weeklyBreakdown = weeklyEarnings.map(day => ({
+      dayOfWeek: day._id,
+      totalAmount: day.totalAmount,
+      totalNetEarnings: day.totalNetEarnings,
+      orderCount: day.count
+    }));
+  }
+
+  return breakdown;
+}
 
 
 

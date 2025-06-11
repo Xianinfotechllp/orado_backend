@@ -38,7 +38,9 @@ router.get("/:agentId/reviews", getAgentReviews);
 // agent accepts or rejects an order
 router.post("/orders/response", protect, checkRole('agent'), handleAgentResponse)
 
-router.put("/:agentId/orders/:orderId/status",protect, checkRole('agent'), agentUpdatesOrderStatus)
+// router.put("/:agentId/orders/:orderId/status",protect, checkRole('agent'), agentUpdatesOrderStatus)
+router.put("/:agentId/orders/:orderId/status", agentUpdatesOrderStatus)
+
 
 // request permission
 router.post("/request-permission", protect, checkRole('agent'), requestPermission);

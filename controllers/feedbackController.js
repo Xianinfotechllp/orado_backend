@@ -148,3 +148,36 @@ exports.deleteFeedback = async (req, res) => {
   }
 };
 
+
+
+exports.getRestaurantReviews = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    if (!restaurantId) {
+      return res.status(400).json({ message: 'restaurantId is required' });
+    }
+
+    const reviews = await Feedback.find({
+      restaurantId,
+      targetType: 'restaurant'
+    })
+    .populate('userId', 'name profileImage') // reviewer details
+    .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: 'Restaurant reviews fetched successfully',
+      count: reviews.length,
+      reviews
+    });
+
+  } catch (error) {
+    console.error('Error fetching restaurant reviews:', error);
+    return res.status(500).json({ message: 'Server error', error });
+  }
+};
+
+
+
+
+

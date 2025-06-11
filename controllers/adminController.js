@@ -18,7 +18,7 @@ const { isValidObjectId } = require("mongoose");
 const {uploadOnCloudinary} = require("../utils/cloudinary")
 const fs = require('fs');
 const path = require('path');
-exports.adminLogin = async (req, res) => {
+  exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
 
   try {
@@ -1523,6 +1523,97 @@ exports.updateProduct = async (req, res) => {
       success: false,
       message: 'Internal server error',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+
+exports.getApprovedRestaurants = async (req, res) => {
+  try {
+    // Extract query parameters
+    const {
+      search,
+      foodType,
+      city,
+      minRating,
+      sortBy,
+      sortOrder = 'asc',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    // Build the filter object
+    const filter = {
+      approvalStatus: 'approved',
+      active: true
+    };
+
+    // Add search filter if provided
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { 'address.city': { $regex: search, $options: 'i' } },
+        { merchantSearchName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Add foodType filter if provided
+    if (foodType && ['veg', 'non-veg', 'both'].includes(foodType)) {
+      filter.foodType = foodType;
+    }
+
+    // Add city filter if provided
+    if (city) {
+      filter['address.city'] = { $regex: city, $options: 'i' };
+    }
+
+    // Add rating filter if provided
+    if (minRating) {
+      filter.rating = { $gte: Number(minRating) };
+    }
+
+    // Build sort object
+    let sort = {};
+    if (sortBy) {
+      const validSortFields = ['name', 'rating', 'createdAt'];
+      if (validSortFields.includes(sortBy)) {
+        sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+      }
+    } else {
+      // Default sort by createdAt descending
+      sort.createdAt = -1;
+    }
+
+    // Calculate pagination
+    const startIndex = (page - 1) * limit;
+    const total = await Restaurant.countDocuments(filter);
+
+    // Query the database
+    const restaurants = await Restaurant.find(filter)
+      .sort(sort)
+      .skip(startIndex)
+      .limit(limit)
+      .select('-kyc -kycDocuments -kycStatus -kycRejectionReason -pointsHistory -serviceAreas -permissions')
+      .populate('categories', 'name')
+      .populate('products', 'name price');
+
+    // Prepare response
+    const response = {
+      success: true,
+      count: restaurants.length,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / limit),
+      data: restaurants
+    };
+
+    res.status(200).json(response);
+  } catch (error) {
+    console.error('Error fetching restaurants:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
     });
   }
 };
