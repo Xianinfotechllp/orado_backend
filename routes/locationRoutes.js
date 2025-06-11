@@ -6,5 +6,5 @@ router.get("/nearby-categories",getNearbyCategories)
 router.get("/nearby-restaurants/category/:categoryName",getRestaurantsByLocationAndCategory)
 router.get("/nearby-restaurants/recommended", getRecommendedRestaurants);
 router.get("/nearby-products",getNearbyProducts)
-router.get("/nerat-by/restaurants",searchRestaurants)
+router.get("/nearby/restaurants/search",searchRestaurants)
 module.exports = router;
