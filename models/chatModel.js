@@ -4,6 +4,7 @@ const chatSchema = new mongoose.Schema({
   participants: [{
     id: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: 'User', 
       required: function () {
         // Required only for non-admins
         return this.modelType !== 'admin';
@@ -18,6 +19,7 @@ const chatSchema = new mongoose.Schema({
   messages: [{
     sender: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: 'User', // Reference to User model
       required: true
     },
     senderModel: {
@@ -38,7 +40,8 @@ const chatSchema = new mongoose.Schema({
       }
     }],
     readBy: [{
-      type: mongoose.Schema.Types.ObjectId
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User' // Users who have read the message
     }],
     createdAt: {
       type: Date,

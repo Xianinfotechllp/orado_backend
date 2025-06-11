@@ -1619,6 +1619,83 @@ exports.getApprovedRestaurants = async (req, res) => {
 };
 
 
+// get Admin Profile By Id
+exports.getAdminProfileById = async (req, res) => {
+  try {
+    const adminId = req.user._id; 
+
+    const admin = await User.findById(adminId).select(
+      'name email phone userType adminPermissions isSuperAdmin'
+    );
+
+    if (!admin || !['admin', 'superAdmin'].includes(admin.userType)) {
+      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    }
+
+    res.status(200).json({ success: true, data: admin });
+  } catch (error) {
+    console.error('Error fetching admin profile:', error);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
+
+
+// update admin profile
+exports.updateAdminProfile = async (req, res) => {
+  try {
+    const adminId = req.user._id;
+    const { name, email, phone } = req.body;
+
+    const admin = await User.findById(adminId);
+
+    if (!admin || !['admin', 'superAdmin'].includes(admin.userType)) {
+      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    }
+
+    if (name) admin.name = name;
+    if (email) admin.email = email;
+    if (phone) admin.phone = phone;
+
+    await admin.save();
+
+    res.status(200).json({ success: true, message: 'Profile updated successfully.' });
+  } catch (error) {
+    console.error('Error updating admin profile:', error);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
+
+
+// update admin password
+
+exports.updateAdminPassword = async (req, res) => {
+  try {
+    const adminId = req.user._id;
+    const { oldPassword, newPassword } = req.body;
+
+    const admin = await User.findById(adminId);
+
+    if (!admin || !['admin', 'superAdmin'].includes(admin.userType)) {
+      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, admin.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Old password is incorrect.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    admin.password = await bcrypt.hash(newPassword, salt);
+    await admin.save();
+
+    res.status(200).json({ success: true, message: 'Password updated successfully.' });
+  } catch (error) {
+    console.error('Error updating password:', error);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
+
+
 
 
 
