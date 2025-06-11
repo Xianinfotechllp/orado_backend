@@ -560,8 +560,9 @@ exports.getOrdersByCustomer = async (req, res) => {
   try {
     const customerId = req.user._id;
     const orders = await Order.find({ customerId })
-      .populate("restaurantId", "name location address images")
-      .sort({ createdAt: -1 });
+                  .populate("restaurantId", "name location address")
+                  .populate("assignedAgent", "fullName phone")
+                  .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
