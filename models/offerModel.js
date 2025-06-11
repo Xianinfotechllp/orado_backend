@@ -31,16 +31,6 @@ const offerSchema = new mongoose.Schema({
     required: true,
   },
 
-  code: {
-    type: String, // for coupon-based offers
-    default: null,
-  },
-
-  isCodeRequired: {
-    type: Boolean,
-    default: false, // if false, offer is auto-applied when eligible
-  },
-
   applicableRestaurants: [
     {
       type: mongoose.Schema.Types.ObjectId,
