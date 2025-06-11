@@ -14,6 +14,7 @@ getApprovedRestaurants
   
   
 } = require("../controllers/adminController");
+const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 
 const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -93,5 +94,7 @@ router.get("/order/order-stats/recent",getSimpleRectOrderStats)
 router.patch("/restaurant/:restaurantId/commission", setRestaurantCommission); 
 
 router.get("/restaurant/approved/list",getApprovedRestaurants)
+
+router.get("/merchant/getallmerchants",getAllMerchants)
 
 module.exports = router;
