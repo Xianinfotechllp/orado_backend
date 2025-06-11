@@ -12,6 +12,7 @@ const {
   deleteCategory,
 getApprovedRestaurants 
   
+  deleteCategory, getAdminProfileById, updateAdminProfile, updateAdminPassword
   
 } = require("../controllers/adminController");
 
@@ -93,5 +94,10 @@ router.get("/order/order-stats/recent",getSimpleRectOrderStats)
 router.patch("/restaurant/:restaurantId/commission", setRestaurantCommission); 
 
 router.get("/restaurant/approved/list",getApprovedRestaurants)
+
+// Admin Profile
+router.get('/profile', protect, getAdminProfileById);
+router.put('/profile', protect, updateAdminProfile);
+router.put('/profile/password', protect, updateAdminPassword);
 
 module.exports = router;

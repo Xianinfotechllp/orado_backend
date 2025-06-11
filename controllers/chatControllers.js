@@ -80,6 +80,46 @@ exports.getAdminRestaurantChat = async (req, res) => {
   }
 };
 
+exports.getRestaurantAdminChat = async (req, res) => {
+  try {
+    const restaurantId = req.user._id; // Authenticated restaurant
+
+    // Try to find an existing chat
+    let chat = await Chat.findOne({
+      participants: {
+        $all: [
+          { $elemMatch: { id: restaurantId, modelType: 'restaurant' } },
+          { $elemMatch: { modelType: 'admin' } }
+        ]
+      }
+    })
+    .populate('messages.sender', 'name')
+    .populate('participants.id', 'name email phone');
+
+    // If chat doesn't exist, create it
+    if (!chat) {
+      chat = await findOrCreateChat([
+        { id: restaurantId, modelType: 'restaurant' },
+        { modelType: 'admin' }
+      ]);
+
+      // Re-fetch with populated fields
+      chat = await Chat.findById(chat._id)
+        .populate('messages.sender', 'name')
+        .populate('participants.id', 'name email phone');
+    }
+
+    res.status(200).json({
+      success: true,
+      data: chat
+    });
+  } catch (error) {
+    console.error("getRestaurantAdminChat error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
 exports.sendAdminToRestaurantMessage = async (req, res) => {
   try {
     const adminId = req.user._id;
@@ -340,9 +380,11 @@ exports.getAdminCustomerChats = async (req, res) => {
     const adminId = req.user._id;
     const chats = await Chat.find({
       participants: {
-        $elemMatch: {  modelType: 'admin' }
-      },
-      'participants.modelType': 'user'
+        $all: [
+          { $elemMatch: { modelType: 'admin' } },
+          { $elemMatch: { modelType: 'user' } }
+        ]
+      }
     })
     .populate('participants.id', 'name email phone')
     .sort({ updatedAt: -1 });
@@ -460,6 +502,10 @@ exports.sendAdminToCustomerMessage = async (req, res) => {
 
     // Emit socket event
     req.io.to(`user_${userId}`).emit('newMessage', {
+      chatId: chat._id,
+      message: newMessage
+    });
+    req.io.to(`admin_${adminId}`).emit('messageSent', {
       chatId: chat._id,
       message: newMessage
     });
@@ -856,15 +902,15 @@ exports.markMessagesAsRead = async (req, res) => {
         message.readBy.push(userId);
       }
     });
-
+    chat.markModified('messages');
     await chat.save();
 
     // Notify other participant
     const otherParticipant = chat.participants.find(
-      p => !p.id.equals(userId) || p.modelType !== userModel
+      p => !p.id.equals(userId) && p.modelType !== userModel
     );
 
-    if (otherParticipant) {
+    if (otherParticipant ) {
       req.io.to(`${otherParticipant.modelType}_${otherParticipant.id}`).emit('messagesRead', {
         chatId, 
         readerId: userId

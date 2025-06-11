@@ -6,6 +6,7 @@ const router = express.Router()
 // ========== ADMIN-RESTAURANT CHAT ==========
 router.get('/admin/restaurants', protect, chatController.getAdminRestaurantChats);
 router.get('/admin/restaurants/:restaurantId', protect, chatController.getAdminRestaurantChat);
+router.get('/restaurants/admin', protect, chatController.getRestaurantAdminChat);
 router.post('/admin/restaurants/:restaurantId/message', protect, chatController.sendAdminToRestaurantMessage);
 router.post('/restaurant/admins/:adminId/message', protect, chatController.sendRestaurantToAdminMessage);
 
