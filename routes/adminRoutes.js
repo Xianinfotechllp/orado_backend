@@ -11,8 +11,7 @@ const {
   updateCategory,
   deleteCategory,
 getApprovedRestaurants ,
-  
-  deleteCategory, getAdminProfileById, updateAdminProfile, updateAdminPassword
+   getAdminProfileById, updateAdminProfile, updateAdminPassword
   
 } = require("../controllers/adminController");
 
