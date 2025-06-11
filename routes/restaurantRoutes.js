@@ -4,30 +4,27 @@ const router = express.Router()
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
 const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
 const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
-
 const {upload} = require('../middlewares/multer')
-
-
-const {createRestaurant, loginRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary,getRestaurantOrders}  = require('../controllers/restaurantController')
-
+const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
 
 router.get("/all-restaurants", getAllApprovedRestaurants)
 // merchant login/register
-router.post("/register", upload.fields([
+router.post("/register-restaurant", upload.fields([
     { name: 'images', maxCount: 5 },
     { name: 'fssaiDoc', maxCount: 1 },
     { name: 'gstDoc', maxCount: 1 },
     { name: 'aadharDoc', maxCount: 1 }
   ]),createRestaurant);
-router.post("/login", loginRestaurant)
+router.post("/register-merchant", registerMerchant)
+router.post("/login", loginMerchant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
 router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
-
+router.get('/merchant/:merchantId/restaurants',  getRestaurantsByMerchantId);
 
 // restaurant routes
 router.post(
