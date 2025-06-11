@@ -85,18 +85,17 @@ exports.createOffer = async (req, res) => {
   }
 };
 
-
 exports.getAllOffers = async (req, res) => {
   try {
     // Parse and validate query parameters
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10)); // Increased max limit for admin
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
     const { restaurantId, isActive, type, search, status } = req.query;
 
     // Build query object
     const query = {};
 
-    // Restaurant filter (using $in for array field)
+    // Restaurant filter
     if (restaurantId) {
       if (Array.isArray(restaurantId)) {
         query.applicableRestaurants = { $in: restaurantId };
@@ -105,7 +104,7 @@ exports.getAllOffers = async (req, res) => {
       }
     }
 
-    // Simple isActive filter (no date validation for admin)
+    // Simple isActive filter
     if (isActive !== undefined) {
       query.isActive = isActive === 'true';
     }
@@ -115,7 +114,7 @@ exports.getAllOffers = async (req, res) => {
       query.type = { $in: Array.isArray(type) ? type : [type] };
     }
 
-    // Status filter (manual status options for admin)
+    // Status filter
     if (status) {
       const now = new Date();
       switch(status.toLowerCase()) {
@@ -132,7 +131,7 @@ exports.getAllOffers = async (req, res) => {
       }
     }
 
-    // Search functionality (case-insensitive)
+    // Search functionality
     if (search) {
       query.$or = [
         { code: { $regex: search, $options: 'i' } },
@@ -141,29 +140,24 @@ exports.getAllOffers = async (req, res) => {
       ];
     }
 
-    // Calculate pagination values
-    const skip = (page - 1) * limit;
-
     // Get total count
     const totalCount = await Offer.countDocuments(query);
-
-    // Handle pagination bounds
     const totalPages = Math.ceil(totalCount / limit);
     const currentPage = page > totalPages && totalPages > 0 ? totalPages : page;
 
-    // Fetch offers with full details for admin
+    // Fetch offers
     const offers = await Offer.find(query)
       .sort({ createdAt: -1 })
       .skip(totalPages > 0 ? (currentPage - 1) * limit : 0)
       .limit(limit)
       .populate({
         path: 'applicableRestaurants',
-        select: '_id restaurantName location', // Minimal fields for admin
+        select: '_id restaurantName location',
         options: { lean: true }
       })
       .lean();
 
-    // Add calculated status for each offer (without filtering)
+    // Add status to each offer
     const now = new Date();
     offers.forEach(offer => {
       if (offer.startDate > now) {
@@ -175,29 +169,22 @@ exports.getAllOffers = async (req, res) => {
       }
     });
 
-    // Response formatting for admin
+    // Simplified response structure
     res.status(200).json({
       success: true,
-      message: totalCount > 0 
-        ? "Offers retrieved successfully" 
-        : "No offers found matching criteria",
-      data: {
-        meta: {
-          totalCount,
-          currentPage,
-          totalPages,
-          itemsPerPage: limit,
-          hasNextPage: currentPage < totalPages,
-          hasPreviousPage: currentPage > 1
-        },
-        offers
-      }
+      message: totalCount > 0 ? "Offers retrieved successfully" : "No offers found",
+      offers,
+      totalCount,
+      currentPage,
+      totalPages,
+      itemsPerPage: limit,
+      hasNextPage: currentPage < totalPages,
+      hasPreviousPage: currentPage > 1
     });
 
   } catch (error) {
     console.error("Admin offer fetch error:", error);
     
-    // Specific error handling
     if (error.name === 'CastError') {
       return res.status(400).json({ 
         success: false,
