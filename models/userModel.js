@@ -4,16 +4,45 @@ const addressSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["Home", "Work", "Other"],
+      enum: ["Home", "Work", "Other", "FriendAndFamily"],
       default: "Home",
     },
     displayName: {
-      type: String
+      type: String,
+      trim: true,
     },
-    street: String,
-    city: String,
-    state: String,
-    zip: String,
+    street: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    area: {
+      type: String,
+      trim: true,
+    },
+    city: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    state: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    zip: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    receiverName: {
+      type: String,
+      trim: true,
+    },
+    receiverPhone: {
+      type: String,
+      trim: true,
+    },
     location: {
       type: {
         type: String,
@@ -22,13 +51,24 @@ const addressSchema = new mongoose.Schema(
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
+        required: true,
         default: [0, 0],
       },
     },
+    isDefault: {
+      type: Boolean,
+      default: false,
+    },
+    directionsToReach: {
+      type: String,
+      trim: true,
+    },
   },
-  { _id: true }
+  { _id: true, timestamps: true }
 );
 
+
+addressSchema.index({ location: "2dsphere" });
 
 const userSchema = new mongoose.Schema(
   {

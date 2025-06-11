@@ -14,6 +14,7 @@ getApprovedRestaurants ,
    getAdminProfileById, updateAdminProfile, updateAdminPassword
   
 } = require("../controllers/adminController");
+const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 
 const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -94,9 +95,12 @@ router.patch("/restaurant/:restaurantId/commission", setRestaurantCommission);
 
 router.get("/restaurant/approved/list",getApprovedRestaurants)
 
+
 // Admin Profile
 router.get('/profile', protect, getAdminProfileById);
 router.put('/profile', protect, updateAdminProfile);
 router.put('/profile/password', protect, updateAdminPassword);
+
+router.get("/merchant/getallmerchants",getAllMerchants)
 
 module.exports = router;

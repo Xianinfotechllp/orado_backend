@@ -6,7 +6,7 @@ const router = express.Router();
 const ticketController = require("../controllers/ticketController");
 const { protect, isAdmin,checkPermission } = require("../middlewares/authMiddleware");
 
-// User routes
+// // User routes
 router.post("/create", protect, ticketController.createTicket);
 router.get("/my", protect, ticketController.getMyTickets);
 router.post("/:ticketId/message", protect, ticketController.addMessage);
