@@ -10,7 +10,7 @@ const {
   updateRestaurant, getRestaurantCategory, createCategory, getCategoryProducts, createProduct,updateProduct,
   updateCategory,
   deleteCategory,
-getApprovedRestaurants 
+getApprovedRestaurants ,
   
   deleteCategory, getAdminProfileById, updateAdminProfile, updateAdminPassword
   
