@@ -21,22 +21,13 @@ const openingHourSchema = new mongoose.Schema({
 const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    ownerName:String,
 
-     ownerId: {  // Add this field
+    ownerId: { 
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true
+      required: true 
     },
-    ownerName: String,
-
-
-
-    images: [String], // URLs of images (e.g. Cloudinary URLs)
-
-
-
-
+    images: [String],
     address: {
       street: String,
       city: String,
@@ -48,9 +39,10 @@ const restaurantSchema = new mongoose.Schema(
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
     },
+    ownerName:String,
     phone: { type: String, required: true },
     email: { type: String, required: true },
-    // offers-added
+  
     offers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -87,7 +79,6 @@ const restaurantSchema = new mongoose.Schema(
       required: true,
     },
     banners: [String],
-    merchantSearchName: { type: String },
     kyc: {
     fssaiNumber: { type: String },
     gstNumber: { type: String},

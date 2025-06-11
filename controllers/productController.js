@@ -207,6 +207,51 @@ exports.updateProduct = async (req, res) => {
   }
 };
 
+// @desc    Get all products for the logged-in restaurant
+// @route   GET /api/products/my-restaurant
+// @access  Private (Restaurant owner/admin)
+exports.getMyRestaurantProducts = async (req, res) => {
+  try {
+    // Assuming the restaurant ID is stored in req.user.restaurantId after authentication
+    const restaurantId = req.user.restaurantId;
+    
+    if (!restaurantId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'User is not associated with any restaurant' 
+      });
+    }
+
+    // Find the restaurant first to verify it exists
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Restaurant not found' 
+      });
+    }
+
+    // Get all products for this restaurant
+    // You can populate category if needed
+    const products = await Product.find({ restaurantId })
+      .populate('categoryId', 'name') // Optional: populate category name
+      .sort({ createdAt: -1 }); // Sort by newest first
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      data: products
+    });
+
+  } catch (err) {
+    console.error('Error fetching restaurant products:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error' 
+    });
+  }
+};
+
 
 
 
