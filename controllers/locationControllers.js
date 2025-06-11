@@ -416,12 +416,17 @@ exports.getNearbyProducts = async (req, res) => {
 };
 
 
-
-
-
 exports.searchRestaurants = async (req, res) => {
- try {
-    const { query, latitude, longitude, radius = 5000, limit = 10, page = 1 } = req.query;
+  try {
+    const {
+      query,
+      latitude,
+      longitude,
+      radius = 5000,
+      limit = 10,
+      page = 1
+    } = req.query;
+    console.log("Search query:", query, "Latitude:", latitude, "Longitude:", longitude, "Radius:", radius, "Limit:", limit, "Page:", page);
 
     if (!query) {
       return res.status(400).json({ message: "Search query is required" });
@@ -429,84 +434,128 @@ exports.searchRestaurants = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    // 1️⃣ Find restaurants by name/merchantSearchName directly
-    const nameResults = await Restaurant.find({
+    // 1️⃣ Get restaurant IDs from products
+    const productRestaurantIds = await Product.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 2️⃣ Get restaurant IDs from categories
+    const categoryRestaurantIds = await Category.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 3️⃣ Get restaurant IDs from name or merchantSearchName
+    const nameMatchedRestaurants = await Restaurant.find({
       $or: [
         { name: { $regex: query, $options: "i" } },
         { merchantSearchName: { $regex: query, $options: "i" } }
       ],
       active: true,
       approvalStatus: "approved"
-    }).select("-approvalStatus -kycDocuments -commission");
+    }).select("_id");
 
-    // 2️⃣ Get restaurantIds from products matching query
-    const productRestaurantIds = await Product.find({
-      name: { $regex: query, $options: "i" },
-      active: true
-    }).distinct("restaurantId");
+    // 4️⃣ Combine all matched restaurant IDs
+    const allMatchedIds = new Set([
+      ...productRestaurantIds.map(id => id.toString()),
+      ...categoryRestaurantIds.map(id => id.toString()),
+      ...nameMatchedRestaurants.map(r => r._id.toString())
+    ]);
 
-    // 3️⃣ Get restaurantIds from categories matching query
-    const categoryRestaurantIds = await Category.find({
-      name: { $regex: query, $options: "i" },
-      active: true
-    }).distinct("restaurantId");
+    if (allMatchedIds.size === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        total: 0,
+        page: parseInt(page),
+        pages: 0,
+        data: []
+      });
+    }
 
-    // 4️⃣ Combine unique restaurantIds
-    const allRestaurantIds = [
-      ...new Set([
-        ...productRestaurantIds.map(id => id.toString()),
-        ...categoryRestaurantIds.map(id => id.toString())
-      ])
-    ];
+    const finalIds = Array.from(allMatchedIds).map(id => new mongoose.Types.ObjectId(id));
 
-    // 5️⃣ Fetch restaurants for those IDs
-    const relatedRestaurants = await Restaurant.find({
-      _id: { $in: allRestaurantIds },
+    // 5️⃣ Geo + Filtered + Paginated query
+    const baseQuery = {
+      _id: { $in: finalIds },
       active: true,
       approvalStatus: "approved"
-    }).select("-approvalStatus -kycDocuments -commission");
+    };
 
-    // 6️⃣ Combine and deduplicate both results
-    let restaurants = [...nameResults];
-    relatedRestaurants.forEach(rest => {
-      if (!restaurants.some(r => r._id.equals(rest._id))) {
-        restaurants.push(rest);
-      }
-    });
+    const latNum = parseFloat(latitude);
+    const lonNum = parseFloat(longitude);
 
-    // 7️⃣ If latitude and longitude provided, apply proximity filter
-    if (latitude && longitude) {
-      restaurants = await Restaurant.find({
-        _id: { $in: restaurants.map(r => r._id) },
-        location: {
-          $near: {
-            $geometry: {
+    const isValidLocation =
+      latNum !== 0 &&
+      lonNum !== 0 &&
+      !isNaN(latNum) &&
+      !isNaN(lonNum);
+
+    if (isValidLocation) {
+      // GeoNear with distance filter
+      const geoRestaurants = await Restaurant.aggregate([
+        {
+          $geoNear: {
+            near: {
               type: "Point",
               coordinates: [parseFloat(longitude), parseFloat(latitude)]
             },
-            $maxDistance: parseFloat(radius)
+            distanceField: "distance",
+            maxDistance: parseFloat(radius),
+            query: baseQuery,
+            spherical: true
           }
         },
-        active: true,
-        approvalStatus: "approved"
-      }).select("-approvalStatus -kycDocuments -commission");
+        {
+          $project: {
+            name: 1,
+            merchantSearchName: 1,
+            address: 1,
+            images: 1,
+            location: 1,
+            openingHours: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            distance: 1,
+            minOrderAmount: 1,
+          }
+        }
+      ]);
+
+
+      const total = geoRestaurants.length;
+      const paginated = geoRestaurants.slice(skip, skip + parseInt(limit));
+
+      return res.json({
+        success: true,
+        count: paginated.length,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        data: paginated
+      });
+    } else {
+      // No location — basic find query
+      const total = await Restaurant.countDocuments(baseQuery);
+
+      const restaurants = await Restaurant.find(baseQuery)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .select("-approvalStatus -kycDocuments -commission");
+
+      return res.json({
+        success: true,
+        count: restaurants.length,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        data: restaurants
+      });
     }
-
-    // 8️⃣ Pagination
-    const paginatedResults = restaurants.slice(skip, skip + limit);
-    const totalResults = restaurants.length;
-
-    res.json({
-      success: true,
-      count: paginatedResults.length,
-      total: totalResults,
-      page: parseInt(page),
-      pages: Math.ceil(totalResults / limit),
-      data: paginatedResults
-    });
-
   } catch (error) {
     console.error("Search error:", error);
     res.status(500).json({ success: false, message: "Server error during search" });
   }
 };
+
