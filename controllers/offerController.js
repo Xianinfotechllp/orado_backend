@@ -652,44 +652,26 @@ exports.deleteOffer = async (req, res) => {
 
 exports.getRestaurantsWithOffersAggregated = async (req, res) => {
   try {
-    const result = await Offer.aggregate([
-      {
-        $match: {
-          isActive: true,
-          validFrom: { $lte: new Date() },
-          validTill: { $gte: new Date() }
-        }
-      },
+    const result = await Restaurant.aggregate([
       {
         $lookup: {
-          from: 'restaurants',
-          localField: 'applicableRestaurants',
-          foreignField: '_id',
-          as: 'applicableRestaurants'
-        }
-      },
-      { $unwind: '$applicableRestaurants' },
-
-      {
-        $group: {
-          _id: '$applicableRestaurants._id',
-          name: { $first: '$applicableRestaurants.name' },
-          city: { $first: '$applicableRestaurants.address.city' },
-          email: { $first: '$applicableRestaurants.email' },
-          phone: { $first: '$applicableRestaurants.phone' },
-
-          offers: {
-            $push: {
-              _id: '$_id',
-              title: '$title',
-              description: '$description',
-              type: '$type',
-              discountValue: '$discountValue',
-              minOrderValue: '$minOrderValue',
-              validFrom: '$validFrom',
-              validTill: '$validTill'
+          from: 'offers',
+          let: { restaurantId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ['$$restaurantId', '$applicableRestaurants'] },
+                    { $eq: ['$isActive', true] },
+                    { $lte: ['$validFrom', new Date()] },
+                    { $gte: ['$validTill', new Date()] }
+                  ]
+                }
+              }
             }
-          }
+          ],
+          as: 'activeOffers'
         }
       },
       {
@@ -698,13 +680,13 @@ exports.getRestaurantsWithOffersAggregated = async (req, res) => {
           restaurant: {
             id: '$_id',
             name: '$name',
-            city: '$city',
+            city: '$address.city',
             email: '$email',
             phone: '$phone'
           },
           offers: {
             $map: {
-              input: '$offers',
+              input: '$activeOffers',
               as: 'offer',
               in: {
                 id: '$$offer._id',
@@ -714,17 +696,11 @@ exports.getRestaurantsWithOffersAggregated = async (req, res) => {
                 discount: {
                   $cond: {
                     if: { $eq: ['$$offer.type', 'percentage'] },
-                    then: {
-                      $concat: [{ $toString: '$$offer.discountValue' }, '% off']
-                    },
-                    else: {
-                      $concat: ['₹', { $toString: '$$offer.discountValue' }, ' off']
-                    }
+                    then: { $concat: [{ $toString: '$$offer.discountValue' }, '% off'] },
+                    else: { $concat: ['₹', { $toString: '$$offer.discountValue' }, ' off'] }
                   }
                 },
-                minOrder: {
-                  $concat: ['Min ₹', { $toString: '$$offer.minOrderValue' }]
-                },
+                minOrder: { $concat: ['Min ₹', { $toString: '$$offer.minOrderValue' }] },
                 validity: {
                   $concat: [
                     { $dateToString: { format: '%Y-%m-%d', date: '$$offer.validFrom' } },
@@ -737,6 +713,9 @@ exports.getRestaurantsWithOffersAggregated = async (req, res) => {
           }
         }
       }
+      // 👉 If you want to exclude restaurants without any offers, uncomment below
+      // ,
+      // { $match: { 'offers.0': { $exists: true } } }
     ]);
 
     res.status(200).json({
