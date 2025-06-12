@@ -1,6 +1,6 @@
 const Offer = require("../models/offerModel");
 const Restaurant = require("../models/restaurantModel");
-
+const mongoose = require('mongoose')
 
 // ✅ Create Offer - Admin Side (without applicableRestaurants, without code)
 exports.createOffer = async (req, res) => {
@@ -197,6 +197,278 @@ exports.getAllOffers = async (req, res) => {
       success: false,
       message: "Server error while fetching offers",
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+
+
+exports.getAssignableOffers = async (req, res) => {
+  try {
+    // ✅ Define current date at the start
+    const currentDate = new Date();
+
+    // ✅ Fetch public offers created by admin, active, and valid within date range
+    const assignableOffers = await Offer.find({
+      createdBy: 'admin',
+      isActive: true,
+      validFrom: { $lte: currentDate },
+      validTill: { $gte: currentDate }
+    }).sort({ discountValue: -1 });
+
+
+    res.status(200).json({
+      success: true,
+      message: "Assignable offers retrieved successfully",
+      offers: assignableOffers
+    });
+
+  } catch (error) {
+    console.error("Error getting assignable offers:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error getting assignable offers",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
+
+
+// ✅ Assign an offer to one or multiple restaurants
+exports.assignOfferToRestaurant = async (req, res) => {
+  try {
+    const { offerId, restaurantId } = req.body;
+
+    if (!offerId || !restaurantId) {
+      return res.status(400).json({
+        success: false,
+        message: "offerId and restaurantId are required.",
+      });
+    }
+
+    // Validate offer existence
+    const offer = await Offer.findById(offerId);
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: "Offer not found.",
+      });
+    }
+
+    // Check if restaurant already assigned
+    if (offer.applicableRestaurants.includes(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Offer already assigned to this restaurant.",
+      });
+    }
+
+    // Add restaurantId to offer's applicableRestaurants
+    offer.applicableRestaurants.push(restaurantId);
+    await offer.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Offer assigned to restaurant successfully.",
+      offer,
+    });
+  } catch (error) {
+    console.error("Error assigning offer to restaurant:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while assigning offer.",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+exports.createOfferByRestaurantOwner = async (req, res) => {
+  try {
+
+    const {restaurantId} = req.params
+    const {
+      title,
+      description,
+      type,
+      discountValue,
+      maxDiscount,
+      minOrderValue,
+      validFrom,
+      validTill,
+      usageLimitPerUser,
+      totalUsageLimit,
+    } = req.body;
+
+    // Required fields validation
+    if (
+      !restaurantId ||
+      !title ||
+      !type ||
+      !discountValue ||
+      !minOrderValue ||
+      !validFrom ||
+      !validTill
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "restaurantId, title, type, discountValue, minOrderValue, validFrom, and validTill are required.",
+      });
+    }
+
+    // Type validation
+    if (!['flat', 'percentage'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "type must be either 'flat' or 'percentage'.",
+      });
+    }
+
+    // Number validations
+    if (isNaN(discountValue) || discountValue <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "discountValue must be a positive number.",
+      });
+    }
+
+    if (isNaN(minOrderValue) || minOrderValue <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "minOrderValue must be a positive number.",
+      });
+    }
+
+    if (type === 'percentage' && (isNaN(maxDiscount) || maxDiscount <= 0)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "maxDiscount must be a positive number when type is 'percentage'.",
+      });
+    }
+
+    if (usageLimitPerUser && (isNaN(usageLimitPerUser) || usageLimitPerUser < 1)) {
+      return res.status(400).json({
+        success: false,
+        message: "usageLimitPerUser must be a positive number if provided.",
+      });
+    }
+
+    if (totalUsageLimit && (isNaN(totalUsageLimit) || totalUsageLimit < 1)) {
+      return res.status(400).json({
+        success: false,
+        message: "totalUsageLimit must be a positive number if provided.",
+      });
+    }
+
+    // Date validations
+    const validFromDate = new Date(validFrom);
+    const validTillDate = new Date(validTill);
+
+    if (isNaN(validFromDate.getTime()) || isNaN(validTillDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "validFrom and validTill must be valid dates.",
+      });
+    }
+
+    if (validFromDate >= validTillDate) {
+      return res.status(400).json({
+        success: false,
+        message: "validFrom must be earlier than validTill.",
+      });
+    }
+
+    // Create the offer
+    const newOffer = new Offer({
+      title,
+      description,
+      type,
+      discountValue,
+      maxDiscount: type === 'percentage' ? maxDiscount : undefined,
+      minOrderValue,
+      validFrom: validFromDate,
+      validTill: validTillDate,
+      createdBy: 'restaurant',
+      createdByRestaurant: restaurantId,
+      applicableRestaurants: [restaurantId],
+      usageLimitPerUser,
+      totalUsageLimit,
+    });
+
+    await newOffer.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Offer created successfully by restaurant owner.",
+      offer: newOffer,
+    });
+  } catch (error) {
+    console.error("Error creating offer by restaurant owner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while creating offer.",
+      error: error.message,
+    });
+  }
+};
+
+
+
+exports.getOffersForRestaurant = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    // Check if restaurantId is provided
+    if (!restaurantId) {
+      return res.status(400).json({
+        success: false,
+        message: "restaurantId is required in the URL.",
+      });
+    }
+
+    // Validate if restaurantId is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid restaurantId format.",
+      });
+    }
+
+    // Fetch offers where applicableRestaurants contains this restaurantId
+    const offers = await Offer.find({ applicableRestaurants: restaurantId }).sort({
+      validTill: -1,
+    });
+
+    if (offers.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No offers assigned to this restaurant yet.",
+        total: 0,
+        offers: [],
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Offers assigned to restaurant fetched successfully.",
+      total: offers.length,
+      offers,
+    });
+  } catch (error) {
+    console.error("Error fetching offers for restaurant:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching offers for restaurant.",
+      error: error.message,
     });
   }
 };

@@ -38,6 +38,17 @@ const feedbackSchema = new mongoose.Schema({
       type: String, // Image URL or Cloudinary public ID
     }
   ],
+  reply: {
+    type: String, // Reply message text
+    maxlength: 1000,
+  },
+  repliedBy: {
+    type: String, // Optional — e.g., 'admin', 'restaurant', 'agent'
+    enum: ['admin', 'restaurant', 'agent'],
+  },
+  repliedAt: {
+    type: Date,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

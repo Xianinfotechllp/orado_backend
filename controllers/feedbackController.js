@@ -162,13 +162,40 @@ exports.getRestaurantReviews = async (req, res) => {
       restaurantId,
       targetType: 'restaurant'
     })
-    .populate('userId', 'name profileImage') // reviewer details
+    .populate('userId', 'name profileImage')          // reviewer details
+    .populate('restaurantId', 'name logo')            // replying restaurant details if needed
     .sort({ createdAt: -1 });
+
+    // Format response to include reply details if exists
+    const formattedReviews = reviews.map(review => {
+      let replyDetails = null;
+
+      if (review.reply && review.repliedBy === 'restaurant') {
+        replyDetails = {
+          message: review.reply,
+          repliedAt: review.repliedAt,
+          repliedBy: review.restaurantId ? {
+            name: review.restaurantId.name,
+            logo: review.restaurantId.logo
+          } : null
+        };
+      }
+
+      return {
+        _id: review._id,
+        rating: review.rating,
+        comment: review.comment,
+        images: review.images,
+        createdAt: review.createdAt,
+        user: review.userId,
+        reply: replyDetails
+      };
+    });
 
     return res.status(200).json({
       message: 'Restaurant reviews fetched successfully',
-      count: reviews.length,
-      reviews
+      count: formattedReviews.length,
+      reviews: formattedReviews
     });
 
   } catch (error) {
@@ -177,6 +204,51 @@ exports.getRestaurantReviews = async (req, res) => {
   }
 };
 
+
+
+
+
+// ✅ Restaurant Reply to Feedback
+exports.replyToFeedbackByRestaurant = async (req, res) => {
+  try {
+    const { feedbackId,restaurantId } = req.params;
+    const { reply } = req.body; 
+
+    if (!feedbackId) {
+      return res.status(400).json({ message: 'Feedback ID is required' });
+    }
+
+    if (!reply) {
+      return res.status(400).json({ message: 'Reply message is required' });
+    }
+
+    // Find feedback and make sure it belongs to this restaurant
+    const feedback = await Feedback.findById(feedbackId);
+    if (!feedback) {
+      return res.status(404).json({ message: 'Feedback not found' });
+    }
+
+    if (String(feedback.restaurantId) !== String(restaurantId)) {
+      return res.status(403).json({ message: 'You are not authorized to reply to this feedback' });
+    }
+
+    // Update feedback reply details
+    feedback.reply = reply;
+    feedback.repliedBy = 'restaurant';
+    feedback.repliedAt = new Date();
+
+    await feedback.save();
+
+    return res.status(200).json({
+      message: 'Reply added successfully',
+      feedback
+    });
+
+  } catch (error) {
+    console.error('Error replying to feedback:', error);
+    return res.status(500).json({ message: 'Server error', error });
+  }
+};
 
 
 
