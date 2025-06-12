@@ -649,3 +649,89 @@ exports.deleteOffer = async (req, res) => {
     res.status(500).json({ message: "Server error deleting offer." });
   }
 };
+
+
+exports.getRestaurantsWithOffersAggregated = async (req, res) => {
+  try {
+    const result = await Offer.aggregate([
+      {
+        $match: {
+          isActive: true,
+          validFrom: { $lte: new Date() },
+          validTill: { $gte: new Date() }
+        }
+      },
+      {
+        $lookup: {
+          from: 'restaurants',
+          localField: 'applicableRestaurants',
+          foreignField: '_id',
+          as: 'applicableRestaurants'
+        }
+      },
+      {
+        $unwind: '$applicableRestaurants'
+      },
+      {
+        $group: {
+          _id: '$applicableRestaurants._id',
+          restaurantName: { $first: '$applicableRestaurants.name' },
+          restaurantCity: { $first: '$applicableRestaurants.address.city' },
+          offers: {
+            $push: {
+              title: '$title',
+              type: '$type',
+              discountValue: '$discountValue',
+              minOrderValue: '$minOrderValue',
+              validFrom: '$validFrom',
+              validTill: '$validTill'
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          restaurant: {
+            name: '$restaurantName',
+            city: '$restaurantCity'
+          },
+          offers: {
+            $map: {
+              input: '$offers',
+              as: 'offer',
+              in: {
+                title: '$$offer.title',
+                type: '$$offer.type',
+                discount: {
+                  $cond: {
+                    if: { $eq: ['$$offer.type', 'percentage'] },
+                    then: { $concat: [{ $toString: '$$offer.discountValue' }, '%'] },
+                    else: { $concat: ['₹', { $toString: '$$offer.discountValue' }] }
+                  }
+                },
+                minOrder: { $concat: ['₹', { $toString: '$$offer.minOrderValue' }] },
+                validity: {
+                  $concat: [
+                    { $dateToString: { format: '%Y-%m-%d', date: '$$offer.validFrom' } },
+                    ' to ',
+                    { $dateToString: { format: '%Y-%m-%d', date: '$$offer.validTill' } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      count: result.length,
+      data: result
+    });
+
+  } catch (error) {
+    console.error("Error in aggregation:", error);
+    res.status(500).json({ message: "Server error fetching data" });
+  }
+};
