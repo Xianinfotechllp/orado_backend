@@ -22,7 +22,7 @@ router.delete("/restaurant/:restaurantId/offe/:offerId",protect,deleteOffer)
 
 
 router.get("/restaurant/:restaurantId/offer",protect,getOffersForRestaurant)
-router.put("/restuarants/:restaurantId/offer/:offerId",protect,toggleOfferAssignment)
+router.put("/restaurants/:restaurantId/offer/:offerId",protect,toggleOfferAssignment)
 
 
 
