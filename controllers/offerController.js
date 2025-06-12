@@ -273,7 +273,7 @@ exports.toggleOfferAssignment = async (req, res) => {
     if (!offer) {
       return res.status(404).json({
         success: false,
-        message: "Offer not found or not eligible for assignment"
+        message: "Offer not found "
       });
     }
 
