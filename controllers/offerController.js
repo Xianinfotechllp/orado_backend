@@ -668,50 +668,63 @@ exports.getRestaurantsWithOffersAggregated = async (req, res) => {
           as: 'applicableRestaurants'
         }
       },
-      {
-        $unwind: '$applicableRestaurants'
-      },
+      { $unwind: '$applicableRestaurants' },
+
       {
         $group: {
           _id: '$applicableRestaurants._id',
-          restaurantName: { $first: '$applicableRestaurants.name' },
-          restaurantCity: { $first: '$applicableRestaurants.address.city' },
-         offers: {
-  $push: {
-    _id: '$_id',
-    title: '$title',
-    type: '$type',
-    discountValue: '$discountValue',
-    minOrderValue: '$minOrderValue',
-    validFrom: '$validFrom',
-    validTill: '$validTill'
-  }
-}
+          name: { $first: '$applicableRestaurants.name' },
+          city: { $first: '$applicableRestaurants.address.city' },
+          email: { $first: '$applicableRestaurants.email' },
+          phone: { $first: '$applicableRestaurants.phone' },
 
+          offers: {
+            $push: {
+              _id: '$_id',
+              title: '$title',
+              description: '$description',
+              type: '$type',
+              discountValue: '$discountValue',
+              minOrderValue: '$minOrderValue',
+              validFrom: '$validFrom',
+              validTill: '$validTill'
+            }
+          }
         }
       },
       {
         $project: {
           _id: 0,
           restaurant: {
-            name: '$restaurantName',
-            city: '$restaurantCity'
+            id: '$_id',
+            name: '$name',
+            city: '$city',
+            email: '$email',
+            phone: '$phone'
           },
           offers: {
             $map: {
               input: '$offers',
               as: 'offer',
               in: {
+                id: '$$offer._id',
                 title: '$$offer.title',
+                description: '$$offer.description',
                 type: '$$offer.type',
                 discount: {
                   $cond: {
                     if: { $eq: ['$$offer.type', 'percentage'] },
-                    then: { $concat: [{ $toString: '$$offer.discountValue' }, '%'] },
-                    else: { $concat: ['₹', { $toString: '$$offer.discountValue' }] }
+                    then: {
+                      $concat: [{ $toString: '$$offer.discountValue' }, '% off']
+                    },
+                    else: {
+                      $concat: ['₹', { $toString: '$$offer.discountValue' }, ' off']
+                    }
                   }
                 },
-                minOrder: { $concat: ['₹', { $toString: '$$offer.minOrderValue' }] },
+                minOrder: {
+                  $concat: ['Min ₹', { $toString: '$$offer.minOrderValue' }]
+                },
                 validity: {
                   $concat: [
                     { $dateToString: { format: '%Y-%m-%d', date: '$$offer.validFrom' } },
@@ -730,9 +743,8 @@ exports.getRestaurantsWithOffersAggregated = async (req, res) => {
       count: result.length,
       data: result
     });
-
   } catch (error) {
-    console.error("Error in aggregation:", error);
-    res.status(500).json({ message: "Server error fetching data" });
+    console.error('Error in aggregation:', error);
+    res.status(500).json({ message: 'Server error fetching data' });
   }
 };
