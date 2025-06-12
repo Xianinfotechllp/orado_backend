@@ -266,7 +266,6 @@ exports.toggleOfferAssignment = async (req, res) => {
     const currentDate = new Date();
     const offer = await Offer.findOne({
       _id: offerId,
-      createdBy: 'admin',
       isActive: true,
   
     });
