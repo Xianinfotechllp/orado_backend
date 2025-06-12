@@ -9,7 +9,7 @@ const jwt = require('jsonwebtoken')
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const Session = require("../models/session");
-
+const User = require("../models/userModel");
 
 exports.createRestaurant = async (req, res) => {
   try {
