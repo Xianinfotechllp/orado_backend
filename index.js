@@ -17,11 +17,7 @@ const io = socketIo(server, {
 
 // Middlewares
 app.use(express.json());
-app.use(cors({
-  origin: ["http://localhost:5173", "https://orado.work.gd"],
-  methods: ["GET", "POST"],
-  credentials: true
-}));
+app.use(cors());
 // Attach io to app so it can be used in controllers
 app.set("io", io);
 
