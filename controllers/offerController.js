@@ -676,16 +676,18 @@ exports.getRestaurantsWithOffersAggregated = async (req, res) => {
           _id: '$applicableRestaurants._id',
           restaurantName: { $first: '$applicableRestaurants.name' },
           restaurantCity: { $first: '$applicableRestaurants.address.city' },
-          offers: {
-            $push: {
-              title: '$title',
-              type: '$type',
-              discountValue: '$discountValue',
-              minOrderValue: '$minOrderValue',
-              validFrom: '$validFrom',
-              validTill: '$validTill'
-            }
-          }
+         offers: {
+  $push: {
+    _id: '$_id',
+    title: '$title',
+    type: '$type',
+    discountValue: '$discountValue',
+    minOrderValue: '$minOrderValue',
+    validFrom: '$validFrom',
+    validTill: '$validTill'
+  }
+}
+
         }
       },
       {
