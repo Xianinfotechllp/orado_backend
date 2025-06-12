@@ -10,7 +10,7 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: ["http://localhost:5173", "https://orado.work.gd"], // exact origin of your frontend
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST","PUT","DELETE","OPTIONS"],
     credentials: true,
   },
 });
