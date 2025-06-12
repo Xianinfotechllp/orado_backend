@@ -236,6 +236,85 @@ exports.getAssignableOffers = async (req, res) => {
 
 
 
+exports.toggleOfferAssignment = async (req, res) => {
+  try {
+    const { offerId, restaurantId } = req.params;
+    const ownerId = req.user._id;
+
+    // 1. Validate input
+    if (!mongoose.Types.ObjectId.isValid(offerId) || 
+        !mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid offer or restaurant ID"
+      });
+    }
+
+    // 2. Verify restaurant ownership
+    const restaurant = await Restaurant.findOne({
+      _id: restaurantId
+    });
+
+    // if (!restaurant) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Restaurant not found or you don't have permission"
+    //   });
+    // }
+
+    // 3. Check if offer exists and is assignable
+    const currentDate = new Date();
+    const offer = await Offer.findOne({
+      _id: offerId,
+      createdBy: 'admin',
+      isActive: true,
+  
+    });
+
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: "Offer not found or not eligible for assignment"
+      });
+    }
+
+    // 4. Toggle assignment status
+    const isAssigned = offer.applicableRestaurants.some(
+      id => id.toString() === restaurantId
+    );
+
+    if (isAssigned) {
+      // Unassign
+      offer.applicableRestaurants = offer.applicableRestaurants.filter(
+        id => id.toString() !== restaurantId
+      );
+    } else {
+      // Assign
+      offer.applicableRestaurants.push(restaurantId);
+    }
+
+    await offer.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Offer ${isAssigned ? 'unassigned' : 'assigned'} successfully`,
+      isAssigned: !isAssigned, // Return new status
+      offer
+    });
+
+  } catch (error) {
+    console.error("Error toggling offer assignment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while toggling offer assignment",
+      error: error.message
+    });
+  }
+};
+
+
+
+
 
 
 
@@ -470,5 +549,103 @@ exports.getOffersForRestaurant = async (req, res) => {
       message: "Server error while fetching offers for restaurant.",
       error: error.message,
     });
+  }
+};
+
+
+
+
+
+
+exports.updateOffer = async (req, res) => {
+  try {
+    const { offerId } = req.params;
+    const updateData = req.body;
+
+    if (!offerId) {
+      return res.status(400).json({ message: "Offer ID is required." });
+    }
+
+    const offer = await Offer.findById(offerId);
+    if (!offer) {
+      return res.status(404).json({ message: "Offer not found." });
+    }
+
+    // Validate type if present
+    if (updateData.type && !['flat', 'percentage'].includes(updateData.type)) {
+      return res.status(400).json({ message: "Invalid offer type. Must be 'flat' or 'percentage'." });
+    }
+
+    // If type is 'percentage', maxDiscount should be provided and > 0
+    if (updateData.type === 'percentage') {
+      if (!updateData.maxDiscount || updateData.maxDiscount <= 0) {
+        return res.status(400).json({ message: "maxDiscount is required and should be greater than 0 for percentage offers." });
+      }
+    }
+
+    // Validate dates if present
+    if (updateData.validFrom) {
+      const fromDate = new Date(updateData.validFrom);
+      if (isNaN(fromDate)) {
+        return res.status(400).json({ message: "Invalid validFrom date format." });
+      }
+      updateData.validFrom = fromDate;
+    }
+
+    if (updateData.validTill) {
+      const tillDate = new Date(updateData.validTill);
+      if (isNaN(tillDate)) {
+        return res.status(400).json({ message: "Invalid validTill date format." });
+      }
+      updateData.validTill = tillDate;
+    }
+
+    // Ensure validTill is after validFrom if both are present
+    if (updateData.validFrom && updateData.validTill) {
+      if (updateData.validTill <= updateData.validFrom) {
+        return res.status(400).json({ message: "validTill must be after validFrom." });
+      }
+    }
+
+    // Update offer
+    const updatedOffer = await Offer.findByIdAndUpdate(offerId, updateData, { new: true });
+
+    res.status(200).json({
+      message: "Offer updated successfully.",
+      offer: updatedOffer,
+    });
+
+  } catch (error) {
+    console.error("Error updating offer:", error);
+    res.status(500).json({ message: "Server error updating offer." });
+  }
+};
+
+
+
+
+exports.deleteOffer = async (req, res) => {
+  try {
+    const { offerId } = req.params;
+
+    if (!offerId) {
+      return res.status(400).json({ message: "Offer ID is required." });
+    }
+
+    const offer = await Offer.findById(offerId);
+    if (!offer) {
+      return res.status(404).json({ message: "Offer not found." });
+    }
+
+    await Offer.findByIdAndDelete(offerId);
+
+    res.status(200).json({
+      message: "Offer deleted successfully.",
+      offerId: offerId,
+    });
+
+  } catch (error) {
+    console.error("Error deleting offer:", error);
+    res.status(500).json({ message: "Server error deleting offer." });
   }
 };
