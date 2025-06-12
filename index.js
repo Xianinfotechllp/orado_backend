@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:5173", // exact origin of your frontend
+    origin: ["http://localhost:5173", "https://orado.work.gd"], // exact origin of your frontend
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -17,7 +17,11 @@ const io = socketIo(server, {
 
 // Middlewares
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: ["http://localhost:5173", "https://orado.work.gd"],
+  methods: ["GET", "POST"],
+  credentials: true
+}));
 // Attach io to app so it can be used in controllers
 app.set("io", io);
 
