@@ -66,7 +66,7 @@ router.get('/admin/scheduled-orders', protect, getScheduledOrders);
 router.get('/customer/:customerId/scheduled-orders', protect, getCustomerScheduledOrders); 
 // router.put('/reschedule/:orderId', rescheduleOrder);
 
-//merchants actins
+//merchants actinsu
 
 router.put('/:orderId/merchant-accept', protect, checkRole('merchant'), checkRestaurantPermission('canAcceptOrder', true), merchantAcceptOrder);
 router.put('/:orderId/merchant-reject', protect, checkRole('merchant'), checkRestaurantPermission('canRejectOrder', true), merchantRejectOrder)

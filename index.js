@@ -9,8 +9,8 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:5173", // exact origin of your frontend
-    methods: ["GET", "POST"],
+    origin: ["http://localhost:5173", "https://orado.work.gd"], // exact origin of your frontend
+    methods: ["GET", "POST","PUT","DELETE","OPTIONS"],
     credentials: true,
   },
 });
@@ -411,6 +411,6 @@ app.post("/socket-test", (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });

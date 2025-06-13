@@ -1,27 +1,23 @@
 const Restaurant = require("../models/restaurantModel");
 const RestaurantEarning = require("../models/RestaurantEarningModel");
 const Permission = require("../models/restaurantPermissionModel");
-
 const Order = require("../models/orderModel")
 const Product = require("../models/productModel")
 const Category = require("../models/categoryModel")
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken')
-
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
-
 const Session = require("../models/session");
+const User = require("../models/userModel");
 
 exports.createRestaurant = async (req, res) => {
   try {
-    // 1️⃣ Required fields validation
+    console.log("req.body:-----------", req.body);
+    // 1️⃣ Required fields validation (removed password, ownerName, email, phone)
     const requiredFields = [
       "name",
-      "ownerName",
-      "phone",
-      "email",
-      "password",
+      "ownerId", 
       "fssaiNumber",
       "ownerId",
       "gstNumber",
@@ -51,11 +47,14 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    if (req.body.password.length < 8) {
-      return res.status(400).json({
+
+    // 2️⃣ Get owner details from database using ownerId
+    const owner = await User.findById(req.body.ownerId);
+    if (!owner) {
+      return res.status(404).json({
         success: false,
-        message: "Password must be at least 8 characters long",
-        code: "WEAK_PASSWORD",
+        message: "Owner not found",
+        code: "OWNER_NOT_FOUND",
       });
     }
 
@@ -185,8 +184,6 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(req.body.password, salt);
 
     const fssaiDoc = await uploadOnCloudinary(req.files.fssaiDoc[0].path);
     const gstDoc = await uploadOnCloudinary(req.files.gstDoc[0].path);
@@ -196,11 +193,21 @@ exports.createRestaurant = async (req, res) => {
       throw new Error("Document upload failed");
     }
 
-    const slug = `${req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${req.body.address.city.toLowerCase()}-${Math.random().toString(36).substring(2, 6)}`;
+    // 8️⃣ Slug generation
+    const slug = `${req.body.name
+      .toLowerCase()
+      .replace(
+        /[^a-z0-9]+/g,
+        "-"
+      )}-${req.body.address.city.toLowerCase()}-${Math.random()
+      .toString(36)
+      .substring(2, 6)}`;
 
+    // 9️⃣ Final restaurant data prep
     const restaurantData = {
       name: req.body.name.trim(),
-      ownerName: req.body.ownerName.trim(),
+      ownerId: req.body.ownerId, // Store owner reference
+      ownerName: owner.name, // Get from owner document
       address: {
         street: req.body.address.street.trim(),
         city: req.body.address.city.trim(),
@@ -214,9 +221,8 @@ exports.createRestaurant = async (req, res) => {
           parseFloat(req.body.address.latitude) || 0,
         ],
       },
-      phone: req.body.phone.trim(),
-      email: req.body.email.trim(),
-      password: hashedPassword,
+      phone: owner.phone, // Get from owner document
+      email: owner.email, // Get from owner document
       openingHours,
       foodType: req.body.foodType.trim(),
       minOrderAmount: req.body.minOrderAmount || 100,
@@ -238,6 +244,7 @@ exports.createRestaurant = async (req, res) => {
 
     await Permission.create({
       restaurantId: newRestaurant._id,
+      userId: req.body.ownerId, // Assign permissions to owner
       permissions: {
         canManageMenu: true,
         canAcceptOrder: false,
@@ -267,84 +274,69 @@ exports.createRestaurant = async (req, res) => {
 };
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-exports.loginRestaurant = async (req, res) => {
+exports.getRestaurantsByMerchantId = async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    // Basic validation
-    if (!email || !password) {
+    // 1️⃣ Validate merchant ID
+    const merchantId = req.params.merchantId;
+    if (!merchantId || !mongoose.Types.ObjectId.isValid(merchantId)) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required',
+        message: "Invalid merchant ID",
+        code: "INVALID_MERCHANT_ID",
       });
     }
 
-    // Find restaurant by email, include required fields except password
-    const restaurant = await Restaurant.findOne({ email }).select('+password');
-    if (!restaurant) {
-      return res.status(401).json({
+    // 2️⃣ Check if merchant exists
+    const merchant = await User.findById(merchantId);
+    if (!merchant) {
+      return res.status(404).json({
         success: false,
-        message: 'Invalid email or password',
+        message: "Merchant not found",
+        code: "MERCHANT_NOT_FOUND",
       });
     }
 
-    // Compare passwords
-    const isMatch = await bcrypt.compare(password, restaurant.password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password',
-      });
-    }
+    // 3️⃣ Get all restaurants for this merchant
+    const restaurants = await Restaurant.find({ ownerId: merchantId })
+      .select('-kycDocuments -location -__v') // Exclude sensitive/unnecessary fields
+      .lean();
 
-    // Fetch permissions
-    const permission = await Permission.findOne({ restaurantId: restaurant._id });
-
-    // Prepare JWT payload
-    const payload = {
+    // 4️⃣ Format response with status information
+    const formattedRestaurants = restaurants.map(restaurant => ({
       id: restaurant._id,
+      name: restaurant.name,
+      address: restaurant.address,
+      phone: restaurant.phone,
       email: restaurant.email,
-      role: 'restaurant',
-      permissions: permission?.permissions || {},
-    };
+      foodType: restaurant.foodType,
+      status: restaurant.approvalStatus, // Include approval status
+      isActive: restaurant.isActive, // Include active status
+      createdAt: restaurant.createdAt,
+      updatedAt: restaurant.updatedAt
+    }));
 
-    // Generate JWT token
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: '1d',
-    });
-
-    // Return user data excluding sensitive info
     return res.status(200).json({
       success: true,
-      token,
-      restaurantData: {
-        _id: restaurant._id,
-        name: restaurant.name,
-        email: restaurant.email,
-        permissions: permission?.permissions || {},
-        location: restaurant.location || {},
-        openingHours: restaurant.openingHours || [],
-        approvalStatus: restaurant.approvalStatus || 'pending',
-        approvalRejectionReason: restaurant.approvalRejectionReason || null,
-      },
+      code: "RESTAURANTS_FETCHED",
+      data: {
+        merchant: {
+          id: merchant._id,
+          name: merchant.name,
+          email: merchant.email,
+          phone: merchant.phone
+        },
+        restaurants: formattedRestaurants,
+        count: formattedRestaurants.length
+      }
     });
-  } catch (error) {
-    console.error('Login error:', error);
-    return res.status(500).json({
+
+  } catch (err) {
+    console.error("Error fetching merchant restaurants:", err);
+    res.status(500).json({
       success: false,
-      message: 'Server error. Please try again later.',
+      message: "Failed to fetch restaurants",
+      error: err.message,
+      code: "SERVER_ERROR"
     });
   }
 };

@@ -28,6 +28,7 @@ const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
 
 
+const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController")
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -110,5 +111,12 @@ router.get("/refund/transactions", protect, getAllRefundTransactions)
 router.get("/customer-orders/:userId", protect, getOrdersByCustomerAdmin)
 
 router.get("/merchant/getallmerchants",getAllMerchants)
+
+
+
+router.post("/offer",createOffer)
+router.get("/offer",getAllOffers)
+
+router.get("/restaurants/offer-list",getRestaurantsWithOffersAggregated)
 
 module.exports = router;
