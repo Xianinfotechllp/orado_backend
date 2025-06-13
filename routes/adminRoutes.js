@@ -11,9 +11,10 @@ const {
   updateCategory,
   deleteCategory,
 getApprovedRestaurants ,
-   getAdminProfileById, updateAdminProfile, updateAdminPassword
+   getAdminProfileById, updateAdminProfile, updateAdminPassword, getOrdersByCustomerAdmin
   
 } = require("../controllers/adminController");
+const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 
 const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
@@ -25,6 +26,8 @@ const {getActiveOrdersStats,getSimpleRectOrderStats} = require("../controllers/a
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
+
+
 const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController")
 // Authentication routes
 router.post("/login", adminLogin);
@@ -100,6 +103,12 @@ router.get("/restaurant/approved/list",getApprovedRestaurants)
 router.get('/profile', protect, getAdminProfileById);
 router.put('/profile', protect, updateAdminProfile);
 router.put('/profile/password', protect, updateAdminPassword);
+
+// Refund for a order 
+router.post("/wallet/refund", protect, refundToWallet)
+router.get("/refund/transactions", protect, getAllRefundTransactions)
+// getOrderByCustomer
+router.get("/customer-orders/:userId", protect, getOrdersByCustomerAdmin)
 
 router.get("/merchant/getallmerchants",getAllMerchants)
 

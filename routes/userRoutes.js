@@ -11,6 +11,7 @@ const { registerUser, verifyOtp, loginUser,addAddress,getAddress ,deleteAddressB
     removeFavouriteRestaurant
        , getUserNotifications, markAllAsRead,markAsRead,deleteAccount, updateUserProfile
 } = require("../controllers/userControllers");
+const {initiateWalletTopUp, verifyAndCreditWallet, getWalletBalance} = require('../controllers/walletController')
 
 
 
@@ -76,5 +77,11 @@ router.delete("/delete-account", protect, deleteAccount);
 router.post("/fav/restaurants",protect,addFavouriteRestaurant)
 router.get("/fav/restaurants",protect,getFavouriteRestaurants)
 router.put('/fav/restaurants/remove',protect,removeFavouriteRestaurant);
+
+
+// Wallet TopUp
+router.post("/wallet/initiate", protect, initiateWalletTopUp)
+router.post("/wallet/verify", protect, verifyAndCreditWallet)
+router.get("/wallet/balance", protect, getWalletBalance)
 
 module.exports = router;

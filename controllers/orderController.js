@@ -6,6 +6,7 @@ const Cart = require("../models/cartModel");
 const User = require("../models/userModel");
 const Product = require("../models/productModel");
 const Permission = require("../models/restaurantPermissionModel");
+const WalletTransaction = require("../models/WalletTransaction")
 const {
   calculateOrderCost,
   calculateOrderCost2,
@@ -204,6 +205,7 @@ exports.placeOrder = async (req, res) => {
       state,
       pincode,
       country = "India",
+      useWallet = false
     } = req.body;
 
     // ✅ Basic validation
@@ -243,12 +245,19 @@ exports.placeOrder = async (req, res) => {
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
 
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found", messageType: "failure" });
+    }
+
     // ✅ Calculate bill summary
     const billSummary = calculateOrderCost({
       cartProducts: cart.products,
       restaurant,
       userCoords,
       couponCode,
+      walletBalance : user.walletBalance,
+      useWallet
     });
 
     // ✅ Map order items with product images
@@ -291,13 +300,25 @@ exports.placeOrder = async (req, res) => {
       deliveryCharge: billSummary.deliveryFee,
       surgeCharge: 0,
       tipAmount,
-      totalAmount: billSummary.total + tipAmount,
+      totalAmount: billSummary.payable + tipAmount,
+      walletUsed : billSummary.walletUsed,
       distanceKm: billSummary.distanceKm,
       couponCode,
       instructions,
     });
 
     const savedOrder = await newOrder.save();
+    if (useWallet && billSummary.walletUsed > 0) {
+    user.walletBalance -= billSummary.walletUsed;
+    await user.save();
+
+    await WalletTransaction.create({
+      user: user._id,
+      type: "debit",
+      amount: billSummary.walletUsed,
+      description: `Used ₹${billSummary.walletUsed} for Order #${savedOrder._id}`
+    });
+  }
     const io = req.app.get("io");
 
     if (restaurant.permissions.canAcceptOrder) {
@@ -377,6 +398,7 @@ exports.placeOrder = async (req, res) => {
       message: "Order placed successfully",
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
+      walletUsed: billSummary.walletUsed,
       billSummary,
       orderStatus: orderStatus,
     });
@@ -901,7 +923,7 @@ exports.merchantRejectOrder = async (req, res) => {
     const { orderId } = req.params;
     const { rejectionReason } = req.body;
 
-    // Validate orderId format
+    //  Validate orderId
     if (!orderId || orderId.length !== 24) {
       return res.status(400).json({ error: "Invalid order ID format" });
     }
@@ -911,24 +933,36 @@ exports.merchantRejectOrder = async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Prevent rejecting completed or already cancelled orders
-    if (order.orderStatus === "ready") {
-      return res.status(400).json({ error: "Cannot reject a completed order" });
+    //  Prevent rejecting completed or already cancelled orders
+    if (["ready", "cancelled_by_customer", "rejected_by_restaurant"].includes(order.orderStatus)) {
+      return res.status(400).json({ error: "Order cannot be rejected in its current state" });
     }
 
-    if (order.orderStatus === "cancelled_by_customer") {
-      return res.status(400).json({ error: "Order is already cancelled" });
-    }
-
-    // Update order status to 'cancelled'
+    //  Mark order as rejected
     order.orderStatus = "rejected_by_restaurant";
     order.rejectionReason = rejectionReason || "Rejected by merchant";
     await order.save();
 
-    // Emit event via Socket.IO
+    //  Refund wallet money if used
+    if (order.walletUsed && order.walletUsed > 0) {
+      const user = await User.findById(order.customerId);
+      if (user) {
+        user.walletBalance += order.walletUsed;
+        await user.save();
+
+        await WalletTransaction.create({
+          user: user._id,
+          type: "credit",
+          amount: order.walletUsed,
+          description: `Refund for cancelled order #${order._id}`,
+        });
+      }
+    }
+
+    // ✅ Emit real-time update
     const io = req.app.get("io");
     if (io) {
-      io.to(`user_${order.restaurantId.toString()}`).emit("order-rejected", {
+      io.to(`user_${order.customerId.toString()}`).emit("order-rejected", {
         orderId: order._id,
         message: "Order has been rejected by the merchant",
         reason: order.rejectionReason,
@@ -948,6 +982,7 @@ exports.merchantRejectOrder = async (req, res) => {
     });
   }
 };
+
 
 // Update Order Status (Merchant) agent
 exports.updateOrderStatus = async (req, res) => {
@@ -1160,7 +1195,7 @@ const TAX_PERCENTAGE = 8; // example 8%
 
 exports.getOrderPriceSummary = async (req, res) => {
   try {
-    const { longitude, latitude, couponCode, cartId, userId } = req.body;
+    const { longitude, latitude, couponCode, cartId, userId, useWallet = false } = req.body;
     console.log("r");
 
     if (!cartId || !userId) {
@@ -1182,6 +1217,14 @@ exports.getOrderPriceSummary = async (req, res) => {
       return res.status(404).json({ error: "Restaurant not found" });
     }
 
+    let walletBalance = 0;
+
+    if (useWallet) {
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      walletBalance = user.walletBalance;
+    }
+
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
 
     // Optional: Validate userCoords are valid numbers here
@@ -1191,6 +1234,8 @@ exports.getOrderPriceSummary = async (req, res) => {
       restaurant,
       userCoords,
       couponCode,
+      useWallet,
+      walletBalance
     });
 
     return res.status(200).json({
