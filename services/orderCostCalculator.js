@@ -2,7 +2,7 @@ const { haversineDistance } = require("../utils/distanceCalculator");
 const {deliveryFeeCalculator,deliveryFeeCalculator2} = require("../utils/deliveryFeeCalculator")
 const TAX_PERCENTAGE = 5;
 
-exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode }) => {
+exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode, useWallet = false, walletBalance = 0 }) => {
   if (!cartProducts.length) throw new Error("Cart is empty");
 
   // Subtotal
@@ -53,6 +53,14 @@ exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode
 
   // Final total
   const total = taxableAmount + tax + deliveryFee;
+
+  let walletUsed = 0;
+  let payable = total;
+
+  if (useWallet && walletBalance > 0) {
+    walletUsed = Math.min(walletBalance, total);
+    payable = total - walletUsed;
+  }
   console.log("Subtotal:", subtotal, "Tax:", tax, "Total:", total);
 
 
@@ -63,6 +71,8 @@ exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode
     deliveryFee,
     total,
     distanceKm,
+    walletUsed,
+    payable
   };
 };
 

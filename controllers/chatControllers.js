@@ -887,39 +887,54 @@ exports.sendCustomerToRestaurantMessage = async (req, res) => {
 exports.markMessagesAsRead = async (req, res) => {
   try {
     const { chatId } = req.params;
-    const userId = req.user._id;
-    const userModel = req.user.userType === 'admin' ? 'admin' : 
-                     req.user.userType === 'agent' ? 'agent' : 'user';
+    const userId = req.user?._id;
 
     const chat = await Chat.findById(chatId);
     if (!chat) {
       return res.status(404).json({ success: false, error: 'Chat not found' });
     }
 
-    // Mark all unread messages as read
-    chat.messages.forEach(message => {
-      if (!message.readBy.includes(userId)) {
-        message.readBy.push(userId);
-      }
-    });
-    chat.markModified('messages');
-    await chat.save();
-
-    // Notify other participant
-    const otherParticipant = chat.participants.find(
-      p => !p.id.equals(userId) && p.modelType !== userModel
+    // Try to find matching participant, fallback if admin with no ID
+    const participantEntry = chat.participants.find(p =>
+      (p.id && p.id.toString() === userId.toString()) ||
+      (!p.id && p.modelType === 'admin' && req.user.userType === 'admin' || 'superAdmin')
     );
 
-    if (otherParticipant ) {
+    if (!participantEntry) {
+      return res.status(403).json({ success: false, error: 'You are not part of this chat' });
+    }
+
+    const userModel = participantEntry.modelType || req.user.userType;
+
+    // Mark all unread messages as read
+    let modified = false;
+    chat.messages.forEach(message => {
+      if (!message.readBy.some(id => id.toString() === userId.toString())) {
+        message.readBy.push(userId);
+        modified = true;
+      }
+    });
+
+    if (modified) {
+      chat.markModified('messages');
+      await chat.save();
+    }
+
+    const otherParticipant = chat.participants.find(
+      p => p.id?.toString() !== userId.toString() && p.modelType !== userModel
+    );
+
+    if (otherParticipant && req.io) {
       req.io.to(`${otherParticipant.modelType}_${otherParticipant.id}`).emit('messagesRead', {
-        chatId, 
+        chatId,
         readerId: userId
       });
     }
 
-
     res.status(200).json({ success: true });
   } catch (error) {
+    console.error("🔥 ERROR in markMessagesAsRead:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+

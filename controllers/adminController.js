@@ -1,7 +1,7 @@
 const User = require("../models/userModel");
 const Agent = require("../models/agentModel");
 const Session = require("../models/session");
-
+const Order = require("../models/orderModel")
 const Permission = require('../models/restaurantPermissionModel');
 const Restaurant = require("../models/restaurantModel");
 const ChangeRequest = require("../models/changeRequest");
@@ -738,15 +738,28 @@ exports.handleAgentPermissionRequest = async (req, res) => {
 };
 
 
-// Get all access logs (superAdmin-only)
 exports.getAllAccessLogs = async (req, res) => {
   try {
-    const logs = await AccessLog.find()
-      .populate("userId", "name email")
-      .sort({ createdAt: -1 });
+    const page = parseInt(req.query.page) || 1; // Default: 1
+    const limit = parseInt(req.query.limit) || 20; // Default: 20 per page
+    const skip = (page - 1) * limit;
+
+    const [logs, total] = await Promise.all([
+      AccessLog.find()
+        .populate("userId", "name email")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      AccessLog.countDocuments()
+    ]);
 
     res.status(200).json({
       success: true,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      totalCount: total,
       data: logs,
     });
   } catch (error) {
@@ -755,16 +768,29 @@ exports.getAllAccessLogs = async (req, res) => {
   }
 };
 
+
 // Get access logs for the logged-in admin
 exports.getMyLogs = async (req, res) => {
   try {
-    const userId = req.user._id; 
+    const userId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-    const logs = await AccessLog.find({ userId })
-      .sort({ createdAt: -1 });
+    const [logs, total] = await Promise.all([
+      AccessLog.find({ userId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      AccessLog.countDocuments({ userId })
+    ]);
 
     res.status(200).json({
       success: true,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      totalCount: total,
       data: logs,
     });
   } catch (error) {
@@ -772,6 +798,7 @@ exports.getMyLogs = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 
 
 
@@ -1694,6 +1721,28 @@ exports.updateAdminPassword = async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 };
+
+
+exports.getOrdersByCustomerAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ error: "Customer ID is required" });
+    }
+
+    const orders = await Order.find({ customerId: userId })
+      .populate("restaurantId", "name location address")
+      .populate("assignedAgent", "fullName phone")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: orders });
+  } catch (err) {
+    console.error("Error fetching orders by customer:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch customer orders" });
+  }
+};
+
 
 
 
