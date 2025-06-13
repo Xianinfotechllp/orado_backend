@@ -5,7 +5,7 @@ const {createCategory,getAResturantCategories,editResturantCategory,deleteRestur
 const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
 const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
-const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders}  = require('../controllers/restaurantController')
+const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
@@ -37,7 +37,7 @@ router.post(
   ]),
   protect, checkRole('merchant'), createRestaurant);
 // router.post("/register",register)
-router.put("/:restaurantId", upload.array('images', 1), protect, checkRole('merchant'), updateRestaurant);
+router.put("/:restaurantId", upload.array('images', 5), protect, checkRole('merchant'), updateRestaurant);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
 // router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)
 
@@ -68,6 +68,7 @@ router.get("/:restaurantId/menu",getRestaurantMenu)
 
 // get restaurant earnigs
 router.get("/:restaurantId/earnigs/summary",protect,checkRole('merchant'),getRestaurantEarningSummary)
+router.get("/:restaurantId/earnigs",protect,getRestaurantEarnings)
 
 router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders)
 

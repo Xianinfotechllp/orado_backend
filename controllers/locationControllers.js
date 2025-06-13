@@ -5,6 +5,7 @@ const Restaurant = require("../models/restaurantModel");
 const mongoose = require('mongoose');
 const Category = require('../models/categoryModel');
 const Product = require("../models/productModel")
+const Offer = require("../models/offerModel")
 // Haversine formula to calculate distance between two coordinates in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the earth in km
@@ -25,10 +26,10 @@ function deg2rad(deg) {
 
 
 
-
 exports.getRestaurantsInServiceArea = async (req, res) => {
   try {
     const { latitude, longitude } = req.query;
+    console.log(latitude, longitude)
 
     // Validate presence
     if (latitude === undefined || longitude === undefined) {
@@ -48,7 +49,7 @@ exports.getRestaurantsInServiceArea = async (req, res) => {
       return res.status(400).json({ message: "Invalid longitude." });
     }
 
-    // Geo query to find restaurants where the point intersects with any of the polygons in serviceAreas array
+    // Fetch restaurants in service area
     const restaurants = await Restaurant.find({
       serviceAreas: {
         $geoIntersects: {
@@ -59,13 +60,32 @@ exports.getRestaurantsInServiceArea = async (req, res) => {
         },
       },
       active: true,
-    }).select("name address phone email serviceAreas location rating images foodType" );
+    }).select("name address phone email serviceAreas location rating images foodType");
 
+    // Fetch offers for each restaurant
+    const restaurantsWithOffers = await Promise.all(
+      restaurants.map(async (restaurant) => {
+        const offers = await Offer.find({
+             isActive: true,
+          validFrom: { $lte: new Date() },
+          validTill: { $gte: new Date() },
+          applicableRestaurants: restaurant._id,
+        }).select("title description type discountValue maxDiscount minOrderValue validFrom validTill");
+
+        return {
+          ...restaurant.toObject(),
+          offers,  // attach offers inside each restaurant
+        };
+      })
+    );
+
+    // Response
     res.status(200).json({
       message: "Restaurants in your service area fetched successfully.",
-      count: restaurants.length,
-      data:restaurants,
+      count: restaurantsWithOffers.length,
+      data: restaurantsWithOffers,
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -251,11 +271,9 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
   }
 };
 
-
-
 exports.getRecommendedRestaurants = async (req, res) => {
   try {
-    const { latitude, longitude, maxDistance = 5000, minOrderAmount = 0 } = req.query;
+    const { latitude, longitude, maxDistance = 50000000, minOrderAmount = 0 } = req.query;
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
@@ -295,11 +313,11 @@ exports.getRecommendedRestaurants = async (req, res) => {
         },
       },
       minOrderAmount: { $gte: minOrder },
-      active: true
+      active: true,
     })
       .sort({ rating: -1 })
       .limit(20)
-      .select("name address minOrderAmount foodType phone rating images location"); // 👈 excluded here
+      .select("name address minOrderAmount foodType phone rating images location");
 
     if (restaurants.length === 0) {
       return res.status(200).json({
@@ -310,15 +328,32 @@ exports.getRecommendedRestaurants = async (req, res) => {
       });
     }
 
+    // Attach offers to each restaurant
+    const restaurantsWithOffers = await Promise.all(
+      restaurants.map(async (restaurant) => {
+        const offers = await Offer.find({
+          isActive: true,
+          validFrom: { $lte: new Date() },
+          validTill: { $gte: new Date() },
+          applicableRestaurants: restaurant._id,
+        }).select("title description type discountValue maxDiscount minOrderValue validFrom validTill");
+
+        return {
+          ...restaurant.toObject(),
+          offers,
+        };
+      })
+    );
+
     return res.status(200).json({
       messageType: "success",
       message: "Recommended restaurants fetched successfully.",
-      count: restaurants.length,
-      data: restaurants,
+      count: restaurantsWithOffers.length,
+      data: restaurantsWithOffers,
     });
 
   } catch (error) {
-    console.error('Error fetching recommended restaurants:', error);
+    console.error("Error fetching recommended restaurants:", error);
     return res.status(500).json({
       messageType: "failure",
       message: "Server error while fetching recommended restaurants.",

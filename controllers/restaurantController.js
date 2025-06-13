@@ -10,6 +10,8 @@ const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const Session = require("../models/session");
 const User = require("../models/userModel");
+const Offer = require("../models/offerModel");
+const moment = require("moment");
 
 exports.createRestaurant = async (req, res) => {
   try {
@@ -451,6 +453,10 @@ exports.deleteRestaurant = async (req, res) => {
   }
 };
 
+
+
+
+
 exports.getRestaurantById = async (req, res) => {
   try {
     const { restaurantId } = req.params;
@@ -461,19 +467,36 @@ exports.getRestaurantById = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({ message: "Invalid restaurantId format." });
     }
-    const restaurant = await Restaurant.findOne({ _id: restaurantId });
+
+    // Find restaurant
+    const restaurant = await Restaurant.findById(restaurantId).lean();
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
     }
 
-    res
-      .status(200)
-      .json({ message: "Restaurant fetched successfully.", data: restaurant });
+    const currentDate = new Date();
+
+    // Fetch only valid and active offers for this restaurant
+    const offers = await Offer.find({
+      applicableRestaurants: restaurantId,
+      isActive: true,
+              validFrom: { $lte: new Date() },
+          validTill: { $gte: new Date() },
+    });
+  
+    // Add offers to restaurant object
+    restaurant.offers = offers;
+
+    res.status(200).json({
+      message: "Restaurant fetched successfully.",
+      data: restaurant,  // directly sending restaurant here
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error." });
   }
 };
+
 
 exports.updateBusinessHours = async (req, res) => {
   try {
@@ -1039,6 +1062,79 @@ exports.getRestaurantOrders = async (req, res) => {
   }
 };
 
+
+
+
+exports.getRestaurantEarnings = async (req, res) => {
+  try {
+    const { restaurantId, period, fromDate, toDate, page = 1, limit = 50 } = req.query;
+
+    const query = {};
+    if (restaurantId) query.restaurantId = restaurantId;
+
+    // 📌 Apply period-based date filter
+    if (period) {
+      let start, end;
+      switch (period) {
+        case "today":
+          start = moment().startOf("day").toDate();
+          end = moment().endOf("day").toDate();
+          break;
+        case "week":
+          start = moment().startOf("week").toDate();
+          end = moment().endOf("week").toDate();
+          break;
+        case "month":
+          start = moment().startOf("month").toDate();
+          end = moment().endOf("month").toDate();
+          break;
+        default:
+          return res.status(400).json({ message: "Invalid period value — choose 'today' | 'week' | 'month'" });
+      }
+      query.createdAt = { $gte: start, $lte: end };
+    }
+
+    // 📌 Apply custom date range (if provided and valid)
+    if (fromDate && toDate) {
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+        return res.status(400).json({ message: "Invalid fromDate or toDate format" });
+      }
+      query.createdAt = { $gte: from, $lte: to };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const earnings = await RestaurantEarning.find(query)
+      .populate({
+        path: 'restaurantId',
+        select: 'name location phoneNumber'
+      })
+      .populate({
+        path: 'orderId',
+        select: 'totalAmount paymentMethod paymentStatus createdAt'
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.status(200).json({
+      message: "Restaurant earnings fetched successfully",
+      count: earnings.length,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      data: earnings
+    });
+
+  } catch (err) {
+    console.error("Error fetching restaurant earnings:", err);
+    res.status(500).json({
+      message: "Failed to fetch restaurant earnings",
+      error: err.message
+    });
+  }
+};
 
 
 

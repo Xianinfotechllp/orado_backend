@@ -54,7 +54,7 @@ router.post('/agent-permissions/review', protect, checkPermission('agents.manage
 router.get("/restaurant-requests", protect, checkPermission('merchants.manage'), getPendingRestaurantApprovals);
 router.post("/restaurant-application/:restaurantId/update", protect, checkPermission('merchants.manage'), updateRestaurantApprovalStatus);
 router.get("/restaurant/:restaurantId", protect, checkRole('admin', 'superAdmin'), getRestaurantById);
-router.put("/edit/restaurant/:restaurantId", protect, checkRole('admin', 'superAdmin'), updateRestaurant);
+router.put("/edit/restaurant/:restaurantId",upload.array("images",5), protect, checkRole('admin', 'superAdmin'), updateRestaurant);
 
 // Restaurant permissions
 router.get('/permissions/:restaurantId', protect, checkPermission('merchants.manage'), getPermissions);

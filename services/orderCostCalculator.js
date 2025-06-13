@@ -1,6 +1,7 @@
 const { haversineDistance } = require("../utils/distanceCalculator");
 const {deliveryFeeCalculator,deliveryFeeCalculator2} = require("../utils/deliveryFeeCalculator")
 const TAX_PERCENTAGE = 5;
+const Offer = require("../models/offerModel")
 
 exports.calculateOrderCost = ({ cartProducts, restaurant, userCoords, couponCode }) => {
   if (!cartProducts.length) throw new Error("Cart is empty");
@@ -122,3 +123,176 @@ exports.calculateOrderCost2 = ({
     finalAmount
   };
 }
+
+
+
+
+exports.calculateOrderCostWithOffer = async ({
+  cartProducts,
+  tipAmount = 0,
+  couponCode,
+  restaurantId,
+  restaurantCoords,
+  userCoords,
+  revenueShare = { type: 'percentage', value: 10 }
+}) => {
+  let cartTotal = 0;
+  cartProducts.forEach(item => {
+    cartTotal += item.price * item.quantity;
+  });
+
+  // 1️⃣ Delivery Fee
+  const deliveryFee = deliveryFeeCalculator2(restaurantCoords, userCoords);
+
+  // 2️⃣ Coupon Discount (direct code)
+  let couponDiscount = 0;
+  if (couponCode) {
+    if (couponCode === "WELCOME50") {
+      couponDiscount = 50;
+    } else if (couponCode === "FREEDLV") {
+      couponDiscount = deliveryFee;
+    }
+  }
+
+  // 3️⃣ Active Offer Discount (DB)
+  let offerDiscount = 0;
+  const now = moment();
+
+  const activeOffers = await Offer.find({
+    applicableRestaurants: restaurantId,
+    isActive: true,
+    validFrom: { $lte: now },
+    validTill: { $gte: now },
+    minOrderValue: { $lte: cartTotal }
+  });
+
+  if (activeOffers.length) {
+    // Apply best discount — you can change this logic if needed
+    activeOffers.forEach(offer => {
+      let discount = 0;
+      if (offer.type === 'flat') {
+        discount = offer.discountValue;
+      } else if (offer.type === 'percentage') {
+        discount = (cartTotal * offer.discountValue) / 100;
+        if (offer.maxDiscount) discount = Math.min(discount, offer.maxDiscount);
+      }
+      if (discount > offerDiscount) offerDiscount = discount;
+    });
+  }
+
+  // 4️⃣ Final Amount Before Revenue Share
+  const finalAmountBeforeRevenueShare = cartTotal + deliveryFee + tipAmount - couponDiscount - offerDiscount;
+
+  // 5️⃣ Revenue Share Calculation
+  let revenueShareAmount = 0;
+  if (revenueShare.type === 'percentage') {
+    revenueShareAmount = (finalAmountBeforeRevenueShare * revenueShare.value) / 100;
+  } else if (revenueShare.type === 'fixed') {
+    revenueShareAmount = revenueShare.value;
+  }
+
+  // 6️⃣ Grand Final Amount (customer pays)
+  const finalAmount = finalAmountBeforeRevenueShare;
+
+  // Return full breakdown
+  return {
+    cartTotal,
+    deliveryFee,
+    tipAmount,
+    couponDiscount,
+    offerDiscount,
+    revenueShareAmount,
+    finalAmount
+  };
+};
+
+
+
+
+exports.calculateOrderCostV2 = ({
+  cartProducts,
+  tipAmount = 0,
+  couponCode,
+  restaurantCoords,
+  userCoords,
+  offers = [],
+  revenueShare = { type: 'percentage', value: 20 }, // default 20% platform cut
+  taxRate = 5, // GST %
+  isSurge = false, // if true, flat surge charge applies
+  surgeFeeAmount = 30
+}) => {
+  // 1️⃣ Cart total
+  let cartTotal = 0;
+  cartProducts.forEach(item => {
+    cartTotal += item.price * item.quantity;
+  });
+
+  // 2️⃣ Delivery Fee
+  const deliveryFee = deliveryFeeCalculator2(restaurantCoords, userCoords);
+
+  // 3️⃣ Apply one best offer
+  let offerDiscount = 0;
+  let appliedOffer = null;
+
+  if (offers.length) {
+    offers.forEach(offer => {
+      let discount = 0;
+      if (offer.type === "flat") {
+        discount = offer.discountValue;
+      } else if (offer.type === "percentage") {
+        discount = (cartTotal * offer.discountValue) / 100;
+        if (offer.maxDiscount) {
+          discount = Math.min(discount, offer.maxDiscount);
+        }
+      }
+
+      if (discount > offerDiscount) {
+        offerDiscount = discount;
+        appliedOffer = offer;
+      }
+    });
+  }
+
+  // 4️⃣ Additional couponCode logic (if you want to combine with platform codes)
+  let couponDiscount = 0;
+  if (couponCode) {
+    if (couponCode === "WELCOME50") {
+      couponDiscount = 50;
+    } else if (couponCode === "FREEDLV") {
+      couponDiscount = deliveryFee;
+    }
+  }
+
+  // 5️⃣ Tax on subtotal (cartTotal - offerDiscount)
+  const taxableAmount = cartTotal - offerDiscount;
+  const taxAmount = (taxableAmount * taxRate) / 100;
+
+  // 6️⃣ Surge fee
+  const surgeFee = isSurge ? surgeFeeAmount : 0;
+
+  // 7️⃣ Final billable amount for customer
+  const finalAmountBeforeRevenueShare = 
+    taxableAmount + deliveryFee + tipAmount + taxAmount + surgeFee - couponDiscount;
+
+  // 8️⃣ Revenue share (platform commission, not charged to customer)
+  let revenueShareAmount = 0;
+  if (revenueShare.type === 'percentage') {
+    revenueShareAmount = (finalAmountBeforeRevenueShare * revenueShare.value) / 100;
+  } else if (revenueShare.type === 'fixed') {
+    revenueShareAmount = revenueShare.value;
+  }
+
+  // ✅ Return clean structured object
+  return {
+    cartTotal,
+    deliveryFee,
+    tipAmount,
+    taxAmount,
+    surgeFee,
+    offerDiscount,
+    couponDiscount,
+    offersApplied: appliedOffer ? [appliedOffer.title] : [],
+    finalAmount: finalAmountBeforeRevenueShare,
+    revenueShareAmount
+  };
+};

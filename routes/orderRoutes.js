@@ -22,9 +22,11 @@ const {
   merchantRejectOrder,
   getOrdersByMerchant,
   getOrderPriceSummary,
+  getOrderPriceSummaryv2,
   placeOrder,
   reorder,updateRestaurantOrderStatus,
-  placeOrderWithAddressId
+  placeOrderWithAddressId,
+
   
   
 } = require('../controllers/orderController');
@@ -79,7 +81,7 @@ router.get('/restaurant/:restaurantId', protect, getOrdersByMerchant);
 //bill summary 
 
 
-router.post("/pricesummary", protect, getOrderPriceSummary)
+router.post("/pricesummary", protect, getOrderPriceSummaryv2)
 
 
 //place order 

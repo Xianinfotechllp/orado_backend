@@ -716,6 +716,7 @@ exports.deleteAccount = async (req, res) => {
 
 exports.addFavouriteRestaurant = async (req, res) => {
   try {
+    console.log("3")
     const { restaurantId } = req.body;
     const userId = req.user._id; // Assuming JWT middleware sets req.user
 
@@ -757,6 +758,7 @@ exports.addFavouriteRestaurant = async (req, res) => {
 exports.removeFavouriteRestaurant = async (req, res) => {
   try {
     const { restaurantId } = req.body;
+    console.log(restaurantId)
     const userId = req.user._id; // Assuming JWT middleware sets req.user
 
     if (!restaurantId) {
