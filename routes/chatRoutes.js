@@ -38,7 +38,7 @@ router.post('/user/restaurant/:restaurantId', protect, chatController.sendCustom
 
 
 // ========== COMMON ==========
-router.post('/mark-read/:chatId', chatController.markMessagesAsRead);
+router.post('/mark-read/:chatId', protect, chatController.markMessagesAsRead);
 
 
 

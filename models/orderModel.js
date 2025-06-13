@@ -47,6 +47,7 @@ const orderSchema = mongoose.Schema({
   distanceKm: Number,
 
   paymentMethod: { type: String, enum: ['cash', 'online', 'wallet'] },
+  walletUsed: { type: Number, default: 0 },
   paymentStatus: { type: String, enum: ['pending', 'completed', 'failed'] },
 
   deliveryMode: { type: String, enum: ['contact', 'no_contact', 'do_not_disturb'] },
