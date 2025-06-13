@@ -15,6 +15,7 @@ getApprovedRestaurants ,
   
 } = require("../controllers/adminController");
 const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
+const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 
 const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -96,6 +97,7 @@ router.patch("/restaurant/:restaurantId/commission", setRestaurantCommission);
 
 router.get("/restaurant/approved/list",getApprovedRestaurants)
 
+
 // Admin Profile
 router.get('/profile', protect, getAdminProfileById);
 router.put('/profile', protect, updateAdminProfile);
@@ -106,5 +108,7 @@ router.post("/wallet/refund", protect, refundToWallet)
 router.get("/refund/transactions", protect, getAllRefundTransactions)
 // getOrderByCustomer
 router.get("/customer-orders/:userId", protect, getOrdersByCustomerAdmin)
+
+router.get("/merchant/getallmerchants",getAllMerchants)
 
 module.exports = router;
