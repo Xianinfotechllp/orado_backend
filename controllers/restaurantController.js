@@ -1063,8 +1063,6 @@ exports.getRestaurantOrders = async (req, res) => {
 };
 
 
-
-
 exports.getRestaurantEarnings = async (req, res) => {
   try {
     const { restaurantId, period, fromDate, toDate, page = 1, limit = 50 } = req.query;
@@ -1072,7 +1070,6 @@ exports.getRestaurantEarnings = async (req, res) => {
     const query = {};
     if (restaurantId) query.restaurantId = restaurantId;
 
-    // 📌 Apply period-based date filter
     if (period) {
       let start, end;
       switch (period) {
@@ -1089,12 +1086,11 @@ exports.getRestaurantEarnings = async (req, res) => {
           end = moment().endOf("month").toDate();
           break;
         default:
-          return res.status(400).json({ message: "Invalid period value — choose 'today' | 'week' | 'month'" });
+          return res.status(400).json({ message: "Invalid period value" });
       }
       query.createdAt = { $gte: start, $lte: end };
     }
 
-    // 📌 Apply custom date range (if provided and valid)
     if (fromDate && toDate) {
       const from = new Date(fromDate);
       const to = new Date(toDate);
@@ -1113,28 +1109,58 @@ exports.getRestaurantEarnings = async (req, res) => {
       })
       .populate({
         path: 'orderId',
-        select: 'totalAmount paymentMethod paymentStatus createdAt'
+        select: 'orderItems totalAmount paymentMethod paymentStatus createdAt'
       })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
+    // 📦 Map formatted earnings and compute totals
+    let totalOrderAmount = 0;
+    let totalCommission = 0;
+    let totalNetRevenue = 0;
+
+    const formattedEarnings = earnings.map(item => {
+      totalOrderAmount += item.totalOrderAmount;
+      totalCommission += item.commissionAmount;
+      totalNetRevenue += item.restaurantNetEarning;
+
+      return {
+        id: item._id,
+        restaurantName: item.restaurantId?.name,
+        restaurantLocation: item.restaurantId?.location,
+        orderAmount: item.totalOrderAmount,
+        commissionType: item.commissionType,
+        commissionValue: item.commissionValue,
+        commissionAmount: item.commissionAmount,
+        netRevenue: item.restaurantNetEarning,
+        payoutStatus: item.payoutStatus,
+        paymentMethod: item.orderId?.paymentMethod,
+        paymentStatus: item.orderId?.paymentStatus,
+        orderItems: item.orderId?.orderItems,
+        orderDate: item.orderId?.createdAt,
+        earningCreatedAt: item.createdAt
+      };
+    });
+
     res.status(200).json({
-      message: "Restaurant earnings fetched successfully",
-      count: earnings.length,
+      message: "Restaurant earnings report fetched successfully",
+      count: formattedEarnings.length,
+      summary: {
+        totalOrderAmount,
+        totalCommission,
+        totalNetRevenue
+      },
       page: parseInt(page),
       limit: parseInt(limit),
-      data: earnings
+      data: formattedEarnings
     });
 
   } catch (err) {
-    console.error("Error fetching restaurant earnings:", err);
+    console.error("Error fetching restaurant earnings report:", err);
     res.status(500).json({
-      message: "Failed to fetch restaurant earnings",
+      message: "Failed to fetch restaurant earnings report",
       error: err.message
     });
   }
 };
-
-
-
