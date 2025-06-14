@@ -5,6 +5,10 @@ const surgeAreaSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  surgeReason: {
+    type: String
+   
+  },
 
   type: {
     type: String,

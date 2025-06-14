@@ -5,53 +5,61 @@ const moment = require("moment");
 exports.getApplicableSurgeFee = async (userCoords, orderAmount) => {
   try {
     const now = new Date();
+    
+    if (!Array.isArray(userCoords) || userCoords.length !== 2) {
+      throw new Error('Invalid user coordinates format');
+    }
 
-    // Fetch active surge areas currently valid by time
     const activeSurgeAreas = await SurgeArea.find({
-      isActive: true,
-      startTime: { $lte: now },
-      endTime: { $gte: now }
+      isActive: true
     });
 
     let applicableFees = [];
-
-    activeSurgeAreas.forEach(area => {
-      const point = turf.point(userCoords); // [lng, lat]
-
+   
+    for (const area of activeSurgeAreas) {
+      const point = turf.point(userCoords);
+      console.log(userCoords)
       let isInside = false;
 
       if (area.type === "Polygon") {
-        if (!area.area || !area.area.coordinates) return;
+        if (!area.area?.coordinates) continue;
         const polygon = turf.polygon(area.area.coordinates);
         isInside = turf.booleanPointInPolygon(point, polygon);
-
-      } else if (area.type === "Circle") {
-        if (!area.center || !area.radius) return;
+      } 
+      else if (area.type === "Circle") {
+        if (!area.center || !area.radius) continue;
         const center = turf.point(area.center);
         const distance = turf.distance(point, center, { units: 'meters' });
         isInside = distance <= area.radius;
+      
       }
 
       if (isInside) {
-        // Calculate fee based on surgeType
-        let fee = 0;
-        if (area.surgeType === "fixed") {
-          fee = area.surgeValue;
-        } else if (area.surgeType === "percentage") {
-          fee = (orderAmount * area.surgeValue) / 100;
-        }
+        const fee = area.surgeType === "fixed"
+          ? area.surgeValue
+          : (orderAmount * area.surgeValue) / 100;
 
-        applicableFees.push(fee);
+        applicableFees.push({
+          fee,
+          reason: area.surgeReason,
+          surgeName: area.name,
+          type: area.type
+        });
       }
-    });
+    }
 
-    // Return highest applicable surge fee if multiple areas overlap
-    const finalSurgeFee = applicableFees.length ? Math.max(...applicableFees) : 0;
+    if (applicableFees.length) {
+      // Pick highest fee
+      const maxFeeObj = applicableFees.reduce((max, obj) => 
+        obj.fee > max.fee ? obj : max
+      , { fee: 0 });
 
-    return finalSurgeFee;
+      return maxFeeObj;
+    }
 
+    return null; // No surge fee applicable
   } catch (err) {
     console.error("Error calculating surge fee:", err);
-    return 0;
+    return null;
   }
 };

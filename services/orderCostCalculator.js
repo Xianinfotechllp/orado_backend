@@ -226,24 +226,21 @@ exports.calculateOrderCostV2 = ({
   restaurantCoords,
   userCoords,
   offers = [],
-  revenueShare = { type: 'percentage', value: 20 }, // default 20% platform cut
-  taxRate = 5, // GST %
-  isSurge = false, // if true, flat surge charge applies
-  surgeFeeAmount = 30
+  revenueShare = { type: 'percentage', value: 20 },
+  taxRate = 5,
+  isSurge = false,
+  surgeFeeAmount = 0,
+  surgeReason = null
 }) => {
-  // 1️⃣ Cart total
   let cartTotal = 0;
   cartProducts.forEach(item => {
     cartTotal += item.price * item.quantity;
   });
 
-  // 2️⃣ Delivery Fee
   const deliveryFee = deliveryFeeCalculator2(restaurantCoords, userCoords);
 
-  // 3️⃣ Apply one best offer
   let offerDiscount = 0;
   let appliedOffer = null;
-
   if (offers.length) {
     offers.forEach(offer => {
       let discount = 0;
@@ -255,7 +252,6 @@ exports.calculateOrderCostV2 = ({
           discount = Math.min(discount, offer.maxDiscount);
         }
       }
-
       if (discount > offerDiscount) {
         offerDiscount = discount;
         appliedOffer = offer;
@@ -263,7 +259,6 @@ exports.calculateOrderCostV2 = ({
     });
   }
 
-  // 4️⃣ Additional couponCode logic (if you want to combine with platform codes)
   let couponDiscount = 0;
   if (couponCode) {
     if (couponCode === "WELCOME50") {
@@ -273,18 +268,12 @@ exports.calculateOrderCostV2 = ({
     }
   }
 
-  // 5️⃣ Tax on subtotal (cartTotal - offerDiscount)
   const taxableAmount = cartTotal - offerDiscount;
   const taxAmount = (taxableAmount * taxRate) / 100;
-
-  // 6️⃣ Surge fee
   const surgeFee = isSurge ? surgeFeeAmount : 0;
 
-  // 7️⃣ Final billable amount for customer
-  const finalAmountBeforeRevenueShare = 
-    taxableAmount + deliveryFee + tipAmount + taxAmount + surgeFee - couponDiscount;
+  const finalAmountBeforeRevenueShare = taxableAmount + deliveryFee + tipAmount + taxAmount + surgeFee - couponDiscount;
 
-  // 8️⃣ Revenue share (platform commission, not charged to customer)
   let revenueShareAmount = 0;
   if (revenueShare.type === 'percentage') {
     revenueShareAmount = (finalAmountBeforeRevenueShare * revenueShare.value) / 100;
@@ -292,7 +281,6 @@ exports.calculateOrderCostV2 = ({
     revenueShareAmount = revenueShare.value;
   }
 
-  // ✅ Return clean structured object
   return {
     cartTotal,
     deliveryFee,
@@ -303,6 +291,8 @@ exports.calculateOrderCostV2 = ({
     couponDiscount,
     offersApplied: appliedOffer ? [appliedOffer.title] : [],
     finalAmount: finalAmountBeforeRevenueShare,
-    revenueShareAmount
+    revenueShareAmount,
+    isSurge,
+    surgeReason
   };
 };

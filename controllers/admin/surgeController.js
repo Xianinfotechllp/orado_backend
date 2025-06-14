@@ -11,12 +11,14 @@ exports.createSurgeArea = async (req, res) => {
       radius,
       surgeType,
       surgeValue,
+      surgeReason,  // ✅ add this
       startTime,
       endTime
     } = req.body;
 
     // ✅ Basic validation
-    if (!name || !type || !surgeType || !surgeValue || !startTime || !endTime) {
+    console.log(name,type,surgeType,surgeValue,surgeReason,startTime,endTime)
+    if (!name || !type || !surgeType || !surgeValue || !surgeReason || !startTime || !endTime) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -44,6 +46,7 @@ exports.createSurgeArea = async (req, res) => {
       radius: type === "Circle" ? radius : undefined,
       surgeType,
       surgeValue,
+      surgeReason,   // ✅ save here too
       startTime,
       endTime
     });

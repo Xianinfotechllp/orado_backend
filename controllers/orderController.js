@@ -16,6 +16,7 @@ const { haversineDistance } = require("../utils/distanceCalculator");
 const { deliveryFeeCalculator } = require("../utils/deliveryFeeCalculator");
 const {getApplicableSurgeFee  } = require("../utils/surgeCalculator")
 const fs = require("fs");
+const  turf = require('@turf/turf')
 
 const firebaseAdmin = require("../config/firebaseAdmin");
 const {
@@ -1238,41 +1239,49 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
   validTill: { $gte: new Date() }
 }).lean();
 
-const surgeFee = await getApplicableSurgeFee(userCoords,preSurgeOrderAmount)
-console.log(surgeFee)
+const surgeObj = await getApplicableSurgeFee(userCoords,preSurgeOrderAmount)
+
+
+
+// Compute isSurge and surgeFeeAmount based on result
+const isSurge = !!surgeObj;
+const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+
 
     // Optional: Validate userCoords are valid numbers here
 
     // ✅ Compute billing summary using V2 utility
-    const costSummary = calculateOrderCostV2({
-      cartProducts: cart.products,
-      tipAmount,
-      couponCode,
-      restaurantCoords,
-      userCoords,
-      offers,
-      revenueShare: { type: "percentage", value: 20 },
-      taxRate: 5,
-      isSurge: restaurant.isSurgeEnabled // or pass manually
-    });
+   const costSummary = calculateOrderCostV2({
+  cartProducts: cart.products,
+  tipAmount,
+  couponCode,
+  restaurantCoords,
+  userCoords,
+  offers,
+  revenueShare: { type: "percentage", value: 20 },
+  taxRate: 5,
+  isSurge,
+  surgeFeeAmount
+});
+const distanceKm = turf.distance(
+  turf.point(userCoords),
+  turf.point(restaurantCoords),
+  { units: 'kilometers' }
+);
 
-
-    const formatCurrency = (amount) => {
-  return "₹" + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-};
-
-const formatDistance = (km) => {
-  return km.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + " km";
-}
 const summary = {
-  deliveryFee:costSummary.deliveryFee,
+  deliveryFee: costSummary.deliveryFee,
   discount: costSummary.offerDiscount,
-  distanceKm: costSummary.distanceKm,
+  distanceKm, // raw kilometers
   subtotal: costSummary.cartTotal,
   tax: costSummary.taxAmount,
+  surgeFee: costSummary.surgeFee,
   total: costSummary.finalAmount,
-  offersApplied: costSummary.offersApplied
+  offersApplied: costSummary.offersApplied,
+  isSurge: isSurge,
+  surgeReason: surgeObj ? surgeObj.reason : null
 };
+
 
     return res.status(200).json({
       message: "Bill summary calculated successfully",
