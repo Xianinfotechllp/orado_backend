@@ -19,6 +19,7 @@
   "homepage": "https://github.com/Xianinfotechllp/orado_backend#readme",
   "description": "",
   "dependencies": {
+    "@turf/turf": "^7.2.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.6.1",

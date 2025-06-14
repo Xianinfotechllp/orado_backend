@@ -16,6 +16,7 @@ getApprovedRestaurants ,
 } = require("../controllers/adminController");
 const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
+const {createSurgeArea } = require("../controllers/admin/surgeController")
 
 const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -118,5 +119,9 @@ router.post("/offer",createOffer)
 router.get("/offer",getAllOffers)
 
 router.get("/restaurants/offer-list",getRestaurantsWithOffersAggregated)
+
+
+router.post("/surge/add",createSurgeArea)
+
 
 module.exports = router;
