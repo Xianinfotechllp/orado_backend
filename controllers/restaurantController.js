@@ -15,7 +15,6 @@ const moment = require("moment");
 
 exports.createRestaurant = async (req, res) => {
   try {
-    console.log("req.body:-----------", req.body);
     // 1️⃣ Required fields validation (removed password, ownerName, email, phone)
     const requiredFields = [
       "name",
@@ -278,6 +277,7 @@ exports.createRestaurant = async (req, res) => {
 
 exports.getRestaurantsByMerchantId = async (req, res) => {
   try {
+   
     // 1️⃣ Validate merchant ID
     const merchantId = req.params.merchantId;
     if (!merchantId || !mongoose.Types.ObjectId.isValid(merchantId)) {
@@ -311,11 +311,13 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
       phone: restaurant.phone,
       email: restaurant.email,
       foodType: restaurant.foodType,
-      status: restaurant.approvalStatus, // Include approval status
-      isActive: restaurant.isActive, // Include active status
+      status: restaurant.approvalStatus, 
+      isActive: restaurant.active, 
       createdAt: restaurant.createdAt,
       updatedAt: restaurant.updatedAt
     }));
+
+    console.log("Formatted Restaurants:", formattedRestaurants);
 
     return res.status(200).json({
       success: true,
@@ -325,7 +327,7 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
           id: merchant._id,
           name: merchant.name,
           email: merchant.email,
-          phone: merchant.phone
+          phone: merchant.phone,
         },
         restaurants: formattedRestaurants,
         count: formattedRestaurants.length
