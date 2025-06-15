@@ -726,6 +726,51 @@ exports.getServiceAreas = async (req, res) => {
   }
 }
 
+exports.deleteServiceAreas = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        message: "Invalid restaurant ID",
+        messageType: "failure",
+      });
+    }
+
+    // Directly clear serviceAreas using $set
+    const updatedRestaurant = await Restaurant.findByIdAndUpdate(
+      restaurantId,
+      { $set: { serviceAreas: [] } },
+      { new: true }
+    );
+
+    if (!updatedRestaurant) {
+      return res.status(404).json({
+        message: "Restaurant not found",
+        messageType: "failure",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Service areas deleted successfully",
+      messageType: "success",
+      data: updatedRestaurant.serviceAreas,
+    });
+
+  } catch (error) {
+    console.error(`[ServiceArea::Delete] Error: ${error.message}`);
+    return res.status(500).json({
+      message: "Something went wrong while deleting service areas",
+      messageType: "failure",
+    });
+  }
+};
+
+
+
+
+
+
 
 
 
