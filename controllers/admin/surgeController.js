@@ -63,3 +63,165 @@ exports.createSurgeArea = async (req, res) => {
     res.status(500).json({ message: "Failed to create surge area", error: err.message });
   }
 };
+
+
+
+exports.getSurgeAreas = async (req, res) => {
+  try {
+    // Extract query parameters
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      type,
+      surgeType,
+      activeOnly,
+      search
+    } = req.query;
+
+    // Build the query object
+    const query = {};
+    
+    // Filter by type if provided
+    if (type && ['Polygon', 'Circle'].includes(type)) {
+      query.type = type;
+    }
+    
+    // Filter by surgeType if provided
+    if (surgeType) {
+      query.surgeType = surgeType;
+    }
+    
+    // Filter active only if requested
+    if (activeOnly === 'true') {
+      const now = new Date();
+      query.startTime = { $lte: now };
+      query.endTime = { $gte: now };
+    }
+    
+    // Search by name if search term provided
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    // Calculate pagination
+    const skip = (page - 1) * limit;
+    
+    // Get total count for pagination info
+    const total = await SurgeArea.countDocuments(query);
+    
+    // Fetch surge areas with sorting and pagination
+    const surgeAreas = await SurgeArea.find(query)
+      .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(total / limit);
+    
+    res.status(200).json({
+      message: "Surge areas retrieved successfully",
+      data: surgeAreas,
+      pagination: {
+        total,
+        totalPages,
+        currentPage: parseInt(page),
+        itemsPerPage: parseInt(limit),
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1
+      }
+    });
+
+  } catch (err) {
+    console.error("Error fetching surge areas:", err);
+    res.status(500).json({ 
+      message: "Failed to fetch surge areas", 
+      error: err.message 
+    });
+  }
+};
+
+
+
+
+
+exports.getSurgeAreas = async (req, res) => {
+  try {
+    // Extract query parameters
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      type,
+      surgeType,
+      activeOnly,
+      search
+    } = req.query;
+
+    // Build the query object
+    const query = {};
+    
+    // Filter by type if provided
+    if (type && ['Polygon', 'Circle'].includes(type)) {
+      query.type = type;
+    }
+    
+    // Filter by surgeType if provided
+    if (surgeType) {
+      query.surgeType = surgeType;
+    }
+    
+    // Filter active only if requested
+    if (activeOnly === 'true') {
+      const now = new Date();
+      query.startTime = { $lte: now };
+      query.endTime = { $gte: now };
+    }
+    
+    // Search by name if search term provided
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    // Calculate pagination
+    const skip = (page - 1) * limit;
+    
+    // Get total count for pagination info
+    const total = await SurgeArea.countDocuments(query);
+    
+    // Fetch surge areas with sorting and pagination
+    const surgeAreas = await SurgeArea.find(query)
+      .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(total / limit);
+    
+    res.status(200).json({
+      message: "Surge areas retrieved successfully",
+      data: surgeAreas,
+      pagination: {
+        total,
+        totalPages,
+        currentPage: parseInt(page),
+        itemsPerPage: parseInt(limit),
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1
+      }
+    });
+
+  } catch (err) {
+    console.error("Error fetching surge areas:", err);
+    res.status(500).json({ 
+      message: "Failed to fetch surge areas", 
+      error: err.message 
+    });
+  }
+};
+
+
+
+

@@ -5,7 +5,7 @@ const {createCategory,getAResturantCategories,editResturantCategory,deleteRestur
 const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
 const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
-const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings}  = require('../controllers/restaurantController')
+const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
@@ -49,6 +49,7 @@ router.put("/:restaurantId/business-hours", protect, checkRole('merchant'), upda
 
 
 router.post('/:restaurantId/service-areas', protect, checkRole('merchant'), addServiceArea)
+router.get("/:restaurantId/service-areas",protect, checkRole('merchant'),getServiceAreas)
 
 // kyc
 router.post('/:restaurantId/kyc', upload.array('documents'), protect, checkRole('merchant'), addKyc);

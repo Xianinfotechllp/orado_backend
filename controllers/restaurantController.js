@@ -688,6 +688,47 @@ exports.addServiceArea = async (req, res) => {
   }
 };
 
+
+exports.getServiceAreas = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    // Validate restaurant ID
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        message: "Invalid restaurant ID",
+        messageType: "failure",
+      });
+    }
+
+    // Find restaurant by ID
+    const restaurant = await Restaurant.findById(restaurantId).select("serviceAreas");
+
+    if (!restaurant) {
+      return res.status(404).json({
+        message: "Restaurant not found",
+        messageType: "failure",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Service areas fetched successfully",
+      messageType: "success",
+      data: restaurant.serviceAreas,
+    });
+
+  } catch (error) {
+    console.error("Error fetching serviceAreas:", error);
+    return res.status(500).json({
+      message: "Server error",
+      messageType: "failure",
+    });
+  }
+}
+
+
+
+
 exports.getRestaurantMenu = async (req, res) => {
   const { restaurantId } = req.params;
   console.log("hi");
