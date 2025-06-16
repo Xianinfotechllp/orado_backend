@@ -30,7 +30,7 @@ const productReviewSchema = new mongoose.Schema({
   },
   repliedBy: {
     type: String,
-    enum: ['admin', 'merchant'],
+    enum: ['admin', 'merchant',"restaurant"],
   },
   repliedAt: {
     type: Date,

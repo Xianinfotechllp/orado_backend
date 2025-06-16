@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 // const { protect } = require('../middleware/authMiddleware');
-const { getAverageRating, getFeedbacks, deleteFeedback, updateFeedback, createFeedback ,getRestaurantReviews ,replyToFeedbackByRestaurant ,getRestaurantProductReviews, addProductReview  } = require('../controllers/feedbackController');
+const { getAverageRating, getFeedbacks, deleteFeedback, updateFeedback, createFeedback ,getRestaurantReviews ,replyToFeedbackByRestaurant ,getRestaurantProductReviews, addProductReview ,replyToProductReview } = require('../controllers/feedbackController');
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 
 // Protected routes (requires login)
@@ -18,6 +18,8 @@ router.post('/', protect, checkRole('customer'), createFeedback);
 router.get("/restaurants/:restaurantId",getRestaurantReviews)
 router.post("/restaurants/:restaurantId/feedback/:feedbackId/replay",replyToFeedbackByRestaurant)
 router.get("/product/restaurants/:restaurantId/",getRestaurantProductReviews )
+
+router.post('/product-feedback/:feedbackId/reply',replyToProductReview);
 
 //crete product feedback by user 
 router.post("/product/:productId",protect,addProductReview)

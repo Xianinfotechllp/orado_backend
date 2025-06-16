@@ -377,4 +377,35 @@ exports.getRestaurantProductReviews = async (req, res) => {
 
 
 
+exports.replyToProductReview = async (req, res) => {
+  try {
+    const { feedbackId } = req.params;
+    const { reply } = req.body;
+
+    if (!feedbackId ) {
+      return res.status(400).json({ message: 'Review ID is required' });
+    }
+    if (!reply) {
+      return res.status(400).json({ message: 'Reply message is required' });
+    }
+
+    const review = await ProductReview.findById(feedbackId);
+    if (!review) {
+      return res.status(404).json({ message: 'Product review not found' });
+    }
+
+    review.reply = reply;
+    review.repliedBy = 'restaurant';
+    review.repliedAt = new Date();
+
+    await review.save();
+
+    return res.status(200).json({ message: 'Product review reply added', review });
+
+  } catch (error) {
+    console.error('Error replying to product review:', error);
+    return res.status(500).json({ message: 'Server error', error });
+  }
+};
+
 
