@@ -30,7 +30,7 @@ const {createRestaurant} = require("../controllers/admin/restaurantController")
 
 
 const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController");
-const { addTax, getAllTaxes, deleteTax} = require("../controllers/admin/taxAndFeeSettingController");
+const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus} = require("../controllers/admin/taxAndFeeSettingController");
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -132,6 +132,11 @@ router.delete("/surge-areas/:surgeAreaId",deleteSurgeArea)
 router.post("/taxes",addTax)
 router.get("/taxes",getAllTaxes)
 router.delete("/taxes/:taxId",deleteTax)
+router.patch("/taxes/:taxId",editTax)
+router.patch("/taxes/:taxId/toggle",toggleTaxStatus)
+
+
+
 
 
 

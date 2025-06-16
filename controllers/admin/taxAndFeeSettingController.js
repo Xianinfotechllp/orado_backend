@@ -70,39 +70,115 @@ exports.getAllTaxes = async (req, res) => {
 
 
 // DELETE /api/admin/taxes/:id
-exports.deleteTax = async (req, res) => {
-  try {
-    const { taxId } = req.params;
+  exports.deleteTax = async (req, res) => {
+    try {
+      const { taxId } = req.params;
 
-    if (!taxId) {
-      return res.status(400).json({ success: false, message: 'Tax ID is required' });
+      if (!taxId) {
+        return res.status(400).json({ success: false, message: 'Tax ID is required' });
+      }
+
+      // Find the tax settings document
+      const settings = await TaxAndFeeSetting.findOne();
+      if (!settings) {
+        return res.status(404).json({ success: false, message: 'Tax settings not found' });
+      }
+
+      // Find tax index
+      const taxIndex = settings.taxes.findIndex(tax => tax._id.toString() === taxId);
+      if (taxIndex === -1) {
+        return res.status(404).json({ success: false, message: 'Tax not found' });
+      }
+
+      // Remove tax from array
+      settings.taxes.splice(taxIndex, 1);
+      await settings.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Tax deleted successfully',
+        data: settings.taxes  // optional — return updated list if useful for frontend
+      });
+
+    } catch (error) {
+      console.error('Error deleting tax:', error);
+      return res.status(500).json({ success: false, message: 'Server error while deleting tax' });
     }
+  };
 
-    // Find the tax settings document
+
+exports.editTax = async (req, res) => {
+  try {
+
+    
+    const { taxId } = req.params;
+    const { name, percentage, applicableFor } = req.body;
+    console.log(name)
+
+    // Find TaxAndFeeSetting document
     const settings = await TaxAndFeeSetting.findOne();
     if (!settings) {
       return res.status(404).json({ success: false, message: 'Tax settings not found' });
     }
 
-    // Find tax index
-    const taxIndex = settings.taxes.findIndex(tax => tax._id.toString() === taxId);
-    if (taxIndex === -1) {
+    // Find tax by _id
+    const tax = settings.taxes.find(t => t._id.toString() === taxId);
+    if (!tax) {
       return res.status(404).json({ success: false, message: 'Tax not found' });
     }
 
-    // Remove tax from array
-    settings.taxes.splice(taxIndex, 1);
+    // Check for duplicate tax with same name and applicableFor (if name or applicableFor is changing)
+    if (name && applicableFor) {
+      const duplicate = settings.taxes.find(
+        (t) =>
+          t._id.toString() !== taxId &&
+          t.name.toLowerCase() === name.toLowerCase() &&
+          t.applicableFor === applicableFor
+      );
+      if (duplicate) {
+        return res.status(409).json({ success: false, message: 'A tax with this name already exists for this category.' });
+      }
+    }
+
+    // Update only if value is provided
+    if (name) tax.name = name;
+    if (percentage != null) tax.percentage = percentage;
+    if (applicableFor) tax.applicableFor = applicableFor;
+
     await settings.save();
 
-    return res.status(200).json({
+    return res.status(200).json({ success: true, message: 'Tax updated successfully', data: tax });
+
+  } catch (error) {
+    console.error('Error updating tax:', error);
+    return res.status(500).json({ success: false, message: 'Server error while updating tax' });
+  }
+};
+exports.toggleTaxStatus = async (req, res) => {
+  try {
+    const { taxId } = req.params;
+
+    const settings = await TaxAndFeeSetting.findOne();
+    if (!settings) {
+      return res.status(404).json({ success: false, message: "Settings not found." });
+    }
+
+    const tax = settings.taxes.id(taxId);
+    if (!tax) {
+      return res.status(404).json({ success: false, message: "Tax not found." });
+    }
+
+    tax.active = !tax.active;
+    await settings.save();
+
+    res.status(200).json({
       success: true,
-      message: 'Tax deleted successfully',
-      data: settings.taxes  // optional — return updated list if useful for frontend
+      message: "Tax status toggled successfully.",
+      data: tax
     });
 
   } catch (error) {
-    console.error('Error deleting tax:', error);
-    return res.status(500).json({ success: false, message: 'Server error while deleting tax' });
+    console.error("Error toggling tax status:", error);
+    res.status(500).json({ success: false, message: "Server error." });
   }
 };
-

@@ -147,6 +147,7 @@ const userSchema = new mongoose.Schema(
         expiryDate: Date,
       },
     ],
+    passwordChangedAt:Date,
 
     deviceTokens: [String],
     lastActivity: Date,

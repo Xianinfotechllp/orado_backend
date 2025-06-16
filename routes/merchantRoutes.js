@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const {registerMerchant,loginMerchant,getRestaurantsByOwner,getRestaurantApprovalStatus} = require("../controllers/merchantController")
+const {registerMerchant,loginMerchant,getRestaurantsByOwner,getRestaurantApprovalStatus,changePassword} = require("../controllers/merchantController")
 const {createCategory} = require("../controllers/categoryController")
 const {getAssignableOffers,createOfferByRestaurantOwner,getOffersForRestaurant,toggleOfferAssignment,
     updateOffer,deleteOffer
@@ -9,6 +9,9 @@ const {getAssignableOffers,createOfferByRestaurantOwner,getOffersForRestaurant,t
 const {protect} = require('../middlewares/authMiddleware')
 router.post("/register",registerMerchant)
 router.post("/login",loginMerchant)
+router.post("/change-password",protect,changePassword)
+
+
 router.get("/getmy-restaurants/:ownerId",protect,getRestaurantsByOwner)
 router.get("/my-resturestaurant/:restaurantId/approve-status",protect,getRestaurantApprovalStatus)
 
@@ -23,6 +26,7 @@ router.delete("/restaurant/:restaurantId/offe/:offerId",protect,deleteOffer)
 
 router.get("/restaurant/:restaurantId/offer",protect,getOffersForRestaurant)
 router.put("/restaurants/:restaurantId/offer/:offerId",protect,toggleOfferAssignment)
+
 
 
 
