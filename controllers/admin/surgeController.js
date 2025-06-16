@@ -1,5 +1,5 @@
 const SurgeArea = require("../../models/surgeAreaModel");
-
+const mongoose = require("mongoose")
 // 📌 Create a new surge area
 exports.createSurgeArea = async (req, res) => {
   try {
@@ -225,3 +225,66 @@ exports.getSurgeAreas = async (req, res) => {
 
 
 
+
+// 📌 Toggle Surge Area Active/Inactive
+exports.toggleSurgeAreaStatus = async (req, res) => {
+  try {
+    const { surgeAreaId } = req.params;
+
+    // ✅ Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(surgeAreaId)) {
+      return res.status(400).json({ message: "Invalid surge area ID" });
+    }
+
+    // ✅ Find surge area
+    const surgeArea = await SurgeArea.findById(surgeAreaId);
+    if (!surgeArea) {
+      return res.status(404).json({ message: "Surge area not found" });
+    }
+
+    // ✅ Toggle isActive value
+    surgeArea.isActive = !surgeArea.isActive;
+
+    // ✅ Save update
+    await surgeArea.save();
+
+    res.status(200).json({
+      message: `Surge area is now ${surgeArea.isActive ? "active" : "inactive"}`,
+      data: surgeArea
+    });
+
+  } catch (err) {
+    console.error("Error toggling surge area status:", err);
+    res.status(500).json({ message: "Failed to toggle surge area status", error: err.message });
+  }
+};
+
+
+
+
+exports.deleteSurgeArea = async (req, res) => {
+  try {
+    const { surgeAreaId } = req.params;
+
+    // ✅ Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(surgeAreaId)) {
+      return res.status(400).json({ message: "Invalid surge area ID" });
+    }
+
+    // ✅ Find and delete surge area
+    const deletedSurgeArea = await SurgeArea.findByIdAndDelete(surgeAreaId);
+
+    if (!deletedSurgeArea) {
+      return res.status(404).json({ message: "Surge area not found" });
+    }
+
+    res.status(200).json({
+      message: "Surge area deleted successfully",
+      data: deletedSurgeArea
+    });
+
+  } catch (err) {
+    console.error("Error deleting surge area:", err);
+    res.status(500).json({ message: "Failed to delete surge area", error: err.message });
+  }
+};

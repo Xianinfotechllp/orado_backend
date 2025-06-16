@@ -1551,3 +1551,52 @@ exports.updateRestaurantOrderStatus = async (req, res) => {
     });
   }
 };
+
+
+
+
+// PATCH /orders/:orderId/delay-reason
+exports.sendOrderDelayReason = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { delayReason, preparationTime } = req.body;
+
+    // Validate delay reason
+    if (!delayReason || delayReason.trim() === "") {
+      return res.status(400).json({ message: 'Delay reason is required.' });
+    }
+
+    // Find the order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found.' });
+    }
+
+    // (Optional) Check if restaurant owns this order (if you have authentication)
+    // if (order.restaurantId.toString() !== req.restaurantId) {
+    //   return res.status(403).json({ message: 'Unauthorized.' });
+    // }
+
+    // Update delay reason
+    order.preparationDelayReason = delayReason;
+
+    // Only update preparationTime if it's sent and valid
+    if (preparationTime && typeof preparationTime === 'number' && preparationTime > 0) {
+      order.preparationTime = preparationTime;
+    }
+
+    await order.save();
+
+    res.status(200).json({
+      message: 'Delay reason updated successfully.',
+      orderId: order._id,
+      delayReason: order.preparationDelayReason,
+      preparationTime: order.preparationTime
+    });
+
+  } catch (err) {
+    console.error('Error sending delay reason:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+

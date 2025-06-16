@@ -26,6 +26,7 @@ const {
   placeOrder,
   reorder,updateRestaurantOrderStatus,
   placeOrderWithAddressId,
+  sendOrderDelayReason,
 
   
   
@@ -96,6 +97,8 @@ router.post('/reorder/:orderId', protect, reorder);
 router.put('/restaurant/:restaurantId/orders/:orderId/status', protect , updateRestaurantOrderStatus);
 
 
+// router.get('/:id/delay-reason', getDelayReasonForOrder);
+router.patch("/:orderId/delay-reason",sendOrderDelayReason)
 
 
 
