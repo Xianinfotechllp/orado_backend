@@ -214,6 +214,8 @@ exports.getMyRestaurantProducts = async (req, res) => {
         error: 'User is not associated with any restaurant' 
       });
     }
+        console.log("Fetching products for restaurant ID:", req.body);
+
 
     // Find the restaurant first to verify it exists
     const restaurant = await Restaurant.findById(restaurantId);
@@ -227,8 +229,10 @@ exports.getMyRestaurantProducts = async (req, res) => {
     // Get all products for this restaurant
     // You can populate category if needed
     const products = await Product.find({ restaurantId })
-      .populate('categoryId', 'name') // Optional: populate category name
-      .sort({ createdAt: -1 }); // Sort by newest first
+      .populate('categoryId', 'name') 
+      .sort({ createdAt: -1 });
+
+      console.log("Products with populated category:", JSON.stringify(products, null, 2));
 
     res.status(200).json({
       success: true,
@@ -252,13 +256,14 @@ exports.getMyRestaurantProducts = async (req, res) => {
 // Get products for a restaurant
 exports.getRestaurantProducts = async (req, res) => {
   try {
-    const products = await Product.find({ restaurantId: req.params.restaurantId });
+    const products = await Product.find({ restaurantId: req.params.restaurantId })
+      .populate('categoryId', 'name'); // This will include the category name
+    
     res.json(products);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
-
 // Update a product;
 
 // exports.updateProduct = async (req, res) => {

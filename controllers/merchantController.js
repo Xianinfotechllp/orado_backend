@@ -48,6 +48,32 @@ exports.registerMerchant = async (req, res) => {
   }
 };
 
+// Get merchant details
+exports.getMerchantDetails = async (req, res) => {
+  try {
+     const merchantId = req.params.merchantId;
+
+    if (!merchantId) {
+      return res.status(400).json({ message: "Merchant ID is required." });
+    }
+
+    // Find merchant by ID, excluding sensitive information
+    const merchant = await User.findById(merchantId)
+      .select('-password -__v -createdAt -updatedAt')
+      .lean();
+
+    if (!merchant || merchant.userType !== 'merchant') {
+      return res.status(404).json({ message: "Merchant not found." });
+    }
+
+
+    res.status(200).json(merchant);
+  } catch (err) {
+    console.error("Get merchant details error:", err);
+    res.status(500).json({ message: "Internal server error." });
+  }
+};
+
 
 exports.loginMerchant = async (req, res) => {
   try {

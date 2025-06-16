@@ -317,7 +317,7 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
       updatedAt: restaurant.updatedAt
     }));
 
-    console.log("Formatted Restaurants:", formattedRestaurants);
+   
 
     return res.status(200).json({
       success: true,

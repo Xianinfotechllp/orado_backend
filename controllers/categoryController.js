@@ -235,43 +235,42 @@ exports.editResturantCategory = async (req, res) => {
 };
 
 
-
 exports.deleteResturantCategory = async (req, res) => {
   try {
-    
-      const {restaurantId} = req.body;
-      const {categoryId} = req.params
+    // Get both restaurantId and categoryId from req.params
+    const { restaurantId, categoryId } = req.params;
 
-     
-     if (!restaurantId) {
-    return res.status(400).json({ message: "restaurantId is required" });
-  }
-    // Validate restaurantId format
-      if (!mongoose.Types.ObjectId.isValid(restaurantId) || !mongoose.Types.ObjectId.isValid(categoryId)) {
-        return res.status(400).json({ message: 'Invalid restaurantId or categoryId' });
-      }
+    // Validate that both IDs are provided
+    if (!restaurantId || !categoryId) {
+      return res.status(400).json({ message: "restaurantId and categoryId are required" });
+    }
+
+    // Validate restaurantId and categoryId format
+    if (!mongoose.Types.ObjectId.isValid(restaurantId) || !mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ message: 'Invalid restaurantId or categoryId' });
+    }
+
     // Check if restaurant exists
-  const restaurant = await Restaurant.findOne({_id: restaurantId} );
-   if (!restaurant) {
-    return res.status(404).json({ message: 'Restaurant not found.' });
-  }
+    const restaurant = await Restaurant.findOne({ _id: restaurantId });
+    if (!restaurant) {
+      return res.status(404).json({ message: 'Restaurant not found.' });
+    }
 
-   const categoriesExist = await Category.findOne({_id:categoryId});
-     if(!categoriesExist)
-     {
+    // Check if category exists
+    const categoryExists = await Category.findOne({ _id: categoryId });
+    if (!categoryExists) {
       return res.status(404).json({ message: 'Category not found.' });
-     }
+    }
 
-         await Category.deleteOne({ _id: categoryId });
+    // Delete the category
+    await Category.deleteOne({ _id: categoryId });
 
-             res.status(200).json({ message: 'Category deleted successfully.' });
+    res.status(200).json({ message: 'Category deleted successfully.' });
   } catch (error) {
-      console.error(error); // Log the error for debugging
+    console.error('Error in deleteResturantCategory:', error); // More specific error logging
     res.status(500).json({ message: 'Server error.' });
   }
-}
-
-
+};
 
 
 
