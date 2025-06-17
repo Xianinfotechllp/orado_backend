@@ -795,6 +795,7 @@ exports.updateRestaurantOrderStatus = async (req, res) => {
     });
   }
 };
+
 exports.getRestaurantEarningSummary = async (req, res) => {
   try {
     const { restaurantId } = req.params;
@@ -808,8 +809,11 @@ exports.getRestaurantEarningSummary = async (req, res) => {
       });
     }
 
+    // Create ObjectId instance
+    const restaurantObjectId = new mongoose.Types.ObjectId(restaurantId);
+
     // Base query
-    const baseQuery = { restaurantId };
+    const baseQuery = { restaurantId: restaurantObjectId };
 
     // Add time filtering based on the requested timeFrame
     let dateFilter = {};
@@ -884,8 +888,8 @@ exports.getRestaurantEarningSummary = async (req, res) => {
       acc.totalNetEarnings += curr.restaurantNetEarning || 0;
       
       // Track payout status counts
-      acc.payoutStatusCounts[curr.payoutStatus] = 
-        (acc.payoutStatusCounts[curr.payoutStatus] || 0) + 1;
+      const status = curr.payoutStatus?.toLowerCase() || 'pending';
+      acc.payoutStatusCounts[status] = (acc.payoutStatusCounts[status] || 0) + 1;
       
       // Track commission types
       if (curr.commissionType === 'percentage') {
@@ -907,12 +911,12 @@ exports.getRestaurantEarningSummary = async (req, res) => {
     });
 
     // Calculate average commission rate
-    summary.averageCommissionRate = earnings.length > 0 
+    summary.averageCommissionRate = earnings.length > 0 && summary.totalAmount > 0
       ? (summary.totalCommission / summary.totalAmount * 100).toFixed(2)
       : 0;
 
     // Get time-based breakdown
-    const timeBreakdown = await getTimeBreakdown(restaurantId, timeFrame);
+    const timeBreakdown = await getTimeBreakdown(restaurantObjectId, timeFrame);
 
     res.status(200).json({
       success: true,
@@ -936,79 +940,83 @@ exports.getRestaurantEarningSummary = async (req, res) => {
 
 // Helper function to get time-based breakdown
 async function getTimeBreakdown(restaurantId, timeFrame) {
-  const breakdown = {};
-  
-  // For weekly/monthly/yearly breakdowns
-  if (timeFrame === 'year') {
-    // Group by month
-    const monthlyEarnings = await RestaurantEarning.aggregate([
-      { $match: { restaurantId: mongoose.Types.ObjectId(restaurantId) } },
-      { 
-        $group: {
-          _id: { $month: "$createdAt" },
-          totalAmount: { $sum: "$totalOrderAmount" },
-          totalNetEarnings: { $sum: "$restaurantNetEarning" },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { "_id": 1 } }
-    ]);
+  try {
+    const breakdown = {};
     
-    breakdown.monthlyBreakdown = monthlyEarnings.map(month => ({
-      month: month._id,
-      totalAmount: month.totalAmount,
-      totalNetEarnings: month.totalNetEarnings,
-      orderCount: month.count
-    }));
-  } 
-  else if (timeFrame === 'month') {
-    // Group by day
-    const dailyEarnings = await RestaurantEarning.aggregate([
-      { $match: { restaurantId: mongoose.Types.ObjectId(restaurantId) } },
-      { 
-        $group: {
-          _id: { $dayOfMonth: "$createdAt" },
-          totalAmount: { $sum: "$totalOrderAmount" },
-          totalNetEarnings: { $sum: "$restaurantNetEarning" },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { "_id": 1 } }
-    ]);
-    
-    breakdown.dailyBreakdown = dailyEarnings.map(day => ({
-      day: day._id,
-      totalAmount: day.totalAmount,
-      totalNetEarnings: day.totalNetEarnings,
-      orderCount: day.count
-    }));
-  }
-  else if (timeFrame === 'week') {
-    // Group by day of week
-    const weeklyEarnings = await RestaurantEarning.aggregate([
-      { $match: { restaurantId: mongoose.Types.ObjectId(restaurantId) } },
-      { 
-        $group: {
-          _id: { $dayOfWeek: "$createdAt" },
-          totalAmount: { $sum: "$totalOrderAmount" },
-          totalNetEarnings: { $sum: "$restaurantNetEarning" },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { "_id": 1 } }
-    ]);
-    
-    breakdown.weeklyBreakdown = weeklyEarnings.map(day => ({
-      dayOfWeek: day._id,
-      totalAmount: day.totalAmount,
-      totalNetEarnings: day.totalNetEarnings,
-      orderCount: day.count
-    }));
-  }
+    // For weekly/monthly/yearly breakdowns
+    if (timeFrame === 'year') {
+      // Group by month
+      const monthlyEarnings = await RestaurantEarning.aggregate([
+        { $match: { restaurantId } },
+        { 
+          $group: {
+            _id: { $month: "$createdAt" },
+            totalAmount: { $sum: "$totalOrderAmount" },
+            totalNetEarnings: { $sum: "$restaurantNetEarning" },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { "_id": 1 } }
+      ]);
+      
+      breakdown.monthlyBreakdown = monthlyEarnings.map(month => ({
+        month: month._id,
+        totalAmount: month.totalAmount,
+        totalNetEarnings: month.totalNetEarnings,
+        orderCount: month.count
+      }));
+    } 
+    else if (timeFrame === 'month') {
+      // Group by day
+      const dailyEarnings = await RestaurantEarning.aggregate([
+        { $match: { restaurantId } },
+        { 
+          $group: {
+            _id: { $dayOfMonth: "$createdAt" },
+            totalAmount: { $sum: "$totalOrderAmount" },
+            totalNetEarnings: { $sum: "$restaurantNetEarning" },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { "_id": 1 } }
+      ]);
+      
+      breakdown.dailyBreakdown = dailyEarnings.map(day => ({
+        day: day._id,
+        totalAmount: day.totalAmount,
+        totalNetEarnings: day.totalNetEarnings,
+        orderCount: day.count
+      }));
+    }
+    else if (timeFrame === 'week') {
+      // Group by day of week
+      const weeklyEarnings = await RestaurantEarning.aggregate([
+        { $match: { restaurantId } },
+        { 
+          $group: {
+            _id: { $dayOfWeek: "$createdAt" },
+            totalAmount: { $sum: "$totalOrderAmount" },
+            totalNetEarnings: { $sum: "$restaurantNetEarning" },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { "_id": 1 } }
+      ]);
+      
+      breakdown.weeklyBreakdown = weeklyEarnings.map(day => ({
+        dayOfWeek: day._id,
+        totalAmount: day.totalAmount,
+        totalNetEarnings: day.totalNetEarnings,
+        orderCount: day.count
+      }));
+    }
 
-  return breakdown;
+    return breakdown;
+  } catch (error) {
+    console.error('Error in getTimeBreakdown:', error);
+    return {};
+  }
 }
-
 
 
 
@@ -1064,11 +1072,18 @@ exports.getRestaurantOrders = async (req, res) => {
 
 
 exports.getRestaurantEarnings = async (req, res) => {
+
   try {
     const { restaurantId, period, fromDate, toDate, page = 1, limit = 50 } = req.query;
-
+    console.log("Query:", req.query);
     const query = {};
-    if (restaurantId) query.restaurantId = restaurantId;
+    if (restaurantId) {
+      if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+        return res.status(400).json({ message: "Invalid restaurantId format." });
+      }
+      query.restaurantId = restaurantId;
+    }
+
 
     if (period) {
       let start, end;
@@ -1128,6 +1143,7 @@ exports.getRestaurantEarnings = async (req, res) => {
       return {
         id: item._id,
         restaurantName: item.restaurantId?.name,
+        restaurantId: item.restaurantId?._id,
         restaurantLocation: item.restaurantId?.location,
         orderAmount: item.totalOrderAmount,
         commissionType: item.commissionType,

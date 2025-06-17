@@ -67,8 +67,8 @@ router.delete('/:restaurantId/categories/:categoryId', protect, checkRole('merch
 router.get("/:restaurantId/menu",getRestaurantMenu)
 
 // get restaurant earnigs
-router.get("/:restaurantId/earnigs/summary",protect,checkRole('merchant'),getRestaurantEarningSummary)
-router.get("/:restaurantId/earnigs",protect,getRestaurantEarnings)
+router.get("/:restruantId/earnings",protect,getRestaurantEarnings)
+router.get("/:restaurantId/earnings/summary",protect,checkRole('merchant','admin', 'superAdmin'),getRestaurantEarningSummary)
 
 router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders)
 

@@ -3,61 +3,196 @@ const Order = require('../models/orderModel');
 const Restaurant = require('../models/restaurantModel');
 const Agent = require('../models/agentModel');
 const { awardPointsToRestaurant, awardDeliveryPoints } = require('../utils/awardPoints');
-
+const {uploadOnCloudinary} = require('../utils/cloudinary')
 
 
 // 1. Create Feedback
-// currently using userid-from body-not using authentication
 exports.createFeedback = async (req, res) => {
   try {
-    const { orderId, restaurantId, agentId, targetType, rating, comment } = req.body;
-    const userId = req.user._id; // Use authenticated user
+    const { orderId, reviews } = req.body;
+    const userId = req.user._id;
 
-    if (!['order', 'restaurant', 'agent'].includes(targetType)) {
-      return res.status(400).json({ message: 'Invalid targetType' });
+    if (!orderId || !Array.isArray(reviews) || reviews.length === 0) {
+      return res.status(400).json({ message: 'Order ID and reviews are required' });
     }
 
-    if (!userId || !rating || !targetType) {
-      return res.status(400).json({ message: 'Required fields missing' });
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    const feedbacks = [];
+
+    for (const review of reviews) {
+      const {
+        itemId,       // orderItem ID
+        rating,
+        comment,
+        targetType = 'restaurant', // default if not passed
+        images = [],
+        restaurantId = order.restaurantId,
+        agentId = order.agentId, // optional
+      } = review;
+
+      if (!['order', 'restaurant', 'agent'].includes(targetType)) continue;
+      if (!rating || !targetType) continue;
+      if (targetType === 'order' && !itemId) continue;
+
+
+      // Upload images if present
+      const uploadedImages = [];
+
+      if (req.files && req.files.length > 0) {
+        for (const file of req.files) {
+          try {
+            const uploadRes = await uploadOnCloudinary(file.path, 'feedback_images');
+            if (uploadRes?.secure_url) {
+              uploadedImages.push(uploadRes.secure_url);
+            }
+          } catch (err) {
+            console.error('Cloudinary upload error:', err);
+          }
+        }
+      }
+
+      const feedback = new Feedback({
+        userId,
+        orderId,
+        restaurantId,
+        agentId,
+        targetType,
+        rating,
+        comment,
+        images: uploadedImages
+      });
+      console.log(feedback)
+
+      await feedback.save();
+      feedbacks.push(feedback);
+
+      // Award points for positive feedback
+      if (rating >= 4) {
+        if (targetType === 'restaurant' && restaurantId) {
+          try {
+            await awardPointsToRestaurant(restaurantId, 5, 'Positive Feedback', orderId);
+          } catch (err) {
+            console.error('Error awarding points to restaurant:', err.message);
+          }
+        }
+
+        if (targetType === 'agent' && agentId) {
+          try {
+            await awardDeliveryPoints(agentId, 5, 'Positive Feedback', orderId);
+          } catch (err) {
+            console.error('Error awarding points to agent:', err.message);
+          }
+        }
+      }
     }
 
-    const feedback = new Feedback({
-      userId,
-      orderId,
-      restaurantId,
-      agentId,
-      targetType,
-      rating,
-      comment,
+    return res.status(201).json({
+      message: 'All feedback submitted',
+      feedbacks
     });
 
-    await feedback.save();
-
-    // Award points for positive feedback (rating >= 4)
-    if (targetType === 'restaurant' && rating >= 4 && restaurantId && orderId) {
-      try {
-        await awardPointsToRestaurant(restaurantId, 5, 'Positive Feedback', orderId);
-      } catch (error) {
-        console.error('Error awarding points to restaurant:', error);
-      }
-    }
-
-    // Optionally, award points to agent for positive feedback
-    if (targetType === 'agent' && rating >= 4 && agentId && orderId) {
-      try {
-        await awardDeliveryPoints(agentId, 5, 'Positive Feedback', orderId);
-      } catch (error) {
-        console.error('Error awarding points to agent:', error);
-      }
-    }
-
-    return res.status(201).json({ message: 'Feedback submitted', feedback });
-
   } catch (error) {
-    console.error("Feedback Error:", error);
+    console.error('Feedback submission error:', error);
     return res.status(500).json({ message: 'Server error', error });
   }
 };
+
+exports.createRestaurantFeedback = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { orderId } = req.body;
+    let reviews = [];
+
+    try {
+      if (typeof req.body.reviews === 'string') {
+        reviews = JSON.parse(req.body.reviews);
+      } else {
+        reviews = req.body.reviews;
+      }
+    } catch (err) {
+      return res.status(400).json({ message: 'Invalid reviews format' });
+    }
+
+    if (!Array.isArray(reviews) || reviews.length === 0) {
+      return res.status(400).json({ message: 'Reviews are required' });
+    }
+
+    let order;
+    if (orderId && orderId !== 'undefined') {
+      order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+    }
+
+    const feedbacks = [];
+
+    for (let i = 0; i < reviews.length; i++) {
+  const review = reviews[i];
+  const {
+    itemId,
+    rating,
+    comment,
+    targetType = 'restaurant',
+    restaurantId = order?.restaurantId,
+    agentId = order?.agentId,
+  } = review;
+
+  if (!['order', 'restaurant', 'agent'].includes(targetType)) continue;
+  if (!rating || !targetType) continue;
+  if (targetType === 'order' && !itemId) continue;
+
+  const uploadedImages = [];
+
+  // ⛳ For single review, attach all files to that review
+  if (i === 0 && req.files && req.files.length > 0) {
+    for (const file of req.files) {
+      try {
+        const uploadRes = await uploadOnCloudinary(file.path, 'feedback_images');
+        if (uploadRes?.secure_url) {
+          uploadedImages.push(uploadRes.secure_url);
+        }
+      } catch (err) {
+        console.error('Cloudinary upload error:', err);
+      }
+    }
+  }
+
+  const feedback = new Feedback({
+    userId,
+    orderId: orderId || null,
+    restaurantId,
+    agentId,
+    targetType,
+    rating,
+    comment,
+    images: uploadedImages
+  });
+
+  await feedback.save();
+  feedbacks.push(feedback);
+  
+  if (rating >= 4) {
+    if (targetType === 'restaurant' && restaurantId) {
+      await awardPointsToRestaurant(restaurantId, 5, 'Positive Feedback', orderId);
+    }
+    if (targetType === 'agent' && agentId) {
+      await awardDeliveryPoints(agentId, 5, 'Positive Feedback', orderId);
+    }
+  }
+}
+
+
+    return res.status(201).json({ message: 'All feedback submitted', feedbacks });
+  } catch (error) {
+    console.error('Feedback submission error:', error);
+    return res.status(500).json({ message: 'Server error', error });
+  }
+};
+
+
 
 // 2. Get Feedbacks (by target type and ID)
 exports.getFeedbacks = async (req, res) => {
@@ -162,11 +297,14 @@ exports.getRestaurantReviews = async (req, res) => {
       restaurantId,
       targetType: 'restaurant'
     })
-    .populate('userId', 'name profileImage')          // reviewer details
-    .populate('restaurantId', 'name logo')            // replying restaurant details if needed
-    .sort({ createdAt: -1 });
+      .populate('userId', 'name profileImage')
+      .populate('restaurantId', 'name logo')
+      .sort({ createdAt: -1 });
 
-    // Format response to include reply details if exists
+    const totalReviews = reviews.length;
+    const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
+    const avgRating = totalReviews > 0 ? (totalRating / totalReviews).toFixed(1) : 0;
+
     const formattedReviews = reviews.map(review => {
       let replyDetails = null;
 
@@ -174,10 +312,12 @@ exports.getRestaurantReviews = async (req, res) => {
         replyDetails = {
           message: review.reply,
           repliedAt: review.repliedAt,
-          repliedBy: review.restaurantId ? {
-            name: review.restaurantId.name,
-            logo: review.restaurantId.logo
-          } : null
+          repliedBy: review.restaurantId
+            ? {
+                name: review.restaurantId.name,
+                logo: review.restaurantId.logo
+              }
+            : null
         };
       }
 
@@ -194,15 +334,16 @@ exports.getRestaurantReviews = async (req, res) => {
 
     return res.status(200).json({
       message: 'Restaurant reviews fetched successfully',
-      count: formattedReviews.length,
+      count: totalReviews,
+      averageRating: Number(avgRating),
       reviews: formattedReviews
     });
-
   } catch (error) {
     console.error('Error fetching restaurant reviews:', error);
     return res.status(500).json({ message: 'Server error', error });
   }
 };
+
 
 
 

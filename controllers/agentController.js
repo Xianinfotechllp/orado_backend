@@ -361,7 +361,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     "assigned_to_agent",
     "picked_up",
     "in_progress",
-    "delivered",
+    "completed",
     "cancelled_by_customer",
     "pending_agent_acceptance",
     "available",
