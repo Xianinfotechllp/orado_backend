@@ -308,6 +308,7 @@ exports.addProductReview = async (req, res) => {
 exports.getRestaurantProductReviews = async (req, res) => {
   
   try {
+    
     const { restaurantId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
@@ -359,6 +360,8 @@ exports.getRestaurantProductReviews = async (req, res) => {
       repliedAt: review.repliedAt,
       createdAt: review.createdAt,
     }));
+
+    console.log("Formatted Reviews:----------", formattedReviews);
 
     return res.status(200).json({
       message: "Product reviews fetched successfully",
