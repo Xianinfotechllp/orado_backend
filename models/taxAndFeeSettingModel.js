@@ -38,14 +38,23 @@ const taxAndFeeSettingSchema = new mongoose.Schema({
     enum: ['Fixed', 'Per KM', 'Per Order Type'],
     default: 'Fixed'
   },
+
+  // Common for all fee types
   baseDeliveryFee: {
     type: Number,
     default: 40
   },
-  perKmFee: {
+
+  // Per KM Fee Settings
+  baseDistanceKm: {
     type: Number,
-    default: 7
+    default: 2 // in km
   },
+  perKmFeeBeyondBase: {
+    type: Number,
+    default: 5 // ₹ per km beyond base distance
+  },
+
   orderTypeDeliveryFees: {
     type: Map,
     of: Number,
@@ -76,5 +85,6 @@ const taxAndFeeSettingSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
 
 module.exports = mongoose.model('TaxAndFeeSetting', taxAndFeeSettingSchema);

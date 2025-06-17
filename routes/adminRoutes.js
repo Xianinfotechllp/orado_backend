@@ -30,7 +30,8 @@ const {createRestaurant} = require("../controllers/admin/restaurantController")
 
 
 const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController");
-const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus} = require("../controllers/admin/taxAndFeeSettingController");
+const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
+const {sendNotification} = require('../controllers/admin/notificationControllers')
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -127,6 +128,10 @@ router.get("/surge-list",getSurgeAreas)
 router.patch("/surge-areas/:surgeAreaId/toggle-status", toggleSurgeAreaStatus);
 router.delete("/surge-areas/:surgeAreaId",deleteSurgeArea)
 
+//delivery fee
+router.put("/settings/delivery-fee",updateDeliveryFeeSettings)
+router.get("/settings/delivery-fee",getDeliveryFeeSettings)
+
 
 //tax and feees 
 router.post("/taxes",addTax)
@@ -136,8 +141,9 @@ router.patch("/taxes/:taxId",editTax)
 router.patch("/taxes/:taxId/toggle",toggleTaxStatus)
 
 
+//send broadcast notification
 
-
+router.post('/notifications',sendNotification)
 
 
 

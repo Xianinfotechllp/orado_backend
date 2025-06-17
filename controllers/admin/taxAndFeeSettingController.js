@@ -43,6 +43,7 @@ exports.addTax = async (req, res) => {
 
 exports.getAllTaxes = async (req, res) => {
   try {
+    console.log("test")
     const settings = await TaxAndFeeSetting.findOne();
 
     if (!settings || settings.taxes.length === 0) {
@@ -182,3 +183,120 @@ exports.toggleTaxStatus = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error." });
   }
 };
+
+
+exports.updateDeliveryFeeSettings = async (req, res) => {
+  try {
+    const {
+      deliveryFeeType, // 'Fixed' | 'Per KM' | 'Per Order Type'
+      baseDeliveryFee,
+      baseDistanceKm,
+      perKmFeeBeyondBase,
+      orderTypeDeliveryFees // object like { "food": 30, "grocery": 40 }
+    } = req.body;
+
+    // Validate fee type
+    if (!["Fixed", "Per KM", "Per Order Type"].includes(deliveryFeeType)) {
+      return res.status(400).json({
+        message: "Invalid deliveryFeeType value.",
+        messageType: "failure"
+      });
+    }
+
+    // Fetch or create settings document
+    let settings = await TaxAndFeeSetting.findOne();
+    if (!settings) {
+      settings = new TaxAndFeeSetting();
+    }
+
+    // Update based on fee type
+    settings.deliveryFeeType = deliveryFeeType;
+
+    if (deliveryFeeType === "Fixed") {
+      if (baseDeliveryFee === undefined) {
+        return res.status(400).json({
+          message: "baseDeliveryFee is required for Fixed delivery fee type.",
+          messageType: "failure"
+        });
+      }
+      settings.baseDeliveryFee = baseDeliveryFee;
+    }
+
+    if (deliveryFeeType === "Per KM") {
+      if (
+        baseDeliveryFee === undefined ||
+        baseDistanceKm === undefined ||
+        perKmFeeBeyondBase === undefined
+      ) {
+        return res.status(400).json({
+          message:
+            "baseDeliveryFee, baseDistanceKm, and perKmFeeBeyondBase are required for Per KM delivery fee type.",
+          messageType: "failure"
+        });
+      }
+      settings.baseDeliveryFee = baseDeliveryFee;
+      settings.baseDistanceKm = baseDistanceKm;
+      settings.perKmFeeBeyondBase = perKmFeeBeyondBase;
+    }
+
+    if (deliveryFeeType === "Per Order Type") {
+      if (!orderTypeDeliveryFees || typeof orderTypeDeliveryFees !== "object") {
+        return res.status(400).json({
+          message: "orderTypeDeliveryFees object is required for Per Order Type delivery fee type.",
+          messageType: "failure"
+        });
+      }
+      settings.orderTypeDeliveryFees = orderTypeDeliveryFees;
+    }
+
+    await settings.save();
+
+    return res.status(200).json({
+      message: "Delivery fee settings updated successfully.",
+      messageType: "success",
+      data: settings
+    });
+
+  } catch (error) {
+    console.error("Error updating delivery fee settings:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      messageType: "failure",
+      error
+    });
+  }
+};
+
+
+exports.getDeliveryFeeSettings = async (req, res) => {
+  try {
+    const settings = await TaxAndFeeSetting.findOne();
+
+    if (!settings) {
+      return res.status(404).json({
+        message: "Delivery fee settings not found.",
+        messageType: "failure",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Delivery fee settings fetched successfully.",
+      messageType: "success",
+      data: {
+        deliveryFeeType: settings.deliveryFeeType,
+        baseDeliveryFee: settings.baseDeliveryFee,
+        baseDistanceKm: settings.baseDistanceKm,
+        perKmFeeBeyondBase: settings.perKmFeeBeyondBase,
+        orderTypeDeliveryFees: settings.orderTypeDeliveryFees,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching delivery fee settings:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      messageType: "failure",
+      error,
+    });
+  }
+};
+
