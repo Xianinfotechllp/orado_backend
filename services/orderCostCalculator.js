@@ -216,18 +216,14 @@ exports.calculateOrderCostWithOffer = async ({
   };
 };
 
-
-
-
 exports.calculateOrderCostV2 = ({
   cartProducts,
   tipAmount = 0,
   couponCode,
-  restaurantCoords,
-  userCoords,
+  deliveryFee = 0,
   offers = [],
   revenueShare = { type: 'percentage', value: 20 },
-  taxRate = 5,
+  taxes = [],  // ✅ now an array of tax objects
   isSurge = false,
   surgeFeeAmount = 0,
   surgeReason = null
@@ -237,8 +233,7 @@ exports.calculateOrderCostV2 = ({
     cartTotal += item.price * item.quantity;
   });
 
-  const deliveryFee = deliveryFeeCalculator2(restaurantCoords, userCoords);
-
+  // Offers
   let offerDiscount = 0;
   let appliedOffer = null;
   if (offers.length) {
@@ -259,6 +254,7 @@ exports.calculateOrderCostV2 = ({
     });
   }
 
+  // Coupons
   let couponDiscount = 0;
   if (couponCode) {
     if (couponCode === "WELCOME50") {
@@ -269,10 +265,22 @@ exports.calculateOrderCostV2 = ({
   }
 
   const taxableAmount = cartTotal - offerDiscount;
-  const taxAmount = (taxableAmount * taxRate) / 100;
+
+  // ✅ Multiple Tax calculation
+  const taxBreakdown = taxes.map(tax => {
+    const amount = (taxableAmount * tax.percentage) / 100;
+    return {
+      name: tax.name,
+      percentage: tax.percentage,
+      amount
+    };
+  });
+
+  const totalTaxAmount = taxBreakdown.reduce((sum, t) => sum + t.amount, 0);
+
   const surgeFee = isSurge ? surgeFeeAmount : 0;
 
-  const finalAmountBeforeRevenueShare = taxableAmount + deliveryFee + tipAmount + taxAmount + surgeFee - couponDiscount;
+  const finalAmountBeforeRevenueShare = taxableAmount + deliveryFee + tipAmount + totalTaxAmount + surgeFee - couponDiscount;
 
   let revenueShareAmount = 0;
   if (revenueShare.type === 'percentage') {
@@ -285,7 +293,8 @@ exports.calculateOrderCostV2 = ({
     cartTotal,
     deliveryFee,
     tipAmount,
-    taxAmount,
+    taxBreakdown,     // detailed taxes
+    totalTaxAmount,   // total tax
     surgeFee,
     offerDiscount,
     couponDiscount,
@@ -293,6 +302,7 @@ exports.calculateOrderCostV2 = ({
     finalAmount: finalAmountBeforeRevenueShare,
     revenueShareAmount,
     isSurge,
-    surgeReason
+    surgeReason,
+    appliedOffer
   };
 };

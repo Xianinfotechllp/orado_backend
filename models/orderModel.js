@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-
+const mongoosePaginate = require("mongoose-paginate-v2");
 const orderSchema = mongoose.Schema({
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant' },
@@ -28,6 +28,11 @@ const orderSchema = mongoose.Schema({
   },
 
   assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },  
+  agentAssignmentStatus: {
+  type: String,
+  enum: [   'awaiting_agent_assignment','not_assigned', 'assigned_waiting_acceptance', 'accepted', 'rejected', 'reassigned'],
+  default: 'not_assigned'
+},
 
   rejectionHistory: [{
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },
@@ -45,6 +50,27 @@ const orderSchema = mongoose.Schema({
   tipAmount: Number,
   totalAmount: Number,
   distanceKm: Number,
+
+offerId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Offer',
+  default: null
+},
+offerName: {
+  type: String,
+  default: null
+},
+offerDiscount: {
+  type: Number,
+  default: 0
+},
+
+
+
+
+
+
+
 
   paymentMethod: { type: String, enum: ['cash', 'online', 'wallet'] },
   walletUsed: { type: Number, default: 0 },
@@ -106,7 +132,7 @@ const orderSchema = mongoose.Schema({
   guestEmail: { type: String },
 
 }, { timestamps: true });
-
+orderSchema.plugin(mongoosePaginate);
 orderSchema.index({ deliveryLocation: '2dsphere' });
 
 module.exports = mongoose.model('Order', orderSchema);

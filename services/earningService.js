@@ -39,31 +39,35 @@ exports.addRestaurantEarnings = async (orderId) => {
   if (!order) throw new Error('Order not found');
 
   const restaurantId = order.restaurantId;
-  let totalRevenueShareAmount = 0;
+  let totalCommissionAmount = 0;
 
   for (let item of order.orderItems) {
     const product = await Product.findById(item.productId);
     if (!product) continue;
 
-    // Calculate revenue share for each item
-    let itemRevenue = 0;
+    // Calculate commission for each item
+    let itemCommission = 0;
 
     if (product.revenueShare.type === 'percentage') {
-      itemRevenue = (item.totalPrice * product.revenueShare.value) / 100;
+      itemCommission = (item.totalPrice * product.revenueShare.value) / 100;
     } else {
-      itemRevenue = product.revenueShare.value * item.quantity;
+      itemCommission = product.revenueShare.value * item.quantity;
     }
 
-    totalRevenueShareAmount += itemRevenue;
+    totalCommissionAmount += itemCommission;
   }
+
+  const totalOrderAmount = order.totalAmount;
+  const restaurantNetEarning = totalOrderAmount - totalCommissionAmount;
 
   const earningRecord = new RestaurantEarning({
     restaurantId,
     orderId,
-    totalOrderAmount: order.totalAmount,
-    revenueShareAmount: totalRevenueShareAmount,
-    revenueShareType: 'percentage', // as this is calculated per product — else can store 'percentage' if unified
-    revenueShareValue: 0, // 0 because mixed from multiple products, or you can leave null
+    totalOrderAmount: totalOrderAmount,
+    commissionAmount: totalCommissionAmount,
+    commissionType: 'mixed', // if per product varies — otherwise 'percentage' or 'fixed'
+    commissionValue: 0, // can leave 0 or null if mixed
+    restaurantNetEarning: restaurantNetEarning,
     payoutStatus: 'pending'
   });
 
@@ -71,36 +75,35 @@ exports.addRestaurantEarnings = async (orderId) => {
 
   return earningRecord;
 };
-
-
-
-
 exports.createRestaurantEarning = async (order) => {
   try {
     const restaurant = await Restaurant.findById(order.restaurantId);
+    if (!restaurant) throw new Error("Restaurant not found for earning calculation.");
 
-    if (!restaurant) {
-      throw new Error("Restaurant not found for earning calculation.");
-    }
+    const commission = restaurant.commission || { type: "percentage", value: 20 };
+    const { type: commissionType, value: commissionValue } = commission;
 
-    const commissionType = restaurant.commission?.type || "percentage";
-    const commissionValue = restaurant.commission?.value || 20; // default 20%
+    // Base for commission: subtotal before discounts
+    const commissionBase = order.subtotal;
 
     let commissionAmount = 0;
-    let restaurantNetEarning = 0;
-
     if (commissionType === "percentage") {
-      commissionAmount = (order.subtotal * commissionValue) / 100;
+      commissionAmount = (commissionBase * commissionValue) / 100;
     } else if (commissionType === "fixed") {
       commissionAmount = commissionValue;
     }
 
-    restaurantNetEarning = order.subtotal - commissionAmount;
+    // Net earning is totalAmount (what customer paid) minus commission
+    const restaurantNetEarning = order.totalAmount - commissionAmount;
 
     const newEarning = new RestaurantEarning({
       restaurantId: order.restaurantId,
       orderId: order._id,
-      totalOrderAmount: order.subtotal,
+      subtotal: order.subtotal,
+      offerDiscount: order.offerDiscount || 0,
+      offerId: order.offerId || null,
+      offerName: order.offerName || null,
+      totalOrderAmount: order.totalAmount,
       commissionAmount,
       commissionType,
       commissionValue,
@@ -108,12 +111,12 @@ exports.createRestaurantEarning = async (order) => {
     });
 
     await newEarning.save();
-
-    console.log(`Restaurant earning record created for order ${order._id}`);
+    console.log(`✅ Restaurant earning record created for order ${order._id}`);
 
     return newEarning;
+
   } catch (error) {
-    console.error("Error creating restaurant earning:", error);
+    console.error("❌ Error creating restaurant earning:", error);
     throw error;
   }
 };

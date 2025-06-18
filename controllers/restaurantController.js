@@ -12,7 +12,7 @@ const Session = require("../models/session");
 const User = require("../models/userModel");
 const Offer = require("../models/offerModel");
 const moment = require("moment");
-
+const { Types } = require('mongoose');
 exports.createRestaurant = async (req, res) => {
   try {
     // 1️⃣ Required fields validation (removed password, ownerName, email, phone)
@@ -1250,5 +1250,188 @@ exports.getRestaurantEarnings = async (req, res) => {
       message: "Failed to fetch restaurant earnings report",
       error: err.message
     });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.getRestaurantEarningsList = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const matchStage = {};
+    if (startDate && endDate) {
+      matchStage.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    const result = await RestaurantEarning.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: "$restaurantId", // This is restaurantId
+          totalOrderAmount: { $sum: "$totalOrderAmount" },
+          totalCommission: { $sum: "$commissionAmount" },
+          totalNetRevenue: { $sum: "$restaurantNetEarning" },
+          orderCount: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: "restaurants",
+          localField: "_id",
+          foreignField: "_id",
+          as: "restaurant"
+        }
+      },
+      { $unwind: "$restaurant" },
+      {
+        $project: {
+          restaurantId: "$_id", // 👈 Add this line
+          restaurantName: "$restaurant.name",
+          totalOrderAmount: 1,
+          totalCommission: 1,
+          totalNetRevenue: 1,
+          orderCount: 1
+        }
+      },
+      { $sort: { totalOrderAmount: -1 } }
+    ]);
+
+    res.json({
+      totalRestaurants: result.length,
+      data: result
+    });
+
+  } catch (error) {
+    console.error("Error generating earnings summary", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+
+exports.getRestaurantEarningv2 = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    if (
+      !restaurantId ||
+      restaurantId === "undefined" ||
+      !mongoose.Types.ObjectId.isValid(restaurantId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid restaurant ID",
+      });
+    }
+
+    const { startDate, endDate, page = 1, limit = 10 } = req.query;
+
+    // 1️⃣ Get all earnings for this restaurant (no payoutStatus filter)
+    const paidEarnings = await RestaurantEarning.find({
+      restaurantId,
+    }).lean();
+
+    const paidOrderIds = paidEarnings.map((earning) =>
+      new Types.ObjectId(earning.orderId)
+    );
+
+    // 2️⃣ Build order filter for delivered orders with those earnings
+    const orderFilter = {
+      _id: { $in: paidOrderIds },
+      orderStatus: "delivered",
+      restaurantId,
+    };
+
+    if (startDate && endDate) {
+      orderFilter.orderTime = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    // 3️⃣ Summary aggregation
+    const summary = await RestaurantEarning.aggregate([
+      {
+        $match: {
+          restaurantId: new Types.ObjectId(restaurantId),
+          orderId: { $in: paidOrderIds },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalOrderAmount: { $sum: "$totalOrderAmount" },
+          totalCommission: { $sum: "$commissionAmount" },
+          totalNetRevenue: { $sum: "$restaurantNetEarning" },
+          orderCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // 4️⃣ Fetch paginated orders with product, agent & customer details
+    const ordersData = await Order.paginate(orderFilter, {
+      page,
+      limit,
+      sort: { createdAt: -1 },
+      populate: [
+        { path: "customerId", select: "name phone" },
+        { path: "assignedAgent", select: "name phone" },
+        { path: "orderItems.productId", select: "name price image" },
+      ],
+      select:
+        "orderItems orderTime deliveryTime paymentMethod walletUsed totalAmount deliveryAddress orderStatus assignedAgent subtotal offerDiscount discountAmount",
+    });
+
+    // 5️⃣ Map earnings into each order
+    const ordersWithEarnings = await Promise.all(
+      ordersData.docs.map(async (order) => {
+        const earning = await RestaurantEarning.findOne({
+          orderId: order._id,
+          restaurantId,
+        }).lean();
+
+        return {
+          ...order.toObject(),
+          subtotal: order.subtotal,
+          offerDiscount: order.offerDiscount,
+          discountAmount: order.discountAmount,
+          commissionAmount: earning ? earning.commissionAmount : 0,
+          restaurantNetEarning: earning ? earning.restaurantNetEarning : 0,
+        };
+      })
+    );
+
+    // 6️⃣ Final Response
+    res.json({
+      success: true,
+      summary: summary[0] || {
+        totalOrderAmount: 0,
+        totalCommission: 0,
+        totalNetRevenue: 0,
+        orderCount: 0,
+      },
+      orders: {
+        ...ordersData,
+        docs: ordersWithEarnings,
+      },
+    });
+  } catch (error) {
+    console.error("Payout report error:", error);
+    res.status(500).json({ message: error.message });
   }
 };

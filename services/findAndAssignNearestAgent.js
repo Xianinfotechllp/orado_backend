@@ -143,7 +143,6 @@ exports.assignNearestAgentSimple = async (orderId) => {
     if (!agent) {
       throw new Error('No available agents');
     }
-
     // 3. Update the order
     order.assignedAgent = agent._id;
     await order.save();
@@ -155,7 +154,7 @@ exports.assignNearestAgentSimple = async (orderId) => {
     return {
       success: true,
       agentId: agent._id,
-      orderStatus: order.orderStatus
+     
     };
   } catch (error) {
     console.error('Simple agent assignment error:', error);
@@ -167,3 +166,45 @@ exports.assignNearestAgentSimple = async (orderId) => {
 };
 
 
+
+exports.assignRandomAgentSimple = async (orderId) => {
+  try {
+    // 1. Get the order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    // 2. Get a random available agent
+    const agents = await Agent.aggregate([
+      { $match: { availabilityStatus: "Available" } },
+      { $sample: { size: 1 } }
+    ]);
+
+    if (!agents || agents.length === 0) {
+      throw new Error('No available agents');
+    }
+
+    const agent = agents[0];
+
+    // 3. Update the order
+    order.assignedAgent = agent._id;
+    await order.save();
+
+    // 4. Update agent's status directly in DB
+    await Agent.findByIdAndUpdate(agent._id, {
+      "deliveryStatus.status": "assigned_to_agent"
+    });
+
+    return {
+      success: true,
+      agentId: agent._id,
+    };
+  } catch (error) {
+    console.error('Random agent assignment error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};

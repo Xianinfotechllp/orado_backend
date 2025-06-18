@@ -5,7 +5,7 @@ const {createCategory,getAResturantCategories,editResturantCategory,deleteRestur
 const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll, getMerchantDetails} = require('../controllers/merchantController')
 const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
-const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas}  = require('../controllers/restaurantController')
+const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas, getRestaurantEarningsList, getRestaurantEarningv2}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
@@ -23,7 +23,7 @@ router.post("/login", loginMerchant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
-router.get('/:merchantId', getMerchantDetails); 
+// router.get('/:merchantId', getMerchantDetails); 
 router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
 router.get('/merchant/:merchantId/restaurants',  getRestaurantsByMerchantId);
 
@@ -71,6 +71,10 @@ router.get("/:restaurantId/menu",getRestaurantMenu)
 // get restaurant earnigs
 router.get("/:restaurantId/earnigs/summary",protect,checkRole('merchant'),getRestaurantEarningSummary)
 router.get("/:restaurantId/earnigs",protect,getRestaurantEarnings)
+router.get("/:restaurantId/earnigs-list",protect,getRestaurantEarningsList)
+
+router.get("/:restaurantId/earnigsv2",protect,getRestaurantEarningv2)
+
 
 router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders)
 

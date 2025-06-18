@@ -63,7 +63,7 @@ exports.getMerchantDetails = async (req, res) => {
       .lean();
 
     if (!merchant || merchant.userType !== 'merchant') {
-      return res.status(404).json({ message: "Merchant not found." });
+      return res.status(404).json({ message: "Merchant not found  ." });
     }
 
 

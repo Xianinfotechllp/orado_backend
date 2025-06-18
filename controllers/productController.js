@@ -445,6 +445,57 @@ exports.toggleProductActive = async (req, res) => {
 
 
 
+
+
+// Toggle product active/inactive status
+exports.toggleProductStatus = async (req, res) => {
+  const {productId } = req.params;
+
+
+  try {
+    // Validate productId format
+  
+
+    // Find product by ID
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found." });
+    }
+
+    // Toggle the 'active' status
+    product.active = !product.active;
+
+    // Save updated product
+    await product.save();
+
+    // Send success response
+    return res.status(200).json({
+      success: true,
+      message: `Product is now ${product.active ? "active" : "inactive"}.`,
+      product,
+    });
+
+  } catch (error) {
+    console.error("Error toggling product status:", error);
+    return res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 exports.getCategoryProducts = async (req, res) => {
   try {
     const { restaurantId, categoryId } = req.params;
