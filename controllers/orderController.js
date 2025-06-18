@@ -1642,7 +1642,6 @@ exports.sendOrderDelayReason = async (req, res) => {
   }
 };
 
-
 exports.placeOrderV2 = async (req, res) => {
   try {
     const {
@@ -1698,34 +1697,38 @@ exports.placeOrderV2 = async (req, res) => {
     }
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
-    const restaurantCoords = restaurant.location.coordinates;
-    const preSurgeOrderAmount = cart.products.reduce(
+       const restaurantCoords = restaurant.location.coordinates;
+ const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
 
-    const offers = await Offer.find({
+
+      const offers = await Offer.find({
       applicableRestaurants: restaurant._id,
       isActive: true,
       validFrom: { $lte: new Date() },
       validTill: { $gte: new Date() },
     }).lean();
 
+
     const surgeObj = await getApplicableSurgeFee(
       userCoords,
       preSurgeOrderAmount
     );
 
-    const isSurge = !!surgeObj;
+        const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
 
-    const deliveryFee = await feeService.calculateDeliveryFee(
+
+const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
       userCoords
     );
-    const foodTax = await feeService.getActiveTaxes("food");
+        const foodTax = await feeService.getActiveTaxes("food");
 
-    const costSummary = calculateOrderCostV2({
+
+          const costSummary = calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
       couponCode,
@@ -1736,6 +1739,10 @@ exports.placeOrderV2 = async (req, res) => {
       isSurge,
       surgeFeeAmount,
     });
+
+
+    console.log(costSummary)
+
 
     // Calculate bill summary
     const billSummary = calculateOrderCost({
@@ -1792,7 +1799,10 @@ exports.placeOrderV2 = async (req, res) => {
       tax: costSummary.totalTaxAmount,
       discountAmount: billSummary.discount,
       deliveryCharge: costSummary.deliveryFee,
-      offerId: costSummary.appliedOffer?._id || null,
+      offerId:costSummary.appliedOffer?._id || null,
+  
+      offerName: costSummary.appliedOffer?.title || null, // optional if you want to save offer title too
+  offerDiscount: costSummary.offerDiscount,    
       surgeCharge: costSummary.surgeFee,
       tipAmount,
       totalAmount: billSummary.total + tipAmount,
@@ -1811,31 +1821,39 @@ exports.placeOrderV2 = async (req, res) => {
       assignmentResult = await assignRandomAgentSimple(savedOrder._id);
       console.log("Agent assignment result:", assignmentResult);
 
+
+
+
+
+ console.log(`Emitting to restaurant_${savedOrder.restaurantId}`);
+  const updatedOrder = await Order.findByIdAndUpdate(orderId, { 
+    $set: { assignedAgent: agentId, agentAssignmentStatus: "accepted", agentAcceptedAt: new Date() }
+  })
+  .populate("customerId", "name email")
+  .populate("assignedAgent", "fullName phoneNumber email")
+
+const orderObj = updatedOrder.toObject();
+
+
+
+
       if (assignmentResult.success) {
-        const updatedOrder = await Order.findByIdAndUpdate(
-          savedOrder._id,
-          {
-            $set: {
-              assignedAgent: assignmentResult.agentId,
-              agentAssignmentStatus: "accepted",
-              agentAcceptedAt: new Date(),
-            },
-          },
-          { new: true }
-        )
-          .populate("customerId", "name email")
-          .populate("assignedAgent", "fullName phoneNumber email");
+        // Update only agent assignment fields, not main order status
+       
 
-        const orderObj = updatedOrder.toObject();
+io.to("restaurant_6845eedd4efc0e84edfcff46").emit("new_order", { test: "hello" });
 
-        // Emit events to all parties
-        io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
-          success: true,
-          message: "Agent assigned to order",
-          updateType: "agent_assigned",
-          order: mapOrder(orderObj),
-        });
+ io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
+  success: true,
+  message: "Agent assigned to order",
+  updateType: "agent_assigned",
+  order: mapOrder(orderObj)
+});
 
+
+
+
+        // Notify all parties about assignment (not pickup)
         io.to(`agent_${assignmentResult.agentId}`).emit("delivery_assigned", {
           orderId: savedOrder._id,
           action: "assignment",
@@ -1846,7 +1864,7 @@ exports.placeOrderV2 = async (req, res) => {
           orderId: savedOrder._id,
           updateType: "agent_assigned",
           agentId: assignmentResult.agentId,
-          currentStatus: savedOrder.orderStatus,
+          currentStatus: savedOrder.orderStatus, // Original status remains
         });
 
         io.to(`restaurant_${savedOrder.restaurantId}`).emit("order_update", {
@@ -1855,7 +1873,7 @@ exports.placeOrderV2 = async (req, res) => {
           agentId: assignmentResult.agentId,
         });
 
-        // Send push notifications
+        // Send appropriate notifications
         await sendPushNotification(
           savedOrder.customerId,
           "Delivery Agent Assigned",
@@ -1868,7 +1886,7 @@ exports.placeOrderV2 = async (req, res) => {
           "You have been assigned a new delivery"
         );
       } else {
-        // No agent available
+        // No agent available - update only assignment status
         await Order.findByIdAndUpdate(savedOrder._id, {
           $set: {
             agentAssignmentStatus: "awaiting_agent_assignment",
@@ -1885,16 +1903,14 @@ exports.placeOrderV2 = async (req, res) => {
     }
 
     // Fetch the latest order state
-    const currentOrder = await Order.findById(savedOrder._id)
-      .populate("assignedAgent", "fullName phoneNumber")
-      .populate("customerId", "name email");
+    const currentOrder = await Order.findById(savedOrder._id);
 
     return res.status(201).json({
       message: "Order placed successfully",
       orderId: currentOrder._id,
       totalAmount: currentOrder.totalAmount,
       billSummary,
-      orderStatus: currentOrder.orderStatus,
+      orderStatus: currentOrder.orderStatus, // Original status (not changed to assigned_to_agent)
       agentAssignmentStatus: currentOrder.agentAssignmentStatus,
       assignedAgent: currentOrder.assignedAgent,
       messageType: "success",
