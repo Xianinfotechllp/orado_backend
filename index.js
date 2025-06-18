@@ -17,7 +17,27 @@ const io = socketIo(server, {
 
 // Middlewares
 app.use(express.json());
-app.use(cors());
+
+const allowedOrigins = [
+  'http://localhost:5174',
+  'https://orado.work.gd',
+  'http://orado.work.gd',
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+}));
+
+
+
 // Attach io to app so it can be used in controllers
 app.set("io", io);
 
