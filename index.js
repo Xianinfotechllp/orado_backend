@@ -12,7 +12,8 @@ const io = socketIo(server, {
     origin: [
       "http://localhost:5173",
       "https://orado.work.gd",
-      "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app"
+      "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app",
+      'https://luminous-taffy-dc231c.netlify.app'
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
@@ -27,7 +28,8 @@ const allowedOrigins = [
   "http://localhost:5174",
   "https://orado.work.gd",
   "http://orado.work.gd",
-  "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app"
+  "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app",
+  'https://luminous-taffy-dc231c.netlify.app'
 ];
 
 app.use(cors({
