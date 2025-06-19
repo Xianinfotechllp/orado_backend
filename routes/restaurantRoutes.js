@@ -37,7 +37,18 @@ router.post(
   ]),
   protect, checkRole('merchant'), createRestaurant);
 // router.post("/register",register)
-router.put("/:restaurantId", upload.array('images', 5), protect, checkRole('merchant'), updateRestaurant);
+router.put(
+  "/:restaurantId",
+  upload.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'fssaiDoc', maxCount: 1 },
+    { name: 'gstDoc', maxCount: 1 },
+    { name: 'aadharDoc', maxCount: 1 },
+  ]),
+  protect,
+  checkRole('merchant'),
+  updateRestaurant
+);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
 // router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)
 

@@ -376,8 +376,34 @@ exports.updateRestaurant = async (req, res) => {
     if (foodType) restaurant.foodType = foodType;
     if (merchantSearchName) restaurant.merchantSearchName = merchantSearchName;
     if (minOrderAmount) restaurant.minOrderAmount = minOrderAmount;
-    if (paymentMethods) restaurant.paymentMethods = paymentMethods;
-    if (openingHours) restaurant.openingHours = openingHours;
+    if (paymentMethods) {
+      try {
+        restaurant.paymentMethods = typeof paymentMethods === 'string'
+          ? JSON.parse(paymentMethods)
+          : paymentMethods;
+      } catch (e) {
+        console.error("Failed to parse paymentMethods:", e);
+        return res.status(400).json({ message: "Invalid format for paymentMethods" });
+      }
+    }
+    if (req.body.openingHours) {
+      try {
+        // Parse the JSON string if it's a string
+        const hoursData = typeof req.body.openingHours === 'string' ? 
+                         JSON.parse(req.body.openingHours) : 
+                         req.body.openingHours;
+        
+        // Convert to the correct schema format
+        restaurant.openingHours = hoursData.map(hour => ({
+          day: hour.day,
+          openingTime: hour.openingTime || hour.open,
+          closingTime: hour.closingTime || hour.close,
+          isClosed: hour.isClosed || false
+        }));
+      } catch (e) {
+        console.error("Error parsing opening hours:", e);
+      }
+    }
     if (isActive !== undefined) restaurant.isActive = isActive;
     if (status) restaurant.status = status;
 
@@ -396,16 +422,19 @@ exports.updateRestaurant = async (req, res) => {
       }
     }
 
-    if (req.files && req.files.length > 0) {
-      const uploads = await Promise.all(
-        req.files.map((file) => uploadOnCloudinary(file.path))
+    if (req.files) {
+      const uploadPromises = Object.entries(req.files).flatMap(([field, fileArray]) =>
+        fileArray.map(async (file) => {
+          const result = await uploadOnCloudinary(file.path);
+          if (result && result.secure_url) {
+            if (field === 'fssaiDoc') restaurant.kycDocuments.fssaiDocUrl = result.secure_url;
+            if (field === 'gstDoc') restaurant.kycDocuments.gstDocUrl = result.secure_url;
+            if (field === 'aadharDoc') restaurant.kycDocuments.aadharDocUrl = result.secure_url;
+            if (field === 'images') restaurant.images.push(result.secure_url);
+          }
+        })
       );
-      const newImageUrls = uploads
-        .filter((result) => result && result.secure_url)
-        .map((result) => result.secure_url);
-
-      // Replace images
-      restaurant.images = newImageUrls;
+      await Promise.all(uploadPromises);
     }
 
     await restaurant.save();
