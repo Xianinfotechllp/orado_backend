@@ -1741,7 +1741,7 @@ const deliveryFee = await feeService.calculateDeliveryFee(
     });
 
 
-    console.log(costSummary)
+
 
 
     // Calculate bill summary
@@ -1777,40 +1777,39 @@ const deliveryFee = await feeService.calculateDeliveryFee(
     }
 
     // Create and save order
-    const newOrder = new Order({
-      customerId: userId,
-      restaurantId: cart.restaurantId,
-      orderItems,
-      paymentMethod,
-      orderStatus: orderStatus,
-      deliveryLocation: { type: "Point", coordinates: userCoords },
-      deliveryAddress: {
-        street,
-        area,
-        landmark,
-        city,
-        state,
-        pincode,
-        country,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-      },
-      subtotal: billSummary.subtotal,
-      tax: costSummary.totalTaxAmount,
-      discountAmount: billSummary.discount,
-      deliveryCharge: costSummary.deliveryFee,
-      offerId:costSummary.appliedOffer?._id || null,
-  
-      offerName: costSummary.appliedOffer?.title || null, // optional if you want to save offer title too
-  offerDiscount: costSummary.offerDiscount,    
-      surgeCharge: costSummary.surgeFee,
-      tipAmount,
-      totalAmount: billSummary.total + tipAmount,
-      distanceKm: billSummary.distanceKm,
-      couponCode,
-      instructions,
-      agentAssignmentStatus: "not_assigned",
-    });
+ const newOrder = new Order({
+  customerId: userId,
+  restaurantId: cart.restaurantId,
+  orderItems,
+  paymentMethod,
+  orderStatus: orderStatus,
+  deliveryLocation: { type: "Point", coordinates: userCoords },
+  deliveryAddress: {
+    street,
+    area,
+    landmark,
+    city,
+    state,
+    pincode,
+    country,
+    latitude: parseFloat(latitude),
+    longitude: parseFloat(longitude),
+  },
+  subtotal: costSummary.cartTotal, // ✅ from V2
+  tax: costSummary.totalTaxAmount, // ✅ from V2
+  discountAmount: costSummary.offerDiscount + costSummary.couponDiscount, // ✅ clean combined discount
+  deliveryCharge: costSummary.deliveryFee, // ✅ from V2
+  offerId: costSummary.appliedOffer?._id || null,
+  offerName: costSummary.appliedOffer?.title || null,
+  offerDiscount: costSummary.offerDiscount,
+  surgeCharge: costSummary.surgeFee,
+  tipAmount,
+  totalAmount: costSummary.finalAmount, // ✅ final payable
+  couponCode,
+  isSurge: costSummary.isSurge,
+  surgeReason: costSummary.surgeReason,
+  agentAssignmentStatus: "not_assigned",
+});
 
     const savedOrder = await newOrder.save();
     const io = req.app.get("io");

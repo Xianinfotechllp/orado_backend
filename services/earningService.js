@@ -83,8 +83,8 @@ exports.createRestaurantEarning = async (order) => {
     const commission = restaurant.commission || { type: "percentage", value: 20 };
     const { type: commissionType, value: commissionValue } = commission;
 
-    // Base for commission: subtotal before discounts
-    const commissionBase = order.subtotal;
+    // Base for commission: subtotal after offer discount
+    const commissionBase = order.subtotal - (order.offerDiscount || 0);
 
     let commissionAmount = 0;
     if (commissionType === "percentage") {
@@ -93,8 +93,8 @@ exports.createRestaurantEarning = async (order) => {
       commissionAmount = commissionValue;
     }
 
-    // Net earning is totalAmount (what customer paid) minus commission
-    const restaurantNetEarning = order.totalAmount - commissionAmount;
+    // Net earning is food revenue (after discount) minus commission
+    const restaurantNetEarning = commissionBase - commissionAmount;
 
     const newEarning = new RestaurantEarning({
       restaurantId: order.restaurantId,
