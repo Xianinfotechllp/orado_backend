@@ -1816,9 +1816,70 @@ const deliveryFee = await feeService.calculateDeliveryFee(
 const populatedOrder = await Order.findById(savedOrder._id)
   .populate("customerId", "name email phone");
 
-  
+    const newOrderObject = {
+  deliveryLocation: {
+    type: "Point",
+    coordinates: [76.2915, 9.9743]
+  },
+  deliveryAddress: {
+    street: "MG Road, Kochi, Kerala, India",
+    city: "Kochi",
+    state: "Kerala",
+    pincode: "682035",
+    country: "India"
+  },
+  _id: "6854abcdeffff1234567890a",
+  customerId: {
+    _id: "6854abcdeffff1234567890b",
+    name: "Test Customer",
+    email: "testcustomer@example.com",
+    phone: "+919999999999"
+  },
+  restaurantId: "6845eedd4efc0e84edfcff46",
+  orderItems: [
+    {
+      productId: "6849e5f69f7938c2619349e6",
+      quantity: 2,
+      price: 150,
+      name: "Grilled Chicken",
+      totalPrice: 300,
+      image: "https://res.cloudinary.com/demo/image/upload/sample.png",
+      _id: "6854abcdeffff1234567890c"
+    }
+  ],
+  orderStatus: "pending",
+  agentAssignmentStatus: "awaiting_agent_assignment",
+  subtotal: 300,
+  discountAmount: 30,
+  tax: 48.6,
+  deliveryCharge: 60,
+  surgeCharge: 0,
+  tipAmount: 20,
+  totalAmount: 398.6,
+  offerId: "6849d24947c245b0f3e52942",
+  offerName: "Weekend Deal",
+  offerDiscount: 30,
+  paymentMethod: "cash",
+  walletUsed: 0,
+  customerReviewImages: [],
+  restaurantReviewImages: [],
+  preparationTime: 25,
+  preparationDelayReason: "",
+  orderTime: new Date().toISOString(),
+  rejectionHistory: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  __v: 0,
+  assignedAgent: {
+    _id: "685179cb22b255551bedb76d",
+    fullName: "Sneha Thomas",
+    phoneNumber: "9876543204",
+    email: "sneha@example.com"
+  }
+};
 
- io.to("restaurant_6845eedd4efc0e84edfcff46").emit("new_order", populatedOrder.toObject());
+
+ io.to("restaurant_6845eedd4efc0e84edfcff46").emit("new_order",  newOrderObject);
     // Try to assign an agent
     let assignmentResult;
     try {
