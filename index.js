@@ -22,10 +22,12 @@ const io = socketIo(server, {
 // Middlewares
 app.use(express.json());
 
+// Allowed frontend origins for REST API
 const allowedOrigins = [
-  'http://localhost:5174',
-  'https://orado.work.gd',
-  'http://orado.work.gd',
+  "http://localhost:5174",
+  "https://orado.work.gd",
+  "http://orado.work.gd",
+  "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app"
 ];
 
 app.use(cors({
@@ -33,26 +35,11 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
-// Handle preflight requests too
-app.options("*", cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
 
 
