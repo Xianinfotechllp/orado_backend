@@ -7,18 +7,7 @@ const mongoose = require("mongoose");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: [
-      "http://localhost:5173",
-      "https://orado.work.gd",
-      "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app",
-      'https://luminous-taffy-dc231c.netlify.app'
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    credentials: true,
-  },
-});
+
 
 // Middlewares
 app.use(express.json());
@@ -29,7 +18,8 @@ const allowedOrigins = [
   "https://orado.work.gd",
   "http://orado.work.gd",
   "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app",
-  'https://luminous-taffy-dc231c.netlify.app'
+  'https://luminous-taffy-dc231c.netlify.app',
+  'http://localhost:4173'
 ];
 
 app.use(cors({
@@ -37,13 +27,21 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS: " + origin));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 
+
+const io = socketIo(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true
+  }
+});
 
 
 // Attach io to app so it can be used in controllers
