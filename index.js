@@ -19,7 +19,12 @@ const allowedOrigins = [
   "http://orado.work.gd",
   "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app",
   'https://luminous-taffy-dc231c.netlify.app',
-  'http://localhost:4173'
+  'http://localhost:4173' ,
+  'http://localhost:5173',
+  'http://localhost:5174',
+   'http://localhost:5175',
+   'http://localhost:5176'
+
 ];
 
 app.use(cors({
