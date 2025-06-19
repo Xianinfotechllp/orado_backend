@@ -1813,7 +1813,10 @@ const deliveryFee = await feeService.calculateDeliveryFee(
 
     const savedOrder = await newOrder.save();
     const io = req.app.get("io");
+const populatedOrder = await Order.findById(savedOrder._id)
+  .populate("customerId", "name email phone");
 
+  io.emit("newOrder", populatedOrder.toObject());
     // Try to assign an agent
     let assignmentResult;
     try {
@@ -1840,14 +1843,13 @@ const orderObj = updatedOrder.toObject();
         // Update only agent assignment fields, not main order status
        
 
-io.to("restaurant_6845eedd4efc0e84edfcff46").emit("new_order", { test: "hello" });
 
- io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
-  success: true,
-  message: "Agent assigned to order",
-  updateType: "agent_assigned",
-  order: mapOrder(orderObj)
-});
+//  io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
+//   success: true,
+//   message: "Agent assigned to order",
+//   updateType: "agent_assigned",
+//   order: mapOrder(orderObj)
+// });
 
 
 
