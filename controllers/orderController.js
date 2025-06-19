@@ -1818,7 +1818,7 @@ const populatedOrder = await Order.findById(savedOrder._id)
 
   
 
-  io.to("restaurant_6845eedd4efc0e84edfcff46").emit("newOrder", populatedOrder.toObject());
+  io.to(`restaurant_${savedOrder._id}`).emit("new_order", populatedOrder.toObject());
     // Try to assign an agent
     let assignmentResult;
     try {
