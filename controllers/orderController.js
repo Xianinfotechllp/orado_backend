@@ -1814,7 +1814,8 @@ const deliveryFee = await feeService.calculateDeliveryFee(
     const savedOrder = await newOrder.save();
     const io = req.app.get("io");
 const populatedOrder = await Order.findById(savedOrder._id)
-  .populate("customerId", "name email phone");
+  .populate("customerId", "name email phone")
+  .lean(); 
 
 console.log(populatedOrder)
 
