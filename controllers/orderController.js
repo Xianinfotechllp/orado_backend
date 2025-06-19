@@ -1828,13 +1828,13 @@ const populatedOrder = await Order.findById(savedOrder._id)
 
 
  console.log(`Emitting to restaurant_${savedOrder.restaurantId}`);
-  const updatedOrder = await Order.findByIdAndUpdate(orderId, { 
-    $set: { assignedAgent: agentId, agentAssignmentStatus: "accepted", agentAcceptedAt: new Date() }
-  })
-  .populate("customerId", "name email")
-  .populate("assignedAgent", "fullName phoneNumber email")
+//   const updatedOrder = await Order.findByIdAndUpdate(orderId, { 
+//     $set: { assignedAgent: agentId, agentAssignmentStatus: "accepted", agentAcceptedAt: new Date() }
+//   })
+//   .populate("customerId", "name email")
+//   .populate("assignedAgent", "fullName phoneNumber email")
 
-const orderObj = updatedOrder.toObject();
+// const orderObj = updatedOrder.toObject();
 
 
 
