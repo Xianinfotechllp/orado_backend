@@ -80,7 +80,7 @@ router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurant
 
 
 
-router.put("/:restaurantId/toggle-active", toggleRestaurantActiveStatus);
+router.put("/:restaurantId/toggle-active",protect, toggleRestaurantActiveStatus);
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)
 
