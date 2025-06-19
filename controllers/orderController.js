@@ -1816,7 +1816,9 @@ const deliveryFee = await feeService.calculateDeliveryFee(
 const populatedOrder = await Order.findById(savedOrder._id)
   .populate("customerId", "name email phone");
 
-  io.emit("newOrder", populatedOrder.toObject());
+  
+
+  io.to("restaurant_6845eedd4efc0e84edfcff46").emit("newOrder", populatedOrder.toObject());
     // Try to assign an agent
     let assignmentResult;
     try {
