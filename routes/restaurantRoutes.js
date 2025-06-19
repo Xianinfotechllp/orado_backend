@@ -5,7 +5,7 @@ const {createCategory,getAResturantCategories,editResturantCategory,deleteRestur
 const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll, getMerchantDetails} = require('../controllers/merchantController')
 const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
-const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas, getRestaurantEarningsList, getRestaurantEarningv2}  = require('../controllers/restaurantController')
+const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas, getRestaurantEarningsList, getRestaurantEarningv2, toggleRestaurantActiveStatus}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
@@ -78,6 +78,9 @@ router.get("/:restaurantId/earnigsv2",protect,getRestaurantEarningv2)
 
 router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders)
 
+
+
+router.put("/:restaurantId/toggle-active", toggleRestaurantActiveStatus);
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)
 

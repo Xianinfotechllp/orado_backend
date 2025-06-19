@@ -1435,3 +1435,41 @@ exports.getRestaurantEarningv2 = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+exports.toggleRestaurantActiveStatus = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    // Atomic toggle using findByIdAndUpdate
+    const restaurant = await Restaurant.findById(restaurantId);
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const updatedRestaurant = await Restaurant.findByIdAndUpdate(
+      restaurantId,
+      { $set: { active: !restaurant.active } },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      message: `Restaurant is now ${updatedRestaurant.active ? "Active" : "Inactive"}`,
+      activeStatus: updatedRestaurant.active,
+    });
+
+  } catch (error) {
+    console.error("Error toggling restaurant active status:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
