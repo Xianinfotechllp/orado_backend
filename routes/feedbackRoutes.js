@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 // const { protect } = require('../middleware/authMiddleware');
-const { getAverageRating, getFeedbacks, deleteFeedback, updateFeedback, createFeedback, createRestaurantFeedback, getRestaurantReviews ,replyToFeedbackByRestaurant  } = require('../controllers/feedbackController');
+const { getAverageRating, getFeedbacks, deleteFeedback, updateFeedback, createFeedback, createRestaurantFeedback, getRestaurantReviews ,replyToFeedbackByRestaurant ,getRestaurantProductReviews, addProductReview ,replyToProductReview } = require('../controllers/feedbackController');
 const {protect, checkRole} = require('../middlewares/authMiddleware')
 const { upload } = require('../middlewares/multer');
 
@@ -30,6 +30,13 @@ router.post(
 
 router.get("/restaurants/:restaurantId",getRestaurantReviews)
 router.post("/restaurants/:restaurantId/feedback/:feedbackId/replay",replyToFeedbackByRestaurant)
+router.get("/product/restaurants/:restaurantId/",getRestaurantProductReviews )
+
+router.post('/product-feedback/:feedbackId/reply',replyToProductReview);
+
+//crete product feedback by user 
+router.post("/product/:productId",protect,addProductReview)
+
 
 
 

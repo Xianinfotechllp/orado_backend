@@ -4,6 +4,7 @@ const Restaurant = require("../models/restaurantModel");
 const Permission = require("../models/restaurantPermissionModel");
 const Session = require("../models/session");
 const ChangeRequest = require("../models/changeRequest");
+const Product = require("../models/productModel")
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -96,20 +97,29 @@ exports.checkPermission = (...requiredPermissions) => {
 exports.checkRestaurantPermission = (permissionKey, allowRequest = false, customMessage = null) => {
   return async (req, res, next) => {
     try {
-      const restaurantId = req.body.restaurantId || req.params.restaurantId || req.query.restaurantId;
+      // FIRST check req.restaurantId (set by attachRestaurantFromProduct)
+      // THEN fall back to other locations
+      const restaurantId = req.restaurantId || req.body.restaurantId || req.params.restaurantId || req.query.restaurantId;
+      
       if (!restaurantId) {
         return res.status(400).json({ message: "restaurantId is required" });
       }
 
-      const restaurant = await Restaurant.findOne({ _id: restaurantId, ownerId: req.user._id });
+      const restaurant = await Restaurant.findOne({ 
+        _id: restaurantId, 
+        ownerId: req.user._id 
+      });
+      
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found for this merchant." });
+        return res.status(404).json({ 
+          message: "Restaurant not found or you don't have access" 
+        });
       }
       
+      // Rest of your permission checking logic...
       const permissionDoc = await Permission.findOne({ restaurantId: restaurant._id });
    
-      
-      if (permissionDoc && permissionDoc.permissions?.[permissionKey]) {
+      if (permissionDoc?.permissions?.[permissionKey]) {
         req.restaurant = restaurant;
         return next();
       }
@@ -125,16 +135,53 @@ exports.checkRestaurantPermission = (permissionKey, allowRequest = false, custom
         requestedBy: req.user._id,
         type: "PERMISSION_UPDATE",
         data: { permissionKey },
-        note: `User requested permission for ${permissionKey}`
+        note: `Permission requested for ${permissionKey}`
       });
 
       return res.status(403).json({
-        message: customMessage || `You don't have permission for "${permissionKey}". We've notified the admin.`
+        message: customMessage || `Permission request for "${permissionKey}" sent to admin`
       });
 
     } catch (err) {
-      console.error(err);
-      return res.status(500).json({ message: "Server error" });
+      console.error('Permission check error:', err);
+      return res.status(500).json({ 
+        message: "Internal server error during permission check",
+        error: err.message 
+      });
     }
   };
-};   
+};
+
+
+
+exports.attachRestaurantFromProduct = async (req, res, next) => {
+  try {
+    if (!req.params.productId) {
+      return res.status(400).json({ message: "Product ID is required" });
+    }
+
+    const product = await Product.findById(req.params.productId)
+      .select('restaurantId')
+      .lean(); // Convert to plain JavaScript object
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    if (!product.restaurantId) {
+      return res.status(400).json({ 
+        message: "Product is not associated with any restaurant" 
+      });
+    }
+
+    // Ensure restaurantId is properly converted to string if needed
+    req.restaurantId = product.restaurantId.toString();
+    next();
+  } catch (err) {
+    console.error('Error in attachRestaurantFromProduct:', err);
+    res.status(500).json({ 
+      message: "Internal server error while processing product",
+      error: err.message 
+    });
+  }
+};

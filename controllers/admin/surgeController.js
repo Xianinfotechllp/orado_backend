@@ -1,5 +1,5 @@
 const SurgeArea = require("../../models/surgeAreaModel");
-
+const mongoose = require("mongoose")
 // 📌 Create a new surge area
 exports.createSurgeArea = async (req, res) => {
   try {
@@ -11,12 +11,14 @@ exports.createSurgeArea = async (req, res) => {
       radius,
       surgeType,
       surgeValue,
+      surgeReason,  // ✅ add this
       startTime,
       endTime
     } = req.body;
 
     // ✅ Basic validation
-    if (!name || !type || !surgeType || !surgeValue || !startTime || !endTime) {
+    console.log(name,type,surgeType,surgeValue,surgeReason,startTime,endTime)
+    if (!name || !type || !surgeType || !surgeValue || !surgeReason || !startTime || !endTime) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -44,6 +46,7 @@ exports.createSurgeArea = async (req, res) => {
       radius: type === "Circle" ? radius : undefined,
       surgeType,
       surgeValue,
+      surgeReason,   // ✅ save here too
       startTime,
       endTime
     });
@@ -58,5 +61,230 @@ exports.createSurgeArea = async (req, res) => {
   } catch (err) {
     console.error("Error creating surge area:", err);
     res.status(500).json({ message: "Failed to create surge area", error: err.message });
+  }
+};
+
+
+
+exports.getSurgeAreas = async (req, res) => {
+  try {
+    // Extract query parameters
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      type,
+      surgeType,
+      activeOnly,
+      search
+    } = req.query;
+
+    // Build the query object
+    const query = {};
+    
+    // Filter by type if provided
+    if (type && ['Polygon', 'Circle'].includes(type)) {
+      query.type = type;
+    }
+    
+    // Filter by surgeType if provided
+    if (surgeType) {
+      query.surgeType = surgeType;
+    }
+    
+    // Filter active only if requested
+    if (activeOnly === 'true') {
+      const now = new Date();
+      query.startTime = { $lte: now };
+      query.endTime = { $gte: now };
+    }
+    
+    // Search by name if search term provided
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    // Calculate pagination
+    const skip = (page - 1) * limit;
+    
+    // Get total count for pagination info
+    const total = await SurgeArea.countDocuments(query);
+    
+    // Fetch surge areas with sorting and pagination
+    const surgeAreas = await SurgeArea.find(query)
+      .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(total / limit);
+    
+    res.status(200).json({
+      message: "Surge areas retrieved successfully",
+      data: surgeAreas,
+      pagination: {
+        total,
+        totalPages,
+        currentPage: parseInt(page),
+        itemsPerPage: parseInt(limit),
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1
+      }
+    });
+
+  } catch (err) {
+    console.error("Error fetching surge areas:", err);
+    res.status(500).json({ 
+      message: "Failed to fetch surge areas", 
+      error: err.message 
+    });
+  }
+};
+
+
+
+
+
+exports.getSurgeAreas = async (req, res) => {
+  try {
+    // Extract query parameters
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      type,
+      surgeType,
+      activeOnly,
+      search
+    } = req.query;
+
+    // Build the query object
+    const query = {};
+    
+    // Filter by type if provided
+    if (type && ['Polygon', 'Circle'].includes(type)) {
+      query.type = type;
+    }
+    
+    // Filter by surgeType if provided
+    if (surgeType) {
+      query.surgeType = surgeType;
+    }
+    
+    // Filter active only if requested
+    if (activeOnly === 'true') {
+      const now = new Date();
+      query.startTime = { $lte: now };
+      query.endTime = { $gte: now };
+    }
+    
+    // Search by name if search term provided
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    // Calculate pagination
+    const skip = (page - 1) * limit;
+    
+    // Get total count for pagination info
+    const total = await SurgeArea.countDocuments(query);
+    
+    // Fetch surge areas with sorting and pagination
+    const surgeAreas = await SurgeArea.find(query)
+      .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(total / limit);
+    
+    res.status(200).json({
+      message: "Surge areas retrieved successfully",
+      data: surgeAreas,
+      pagination: {
+        total,
+        totalPages,
+        currentPage: parseInt(page),
+        itemsPerPage: parseInt(limit),
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1
+      }
+    });
+
+  } catch (err) {
+    console.error("Error fetching surge areas:", err);
+    res.status(500).json({ 
+      message: "Failed to fetch surge areas", 
+      error: err.message 
+    });
+  }
+};
+
+
+
+
+
+// 📌 Toggle Surge Area Active/Inactive
+exports.toggleSurgeAreaStatus = async (req, res) => {
+  try {
+    const { surgeAreaId } = req.params;
+
+    // ✅ Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(surgeAreaId)) {
+      return res.status(400).json({ message: "Invalid surge area ID" });
+    }
+
+    // ✅ Find surge area
+    const surgeArea = await SurgeArea.findById(surgeAreaId);
+    if (!surgeArea) {
+      return res.status(404).json({ message: "Surge area not found" });
+    }
+
+    // ✅ Toggle isActive value
+    surgeArea.isActive = !surgeArea.isActive;
+
+    // ✅ Save update
+    await surgeArea.save();
+
+    res.status(200).json({
+      message: `Surge area is now ${surgeArea.isActive ? "active" : "inactive"}`,
+      data: surgeArea
+    });
+
+  } catch (err) {
+    console.error("Error toggling surge area status:", err);
+    res.status(500).json({ message: "Failed to toggle surge area status", error: err.message });
+  }
+};
+
+
+
+
+exports.deleteSurgeArea = async (req, res) => {
+  try {
+    const { surgeAreaId } = req.params;
+
+    // ✅ Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(surgeAreaId)) {
+      return res.status(400).json({ message: "Invalid surge area ID" });
+    }
+
+    // ✅ Find and delete surge area
+    const deletedSurgeArea = await SurgeArea.findByIdAndDelete(surgeAreaId);
+
+    if (!deletedSurgeArea) {
+      return res.status(404).json({ message: "Surge area not found" });
+    }
+
+    res.status(200).json({
+      message: "Surge area deleted successfully",
+      data: deletedSurgeArea
+    });
+
+  } catch (err) {
+    console.error("Error deleting surge area:", err);
+    res.status(500).json({ message: "Failed to delete surge area", error: err.message });
   }
 };

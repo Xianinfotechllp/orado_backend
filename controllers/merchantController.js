@@ -48,6 +48,32 @@ exports.registerMerchant = async (req, res) => {
   }
 };
 
+// Get merchant details
+exports.getMerchantDetails = async (req, res) => {
+  try {
+     const merchantId = req.params.merchantId;
+
+    if (!merchantId) {
+      return res.status(400).json({ message: "Merchant ID is required." });
+    }
+
+    // Find merchant by ID, excluding sensitive information
+    const merchant = await User.findById(merchantId)
+      .select('-password -__v -createdAt -updatedAt')
+      .lean();
+
+    if (!merchant || merchant.userType !== 'merchant') {
+      return res.status(404).json({ message: "Merchant not found  ." });
+    }
+
+
+    res.status(200).json(merchant);
+  } catch (err) {
+    console.error("Get merchant details error:", err);
+    res.status(500).json({ message: "Internal server error." });
+  }
+};
+
 
 exports.loginMerchant = async (req, res) => {
   try {
@@ -516,6 +542,99 @@ exports.getRestaurantApprovalStatus = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
+  }
+};
+
+
+
+
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    const merchantId = req.user._id; // Set by JWT middleware
+
+    // Validate required fields
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password, new password, and confirmation are required.'
+      });
+    }
+
+    // Check new password confirmation match
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password and confirmation do not match.'
+      });
+    }
+
+    // Enforce password length
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long.'
+      });
+    }
+
+    // Fetch merchant by ID and userType
+    const merchant = await User.findOne({ _id: merchantId, userType: 'merchant' });
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Merchant account not found.'
+      });
+    }
+
+    // Verify existing password
+    const isPasswordCorrect = await bcrypt.compare(currentPassword, merchant.password);
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect.'
+      });
+    }
+
+    // Prevent using the same password again
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from the current password.'
+      });
+    }
+
+    // Hash the new password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update merchant password and password change timestamp
+    merchant.password = hashedPassword;
+    merchant.passwordChangedAt = Date.now();
+    await merchant.save();
+
+    // Invalidate all other active sessions for this merchant (except current one)
+    // await Session.deleteMany({
+    //   userId: merchant._id,
+    //   token: { $ne: req.token } // Assuming req.token contains the current JWT
+    // });
+
+    // Send password change notification email (if required)
+    // await sendPasswordChangeNotification(merchant.email);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully.'
+    });
+
+  } catch (error) {
+    console.error('Password change error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error.',
+      error: error.message
+    });
   }
 };
 

@@ -150,7 +150,7 @@ const restaurantSchema = new mongoose.Schema(
     default: 20,
   },
     paymentMethods: [
-      { type: String, enum: ["cash", "online", "wallet"] },
+      { type: String, enum: ['cod',"cash", "online", "wallet"] },
     ],
   },
   

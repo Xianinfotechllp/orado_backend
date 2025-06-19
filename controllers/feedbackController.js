@@ -2,6 +2,9 @@ const Feedback = require('../models/feedbackModel');
 const Order = require('../models/orderModel');
 const Restaurant = require('../models/restaurantModel');
 const Agent = require('../models/agentModel');
+const ProductReview = require("../models/productReviewModel");
+const Product = require("../models/productModel")
+const mongoose = require("mongoose")
 const { awardPointsToRestaurant, awardDeliveryPoints } = require('../utils/awardPoints');
 const {uploadOnCloudinary} = require('../utils/cloudinary')
 
@@ -392,5 +395,161 @@ exports.replyToFeedbackByRestaurant = async (req, res) => {
 };
 
 
+
+
+exports.addProductReview = async (req, res) => {
+  try {
+    const {productId} = req.params
+    const {rating, comment, images } = req.body;
+    const userId = req.user._id; // assuming you use auth middleware to set req.user
+
+    // Validate productId
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({
+        message: "Invalid product ID",
+        messageType: "failure",
+      });
+    }
+
+    // Validate rating
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        message: "Rating must be between 1 and 5",
+        messageType: "failure",
+      });
+    }
+
+    const newReview = new ProductReview({
+      userId,
+      productId,
+      rating,
+      comment,
+      images,
+    });
+
+    await newReview.save();
+
+    return res.status(201).json({
+      message: "Review submitted successfully",
+      messageType: "success",
+      data: newReview,
+    });
+
+  } catch (error) {
+    console.error("Error adding product review:", error);
+    return res.status(500).json({
+      message: "Server error",
+      messageType: "failure",
+    });
+  }
+};
+
+
+
+exports.getRestaurantProductReviews = async (req, res) => {
+  
+  try {
+    
+    const { restaurantId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        message: "Invalid restaurant ID",
+        messageType: "failure",
+      });
+    }
+
+    // Fetch all products for the restaurant
+    const products = await Product.find({ restaurantId }).select("_id");
+
+    if (products.length === 0) {
+      return res.status(404).json({
+        message: "No products found for this restaurant",
+        messageType: "failure",
+      });
+    }
+
+    // Extract product IDs
+    const productIds = products.map((product) => product._id);
+
+    // Fetch reviews for those products
+    const reviews = await ProductReview.find({ productId: { $in: productIds } })
+      .populate("userId", "name email phone")
+      .populate("productId", "name price images")
+      .sort({ createdAt: -1 });
+
+    // Format the response data
+    const formattedReviews = reviews.map((review) => ({
+      reviewId: review._id,
+      user: {
+        id: review.userId._id,
+        name: review.userId.name,
+        email: review.userId.email,
+        phone: review.userId.phone,
+      },
+      product: {
+        id: review.productId._id,
+        name: review.productId.name,
+        price: review.productId.price,
+        images: review.productId.images,
+      },
+      rating: review.rating,
+      comment: review.comment,
+      images: review.images,
+      reply: review.reply,
+      repliedBy: review.repliedBy,
+      repliedAt: review.repliedAt,
+      createdAt: review.createdAt,
+    }));
+
+    console.log("Formatted Reviews:----------", formattedReviews);
+
+    return res.status(200).json({
+      message: "Product reviews fetched successfully",
+      messageType: "success",
+      data: formattedReviews,
+    });
+
+  } catch (error) {
+    console.error("Error fetching restaurant product reviews:", error);
+    return res.status(500).json({
+      message: "Server error",
+      messageType: "failure",
+    });
+  }
+};
+
+
+
+exports.replyToProductReview = async (req, res) => {
+  try {
+    const { feedbackId } = req.params;
+    const { reply } = req.body;
+
+    if (!feedbackId ) {
+      return res.status(400).json({ message: 'Review ID is required' });
+    }
+    if (!reply) {
+      return res.status(400).json({ message: 'Reply message is required' });
+    }
+
+    const review = await ProductReview.findById(feedbackId);
+    if (!review) {
+      return res.status(404).json({ message: 'Product review not found' });
+    }
+
+    review.reply = reply;
+    review.repliedBy = 'restaurant';
+    review.repliedAt = new Date();
+
+    await review.save();
+
+    return res.status(200).json({ message: 'Product review reply added', review });
+
+  } catch (error) {
+    console.error('Error replying to product review:', error);
+    return res.status(500).json({ message: 'Server error', error });
+  }
+};
 
 

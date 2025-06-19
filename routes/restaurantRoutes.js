@@ -2,10 +2,10 @@ const express = require('express')
 const router = express.Router()
 
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
-const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll} = require('../controllers/merchantController')
+const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll, getMerchantDetails} = require('../controllers/merchantController')
 const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
-const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings}  = require('../controllers/restaurantController')
+const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas, getRestaurantEarningsList, getRestaurantEarningv2, toggleRestaurantActiveStatus}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 
 // get all restruants (for users)
@@ -23,6 +23,7 @@ router.post("/login", loginMerchant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
+// router.get('/:merchantId', getMerchantDetails); 
 router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
 router.get('/merchant/:merchantId/restaurants',  getRestaurantsByMerchantId);
 
@@ -60,7 +61,8 @@ router.put("/:restaurantId/business-hours", protect, checkRole('merchant'), upda
 
 
 router.post('/:restaurantId/service-areas', protect, checkRole('merchant'), addServiceArea)
-
+router.get("/:restaurantId/service-areas",protect, checkRole('merchant'),getServiceAreas)
+router.delete("/:restaurantId/service-areas",protect,checkRole('merchant'),deleteServiceAreas)
 // kyc
 router.post('/:restaurantId/kyc', upload.array('documents'), protect, checkRole('merchant'), addKyc);
 router.get('/kyc/:restaurantId', protect, checkRole('merchant'), getKyc);
@@ -78,11 +80,18 @@ router.delete('/:restaurantId/categories/:categoryId', protect, checkRole('merch
 router.get("/:restaurantId/menu",getRestaurantMenu)
 
 // get restaurant earnigs
-router.get("/:restruantId/earnings",protect,getRestaurantEarnings)
-router.get("/:restaurantId/earnings/summary",protect,checkRole('merchant','admin', 'superAdmin'),getRestaurantEarningSummary)
+router.get("/:restaurantId/earnigs/summary",protect,checkRole('merchant'),getRestaurantEarningSummary)
+router.get("/:restaurantId/earnigs",protect,getRestaurantEarnings)
+router.get("/:restaurantId/earnigs-list",protect,getRestaurantEarningsList)
+
+router.get("/:restaurantId/earnigsv2",protect,getRestaurantEarningv2)
+
 
 router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders)
 
+
+
+router.put("/:restaurantId/toggle-active",protect, toggleRestaurantActiveStatus);
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)
 

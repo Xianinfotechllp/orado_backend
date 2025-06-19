@@ -328,7 +328,7 @@ exports.approveAgentApplication = async (req, res) => {
 exports.getPendingRestaurantApprovals = async (req, res) => {
   try {
     // Fetch restaurants where kycStatus is 'pending'
-    const pendingRestaurants = await Restaurant.find({ kycStatus: "pending" })
+    const pendingRestaurants = await Restaurant.find({ approvalStatus: "pending" })
     res.status(200).json({
       message: "Pending restaurant approval requests fetched successfully.",
       total: pendingRestaurants.length,

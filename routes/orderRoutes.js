@@ -26,6 +26,8 @@ const {
   placeOrder,
   reorder,updateRestaurantOrderStatus,
   placeOrderWithAddressId,
+  sendOrderDelayReason,
+  placeOrderV2,
 
   
   
@@ -36,14 +38,14 @@ const { TrustProductsEvaluationsContextImpl } = require('twilio/lib/rest/trusthu
 
 // orders
 router.post('/create', protect, createOrder); // Create new order
-router.post("/place-order",protect,placeOrder)
+router.post("/place-order",protect,placeOrderV2)
 router.get('/', protect, getAllOrders); // Admin - get all orders
-router.get('/:orderId', protect, getOrderById); // Get specific order
+router.get('/:orderId', protect, getOrderById);// Get specific order
 
 // customer and agent orders
 router.get('/customer/orders', protect, getOrdersByCustomer);
 router.get('/customer/:customerId/status', protect, getOrdersByCustomer);
-router.get('/agent/:agentId', protect, getOrdersByAgent);
+router.get('/agent/:agentId', getOrdersByAgent);
 
 // updates and actions on orders
 router.put('/:orderId/status', updateOrderStatus);
@@ -85,7 +87,7 @@ router.post("/pricesummary", protect, getOrderPriceSummaryv2)
 
 
 //place order 
-router.post("/place-order", protect ,  placeOrder)
+// router.post("/place-order", protect , placeOrder )
 
 // place order with addressId no need to manualy enter address ,  lat , long
 router.post("/place-order/by-address", protect ,placeOrderWithAddressId)
@@ -96,6 +98,8 @@ router.post('/reorder/:orderId', protect, reorder);
 router.put('/restaurant/:restaurantId/orders/:orderId/status', protect , updateRestaurantOrderStatus);
 
 
+// router.get('/:id/delay-reason', getDelayReasonForOrder);
+router.patch("/:orderId/delay-reason",sendOrderDelayReason)
 
 
 

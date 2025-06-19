@@ -116,35 +116,22 @@ exports.createProduct = async (req, res) => {
 };
 
 // Update a product;
-
-
 exports.updateProduct = async (req, res) => {
   try {
     const { productId } = req.params;
-    console.log(productId)
-    // Find the existing product
-    const product = await Product.findOne({_id:productId});
-    console.log(product)
+
+    // Find existing product
+    const product = await Product.findOne({ _id: productId });
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
+    // Update fields if provided
     const {
-      name,
-      description,
-      price,
-      categoryId,
-      foodType,
-      addOns,
-      attributes,
-      unit,
-      stock,
-      reorderLevel,
-      revenueShare,
-      replaceImageIndex  // index of the image to replace (optional)
+      name, description, price, categoryId, foodType,
+      addOns, attributes, unit, stock, reorderLevel, revenueShare, replaceImageIndex
     } = req.body;
 
-    // Update fields only if they exist in req.body
     if (name) product.name = name.trim();
     if (description) product.description = description.trim();
     if (price) product.price = parseFloat(price);
@@ -157,27 +144,34 @@ exports.updateProduct = async (req, res) => {
     if (reorderLevel) product.reorderLevel = parseInt(reorderLevel);
     if (revenueShare) product.revenueShare = revenueShare;
 
-    // Handle image upload & replacement
+    // ✅ Handle image uploads
     if (req.files && req.files.length > 0) {
-      // For simplicity, handle one image replacement at a time
-      const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_products');
 
-      if (uploadResult?.secure_url) {
-        const newImageUrl = uploadResult.secure_url;
+      // Replace all images if ?replaceAll=true in query
+      if (req.query.replaceAll === 'true') {
+        product.images = [];
+      }
 
-        if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
-          const idx = parseInt(replaceImageIndex);
-          if (idx >= 0 && idx < product.images.length) {
-            // Replace existing image at index
-            product.images[idx] = newImageUrl;
-          } else {
-            // Index invalid, append new image instead
-            product.images.push(newImageUrl);
-          }
+      // Upload new images to Cloudinary
+      const uploadedImages = await Promise.all(req.files.map(async (file) => {
+        const uploadResult = await uploadOnCloudinary(file.path, 'restaurant_products');
+        return uploadResult?.secure_url;
+      }));
+
+      // If replaceImageIndex provided — replace at index
+      if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
+        const idx = parseInt(replaceImageIndex);
+        const newImageUrl = uploadedImages[0]; // Use first uploaded image for replacement
+
+        if (idx >= 0 && idx < product.images.length) {
+          product.images[idx] = newImageUrl;
         } else {
-          // No replace index provided, append new image(s)
           product.images.push(newImageUrl);
         }
+
+      } else {
+        // Else, append all uploaded images
+        product.images.push(...uploadedImages);
       }
     }
 
@@ -192,7 +186,7 @@ exports.updateProduct = async (req, res) => {
   } catch (error) {
     console.error('Error updating product:', error);
 
-    // Cleanup uploaded files on error
+    // Cleanup uploaded temp files on error
     if (req.files?.length) {
       await Promise.all(req.files.map(file =>
         fs.promises.unlink(file.path).catch(console.error)
@@ -206,7 +200,6 @@ exports.updateProduct = async (req, res) => {
     });
   }
 };
-
 // @desc    Get all products for the logged-in restaurant
 // @route   GET /api/products/my-restaurant
 // @access  Private (Restaurant owner/admin)
@@ -221,6 +214,8 @@ exports.getMyRestaurantProducts = async (req, res) => {
         error: 'User is not associated with any restaurant' 
       });
     }
+        console.log("Fetching products for restaurant ID:", req.body);
+
 
     // Find the restaurant first to verify it exists
     const restaurant = await Restaurant.findById(restaurantId);
@@ -234,8 +229,10 @@ exports.getMyRestaurantProducts = async (req, res) => {
     // Get all products for this restaurant
     // You can populate category if needed
     const products = await Product.find({ restaurantId })
-      .populate('categoryId', 'name') // Optional: populate category name
-      .sort({ createdAt: -1 }); // Sort by newest first
+      .populate('categoryId', 'name') 
+      .sort({ createdAt: -1 });
+
+      console.log("Products with populated category:", JSON.stringify(products, null, 2));
 
     res.status(200).json({
       success: true,
@@ -259,13 +256,14 @@ exports.getMyRestaurantProducts = async (req, res) => {
 // Get products for a restaurant
 exports.getRestaurantProducts = async (req, res) => {
   try {
-    const products = await Product.find({ restaurantId: req.params.restaurantId });
+    const products = await Product.find({ restaurantId: req.params.restaurantId })
+      .populate('categoryId', 'name'); // This will include the category name
+    
     res.json(products);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
-
 // Update a product;
 
 // exports.updateProduct = async (req, res) => {
@@ -444,6 +442,57 @@ exports.toggleProductActive = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+
+
+
+
+// Toggle product active/inactive status
+exports.toggleProductStatus = async (req, res) => {
+  const {productId } = req.params;
+
+
+  try {
+    // Validate productId format
+  
+
+    // Find product by ID
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found." });
+    }
+
+    // Toggle the 'active' status
+    product.active = !product.active;
+
+    // Save updated product
+    await product.save();
+
+    // Send success response
+    return res.status(200).json({
+      success: true,
+      message: `Product is now ${product.active ? "active" : "inactive"}.`,
+      product,
+    });
+
+  } catch (error) {
+    console.error("Error toggling product status:", error);
+    return res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

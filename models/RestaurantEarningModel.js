@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const mongoosePaginate = require('mongoose-paginate-v2');
 
 const restaurantEarningsSchema = new mongoose.Schema({
   restaurantId: {
@@ -11,12 +12,33 @@ const restaurantEarningsSchema = new mongoose.Schema({
     ref: 'Order',
     required: true
   },
+
+  // 💳 Gross cart total before discount, tax, delivery fee
+  cartTotal: {
+    type: Number,
+    required: false
+  },
+
+offerId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Offer',
+  default: null
+},
+offerName: {
+  type: String,
+  default: null
+},
+offerDiscount: {
+  type: Number,
+  default: 0
+},
+  // 💰 Final amount customer paid after discount, tax, delivery fee
   totalOrderAmount: {
     type: Number,
     required: true
   },
 
-  // 👌 Commission amount deducted from totalOrderAmount
+  // 👌 Commission deducted from cartTotal (or subtotal)
   commissionAmount: {
     type: Number,
     required: true
@@ -33,7 +55,7 @@ const restaurantEarningsSchema = new mongoose.Schema({
     required: true
   },
 
-  // 💰 Net amount payable to restaurant after commission
+  // 💸 Net payout to restaurant after commission
   restaurantNetEarning: {
     type: Number,
     required: true
@@ -63,5 +85,7 @@ const restaurantEarningsSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+restaurantEarningsSchema.plugin(mongoosePaginate);
 
 module.exports = mongoose.model('RestaurantEarning', restaurantEarningsSchema);

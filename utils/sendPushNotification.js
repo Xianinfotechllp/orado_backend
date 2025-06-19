@@ -1,4 +1,4 @@
-const firebaseAdmin = require("../config/firebaseAdmin")
+// const firebaseAdmin = require("../config/firebaseAdmin")
 const DeviceToken = require("../models/deviceTokenModel")
 const {Notification, NotificationPreference} = require('../models/notificationModel');
 
@@ -22,7 +22,7 @@ async function sendPushNotification(userId, title, body, type) {
       token: deviceToken.token,
     };
 
-    const response = await firebaseAdmin.messaging().send(message);
+    // const response = await firebaseAdmin.messaging().send(message);
     console.log('Notification sent:', response);
 
     // Save notification with type

@@ -273,7 +273,7 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
 
 exports.getRecommendedRestaurants = async (req, res) => {
   try {
-    const { latitude, longitude, maxDistance = 50000000, minOrderAmount = 0 } = req.query;
+    const { latitude, longitude, maxDistance = 20000, minOrderAmount = 0 } = req.query;
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({

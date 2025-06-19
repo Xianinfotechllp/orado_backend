@@ -16,7 +16,7 @@ getApprovedRestaurants ,
 } = require("../controllers/adminController");
 const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
-const {createSurgeArea } = require("../controllers/admin/surgeController")
+const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
 
 const { importMenuFromExcel,setRestaurantCommission } = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -29,7 +29,9 @@ const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
 
 
-const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController")
+const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController");
+const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
+const {sendNotification} = require('../controllers/admin/notificationControllers')
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -120,8 +122,31 @@ router.get("/offer",getAllOffers)
 
 router.get("/restaurants/offer-list",getRestaurantsWithOffersAggregated)
 
-
+//surge
 router.post("/surge/add",createSurgeArea)
+router.get("/surge-list",getSurgeAreas)
+router.patch("/surge-areas/:surgeAreaId/toggle-status", toggleSurgeAreaStatus);
+router.delete("/surge-areas/:surgeAreaId",deleteSurgeArea)
+
+//delivery fee
+router.put("/settings/delivery-fee",updateDeliveryFeeSettings)
+router.get("/settings/delivery-fee",getDeliveryFeeSettings)
+
+
+//tax and feees 
+router.post("/taxes",addTax)
+router.get("/taxes",getAllTaxes)
+router.delete("/taxes/:taxId",deleteTax)
+router.patch("/taxes/:taxId",editTax)
+router.patch("/taxes/:taxId/toggle",toggleTaxStatus)
+
+
+//send broadcast notification
+
+router.post('/notifications',sendNotification)
+
+
+
 
 
 module.exports = router;

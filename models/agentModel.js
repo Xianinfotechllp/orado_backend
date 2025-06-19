@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const agentSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     fullName: { type: String, required: true },
     phoneNumber: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },

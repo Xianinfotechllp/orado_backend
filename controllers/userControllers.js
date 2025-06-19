@@ -254,51 +254,72 @@ exports.logoutAll = async (req, res) => {
   await Session.deleteMany({ userId: req.user._id });
   res.json({ message: "Logged out from all sessions" });
 };
-
 exports.addAddress = async (req, res) => {
   try {
-    const { userId, type, street, city, state, zip, longitude, latitude } =
-      req.body;
+    const userId = req.user;
+    const { 
+      type = 'Other',
+      street, 
+      area = '', 
+      landmark = '', 
+      city, 
+      state, 
+      zip, 
+      country = 'India', 
+      longitude, 
+      latitude 
+    } = req.body;
 
-    if (
-      !street ||
-      !city ||
-      !state ||
-      !zip ||
-      !longitude ||
-      !latitude ||
-      !userId
-    ) {
-      return res.status(400).json({ message: "All fields are required" });
+    // Convert to numbers explicitly
+    const longNum = Number(longitude);
+    const latNum = Number(latitude);
+
+    // Validate coordinates more strictly
+    if (isNaN(longNum) || isNaN(latNum)) {
+      return res.status(400).json({ message: "Invalid coordinates - must be numbers" });
     }
 
     const userExist = await User.findById(userId);
     if (!userExist) {
       return res.status(404).json({ message: "User not found" });
     }
+
+    // Create new address object with properly typed coordinates
+    const newAddress = {
+      type,
+      street,
+      area,
+      landmark,
+      city,
+      state,
+      zip,
+      country,
+      location: {
+        type: "Point",
+        coordinates: [longNum, latNum], // Use the converted numbers
+      },
+      createdAt: new Date()
+    };
+
+    // Initialize addresses array if needed
     if (!userExist.addresses) {
       userExist.addresses = [];
     }
 
-    userExist.addresses.push({
-      type, // Home / Work / Other
-      street,
-      city,
-      state,
-      zip,
-      location: {
-        type: "Point",
-        coordinates: [parseFloat(longitude), parseFloat(latitude)],
-      },
-    });
+    userExist.addresses.push(newAddress);
     await userExist.save();
-    res.json({
+
+    res.status(201).json({
       message: "Address added successfully",
-      addresses: userExist.addresses,
+      data: newAddress
     });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Address addition error:", error);
+    res.status(500).json({ 
+      message: "Server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -825,19 +846,23 @@ exports.getUserNotifications = async (req, res) => {
 
     // Get enabled types (e.g., { promotions: true, orderUpdates: false } → ['promotions'])
     const enabledTypes = Object.entries(prefs.toObject())
-      .filter(([key, value]) => value === true)
+      .filter(([key, value]) => value === true && key !== 'userId' && key !== '_id' && key !== '__v')
       .map(([key]) => key);
 
-    // Fetch notifications that match enabled types
+    // Fetch notifications that either:
+    // 1. Are specifically for this user (userId matches) AND type is enabled, OR
+    // 2. Are broadcast to all users (sendToAll: true) AND type is enabled
     const notifications = await Notification.find({
-      userId,
-      type: { $in: enabledTypes },
+      $or: [
+        { userId, type: { $in: enabledTypes } },
+        { sendToAll: true, type: { $in: enabledTypes } }
+      ]
     }).sort({ createdAt: -1 });
 
-    res.json({message:"notification feted"  ,  notifications});
+    res.json({ message: "Notifications fetched successfully", notifications });
   } catch (error) {
     console.error('Error fetching notifications:', error);
-    res.status(500).json({ message: 'Failed to fetch notifications' });
+    res.status(500).json({ message: 'Failed to fetch notifications', error: error.message });
   }
 };
 

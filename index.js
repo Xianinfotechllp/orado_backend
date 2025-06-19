@@ -7,17 +7,49 @@ const mongoose = require("mongoose");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: ["http://localhost:5173", "https://orado.work.gd"], // exact origin of your frontend
-    methods: ["GET", "POST","PUT","DELETE","OPTIONS"],
-    credentials: true,
-  },
-});
+
 
 // Middlewares
 app.use(express.json());
-app.use(cors());
+
+// Allowed frontend origins for REST API
+const allowedOrigins = [
+  "http://localhost:5174",
+  "https://orado.work.gd",
+  "http://orado.work.gd",
+  "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app",
+  'https://luminous-taffy-dc231c.netlify.app',
+  'http://localhost:4173' ,
+  'http://localhost:5173',
+  'http://localhost:5174',
+   'http://localhost:5175',
+   'http://localhost:5176',
+   'http://127.0.0.1:5500'
+
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS: " + origin));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
+
+
+const io = socketIo(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true
+  }
+});
+
+
 // Attach io to app so it can be used in controllers
 app.set("io", io);
 
@@ -391,6 +423,86 @@ app.post("/socket-test", (req, res) => {
     orderId: req.body.orderId, // Replace with a real order ID
     newStatus: req.body.status, // Test status
   };
+  const order = req.body
+
+
+
+  const newOrderObject = {
+  deliveryLocation: {
+    type: "Point",
+    coordinates: [76.2915, 9.9743]
+  },
+  deliveryAddress: {
+    street: "MG Road, Kochi, Kerala, India",
+    city: "Kochi",
+    state: "Kerala",
+    pincode: "682035",
+    country: "India"
+  },
+  _id: "6854abcdeffff1234567890a",
+  customerId: {
+    _id: "6854abcdeffff1234567890b",
+    name: "Test Customer",
+    email: "testcustomer@example.com",
+    phone: "+919999999999"
+  },
+  restaurantId: "6845eedd4efc0e84edfcff46",
+  orderItems: [
+    {
+      productId: "6849e5f69f7938c2619349e6",
+      quantity: 2,
+      price: 150,
+      name: "Grilled Chicken",
+      totalPrice: 300,
+      image: "https://res.cloudinary.com/demo/image/upload/sample.png",
+      _id: "6854abcdeffff1234567890c"
+    }
+  ],
+  orderStatus: "pending",
+  agentAssignmentStatus: "awaiting_agent_assignment",
+  subtotal: 300,
+  discountAmount: 30,
+  tax: 48.6,
+  deliveryCharge: 60,
+  surgeCharge: 0,
+  tipAmount: 20,
+  totalAmount: 398.6,
+  offerId: "6849d24947c245b0f3e52942",
+  offerName: "Weekend Deal",
+  offerDiscount: 30,
+  paymentMethod: "cash",
+  walletUsed: 0,
+  customerReviewImages: [],
+  restaurantReviewImages: [],
+  preparationTime: 25,
+  preparationDelayReason: "",
+  orderTime: new Date().toISOString(),
+  rejectionHistory: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  __v: 0,
+  assignedAgent: {
+    _id: "685179cb22b255551bedb76d",
+    fullName: "Sneha Thomas",
+    phoneNumber: "9876543204",
+    email: "sneha@example.com"
+  }
+};
+
+
+  
+ io.to("restaurant_6845eedd4efc0e84edfcff46").emit("new_order", newOrderObject );
+
+
+
+
+
+
+
+
+
+
+
 
   // Send to all clients (broadcast)
   io.emit("order_status_update", testData);
