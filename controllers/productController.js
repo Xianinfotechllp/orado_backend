@@ -4,9 +4,10 @@ const Category = require('../models/categoryModel');
 const Restaurant = require('../models/restaurantModel');
 const Permission = require('../models/restaurantPermissionModel');
 const ChangeRequest = require('../models/changeRequest');
-
+const ExcelJS = require('exceljs');
 const { isValidObjectId } = mongoose;
 const { uploadOnCloudinary } = require('../utils/cloudinary');
+const fs = require('fs');
 exports.createProduct = async (req, res) => {
   try {
     const {
@@ -530,6 +531,99 @@ exports.getCategoryProducts = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+exports.exportProductsToExcel = async (restaurantId) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Products');
+
+  // Fetch products + populate category name
+  const products = await Product.find({ restaurantId })
+    .populate('categoryId', 'name') // populate categoryId, only get the 'name' field
+    .lean();
+
+  // Define headers
+  worksheet.columns = [
+    { header: 'ID', key: '_id', width: 30 },
+    { header: 'Name', key: 'name', width: 30 },
+    { header: 'Description', key: 'description', width: 40 },
+    { header: 'Price', key: 'price', width: 15 },
+    { header: 'Category', key: 'categoryName', width: 30 },  // changed header
+    { header: 'Active', key: 'active', width: 10 },
+    { header: 'Preparation Time (mins)', key: 'preparationTime', width: 20 },
+    { header: 'Food Type', key: 'foodType', width: 15 },
+  ];
+
+  // Add product rows
+  products.forEach(product => {
+    worksheet.addRow({
+      _id: product._id.toString(),
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      categoryName: product.categoryId?.name || '',  // populated category name
+      active: product.active ? 'Yes' : 'No',
+      preparationTime: product.preparationTime,
+      foodType: product.foodType,
+    });
+  });
+
+  return workbook;
+};
+
+
+
+exports.bulkUpdateProducts = async (req, res) => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(req.file.path);
+    const worksheet = workbook.getWorksheet('Products');
+
+    const updates = [];
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header row
+
+      const [
+        _id,
+        name,
+        description,
+        price,
+        categoryName,  // Optional: resolve to categoryId if needed
+        active,
+        preparationTime,
+        foodType
+      ] = row.values.slice(1);
+
+      updates.push({
+        updateOne: {
+          filter: { _id },
+          update: {
+            name,
+            description,
+            price,
+            active: active === 'Yes',
+            preparationTime,
+            foodType,
+          }
+        }
+      });
+    });
+
+    await Product.bulkWrite(updates);
+    fs.unlinkSync(req.file.path);
+
+    res.json({ message: 'Bulk update successful' });
+  } catch (error) {
+    console.error('Bulk update failed:', error);
+    res.status(500).json({ message: 'Bulk update failed' });
+  }
+};
+
+
 
 
 
