@@ -1374,11 +1374,7 @@ exports.getRestaurantEarningv2 = async (req, res) => {
   try {
     const { restaurantId } = req.params;
 
-    if (
-      !restaurantId ||
-      restaurantId === "undefined" ||
-      !mongoose.Types.ObjectId.isValid(restaurantId)
-    ) {
+    if (!restaurantId || restaurantId === "undefined" || !mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid restaurant ID",
@@ -1386,37 +1382,29 @@ exports.getRestaurantEarningv2 = async (req, res) => {
     }
 
     const { startDate, endDate, page = 1, limit = 10 } = req.query;
+    const restaurantObjectId = new Types.ObjectId(restaurantId);
 
-    // 1️⃣ Get all earnings for this restaurant (no payoutStatus filter)
-    const paidEarnings = await RestaurantEarning.find({
-      restaurantId,
-    }).lean();
-
-    const paidOrderIds = paidEarnings.map((earning) =>
-      new Types.ObjectId(earning.orderId)
-    );
-
-    // 2️⃣ Build order filter for delivered orders with those earnings
-    const orderFilter = {
-      _id: { $in: paidOrderIds },
-      orderStatus: "delivered",
-      restaurantId,
-    };
-
+    // Build date filter
+    const dateFilter = {};
     if (startDate && endDate) {
-      orderFilter.orderTime = {
+      dateFilter.orderTime = {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       };
     }
 
-    // 3️⃣ Summary aggregation
+    // 1. Get summary data with proper date filtering
     const summary = await RestaurantEarning.aggregate([
       {
         $match: {
-          restaurantId: new Types.ObjectId(restaurantId),
-          orderId: { $in: paidOrderIds },
-        },
+          restaurantId: restaurantObjectId,
+          ...(startDate && endDate && {
+            createdAt: {
+              $gte: new Date(startDate),
+              $lte: new Date(endDate),
+            }
+          })
+        }
       },
       {
         $group: {
@@ -1425,44 +1413,92 @@ exports.getRestaurantEarningv2 = async (req, res) => {
           totalCommission: { $sum: "$commissionAmount" },
           totalNetRevenue: { $sum: "$restaurantNetEarning" },
           orderCount: { $sum: 1 },
-        },
-      },
+        }
+      }
     ]);
 
-    // 4️⃣ Fetch paginated orders with product, agent & customer details
-    const ordersData = await Order.paginate(orderFilter, {
-      page,
-      limit,
-      sort: { createdAt: -1 },
-      populate: [
-        { path: "customerId", select: "name phone" },
-        { path: "assignedAgent", select: "name phone" },
-        { path: "orderItems.productId", select: "name price image" },
-      ],
-      select:
-        "orderItems orderTime deliveryTime paymentMethod walletUsed totalAmount deliveryAddress orderStatus assignedAgent subtotal offerDiscount discountAmount",
-    });
+    // 2. Get orders with earnings in a single query
+    const ordersData = await Order.aggregate([
+      {
+        $match: {
+          restaurantId: restaurantObjectId,
+          orderStatus: "delivered",
+          ...dateFilter
+        }
+      },
+      {
+        $lookup: {
+          from: "restaurantearnings",
+          localField: "_id",
+          foreignField: "orderId",
+          as: "earnings"
+        }
+      },
+      { $unwind: { path: "$earnings", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "customerId",
+          foreignField: "_id",
+          as: "customer"
+        }
+      },
+      { $unwind: { path: "$customer", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "assignedAgent",
+          foreignField: "_id",
+          as: "agent"
+        }
+      },
+      { $unwind: { path: "$agent", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "products",
+          localField: "orderItems.productId",
+          foreignField: "_id",
+          as: "products"
+        }
+      },
+      {
+        $project: {
+          // Include all the fields you need
+          orderItems: 1,
+          orderTime: 1,
+          deliveryTime: 1,
+          paymentMethod: 1,
+          walletUsed: 1,
+          totalAmount: 1,
+          deliveryAddress: 1,
+          orderStatus: 1,
+          assignedAgent: "$agent",
+          customerId: "$customer",
+          subtotal: 1,
+          offerDiscount: 1,
+          discountAmount: 1,
+          commissionAmount: { $ifNull: ["$earnings.commissionAmount", 0] },
+          restaurantNetEarning: { $ifNull: ["$earnings.restaurantNetEarning", 0] },
+          products: 1
+        }
+      },
+      {
+        $facet: {
+          metadata: [{ $count: "total" }, { $addFields: { page: parseInt(page), limit: parseInt(limit) } }],
+          data: [{ $skip: (parseInt(page) - 1) * parseInt(limit) }, { $limit: parseInt(limit) }]
+        }
+      }
+    ]);
 
-    // 5️⃣ Map earnings into each order
-    const ordersWithEarnings = await Promise.all(
-      ordersData.docs.map(async (order) => {
-        const earning = await RestaurantEarning.findOne({
-          orderId: order._id,
-          restaurantId,
-        }).lean();
+    // Format the response to match paginate structure
+    const result = {
+      docs: ordersData[0].data,
+      total: ordersData[0].metadata[0]?.total || 0,
+      limit: parseInt(limit),
+      page: parseInt(page),
+      pages: Math.ceil((ordersData[0].metadata[0]?.total || 0) / parseInt(limit))
+    };
 
-        return {
-          ...order.toObject(),
-          subtotal: order.subtotal,
-          offerDiscount: order.offerDiscount,
-          discountAmount: order.discountAmount,
-          commissionAmount: earning ? earning.commissionAmount : 0,
-          restaurantNetEarning: earning ? earning.restaurantNetEarning : 0,
-        };
-      })
-    );
-
-    // 6️⃣ Final Response
     res.json({
       success: true,
       summary: summary[0] || {
@@ -1471,19 +1507,17 @@ exports.getRestaurantEarningv2 = async (req, res) => {
         totalNetRevenue: 0,
         orderCount: 0,
       },
-      orders: {
-        ...ordersData,
-        docs: ordersWithEarnings,
-      },
+      orders: result,
     });
   } catch (error) {
     console.error("Payout report error:", error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: "Failed to fetch restaurant earnings",
+      error: error.message 
+    });
   }
 };
-
-
-
 
 
 
