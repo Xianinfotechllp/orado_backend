@@ -51,7 +51,7 @@ exports.registerMerchant = async (req, res) => {
 // Get merchant details
 exports.getMerchantDetails = async (req, res) => {
   try {
-     const merchantId = req.params.merchantId;
+     const merchantId = req.user._id;
 
     if (!merchantId) {
       return res.status(400).json({ message: "Merchant ID is required." });
