@@ -1,12 +1,25 @@
 const express = require('express');
 const router = express.Router();
 // const { protect } = require('../middleware/authMiddleware');
-const { getAverageRating, getFeedbacks, deleteFeedback, updateFeedback, createFeedback ,getRestaurantReviews ,replyToFeedbackByRestaurant ,getRestaurantProductReviews, addProductReview ,replyToProductReview } = require('../controllers/feedbackController');
+const { getAverageRating, getFeedbacks, deleteFeedback, updateFeedback, createFeedback, createRestaurantFeedback, getRestaurantReviews ,replyToFeedbackByRestaurant ,getRestaurantProductReviews, addProductReview ,replyToProductReview } = require('../controllers/feedbackController');
 const {protect, checkRole} = require('../middlewares/authMiddleware')
+const { upload } = require('../middlewares/multer');
 
 // Protected routes (requires login)
 // //needed protected currentlyusing for test
-router.post('/', protect, checkRole('customer'), createFeedback);
+router.post(
+  '/',
+  protect,
+  upload.any(), 
+  createFeedback
+);
+
+router.post(
+  '/restaurant',
+  upload.any(),
+  protect, 
+  createRestaurantFeedback
+);
 // router.put('/:id', protect, checkRole('customer'), updateFeedback);
 // router.delete('/:id', protect, checkRole('customer'), deleteFeedback);
 

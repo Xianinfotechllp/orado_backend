@@ -37,7 +37,7 @@ exports.addMessage = async (req, res) => {
   try {
     const { ticketId } = req.params;
     const { message } = req.body;
-    const sender = req.user.role?.toLowerCase() === "admin" ? "admin" : "user";
+    const sender = req.user.userType?.toLowerCase() === "admin" ? "admin" : "user";
 
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
@@ -46,7 +46,7 @@ exports.addMessage = async (req, res) => {
     const ticket = await Ticket.findById(ticketId);
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
-    ticket.messages.push({ sender, message });
+    ticket.replies.push({ sender, message });
     if (["Resolved", "Closed"].includes(ticket.status)) {
       ticket.status = "In Progress"; // Re-open if user responds
     }
@@ -102,10 +102,10 @@ exports.getAllTickets = async (req, res) => {
 // User fetch their tickets
 exports.getMyTickets = async (req, res) => {
   try {
-    const tickets = await Ticket.find({ user: req.user._id })
+    const userId = req.user._id
+    const tickets = await Ticket.find({ user: userId })
       .sort({ createdAt: -1 })
       .lean();
-
     res.status(200).json({ tickets });
   } catch (err) {
     res.status(500).json({ error: "Server error" });

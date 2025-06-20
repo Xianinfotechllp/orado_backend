@@ -14,7 +14,7 @@ router.delete('/products/:productId', protect, checkRole('merchant','superAdmin'
 router.put('/products/:productId/auto-on-off', protect, checkRole('merchant'), toggleProductActive);
 router.get('/products', protect, checkRole('merchant'), getMyRestaurantProducts);
 // router.get("/:restaurantId/products", protect, checkRole('merchant') ,getProductsBasedRestaurant)
-router.patch("/products/:productId/toggle",protect,toggleProductStatus )
+router.put("/products/:productId/toggle",protect,toggleProductStatus )
 
 
 router.get("/:restaurantId/products/category/:categoryId",getCategoryProducts)

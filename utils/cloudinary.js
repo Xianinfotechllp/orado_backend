@@ -23,7 +23,17 @@ const uploadOnCloudinary = async (localFilePath, folder = 'orado_uploads') => {
     });
 
     // ✅ Safe delete after upload
-    await fs.promises.unlink(localFilePath);
+    try {
+      if (fs.existsSync(localFilePath)) {
+        await new Promise(res => setTimeout(res, 100)); // In case it's still in use
+        await fs.promises.unlink(localFilePath);
+      } else {
+        console.warn("🚫 File not found:", localFilePath);
+      }
+    } catch (unlinkErr) {
+      console.error("❌ Failed to delete:", localFilePath, unlinkErr);
+    }
+
 
     return response;
   } catch (error) {

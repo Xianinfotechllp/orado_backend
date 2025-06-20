@@ -95,24 +95,16 @@ exports.getRestaurantsInServiceArea = async (req, res) => {
   }
 };
 
-
 exports.getNearbyCategories = async (req, res) => {
   try {
     const { latitude, longitude, distance = 5000 } = req.query;
 
-    if (latitude === undefined || longitude === undefined) {
-      return res.status(400).json({
-        message: "Latitude and longitude are required in query parameters.",
-        messageType: "failure",
-        statusCode: 400,
-      });
-    }
-
+    // Validate inputs
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
     const dist = parseFloat(distance);
 
-    if (isNaN(lat) || lat < -90 || lat > 90) {
+    if (isNaN(lat)) {
       return res.status(400).json({
         message: "Invalid latitude. Must be a number between -90 and 90.",
         messageType: "failure",
@@ -120,7 +112,7 @@ exports.getNearbyCategories = async (req, res) => {
       });
     }
 
-    if (isNaN(lng) || lng < -180 || lng > 180) {
+    if (isNaN(lng)) {
       return res.status(400).json({
         message: "Invalid longitude. Must be a number between -180 and 180.",
         messageType: "failure",
@@ -136,7 +128,7 @@ exports.getNearbyCategories = async (req, res) => {
       });
     }
 
-    // 1. Find nearby restaurants
+    // Find nearby restaurants using GeoJSON point query
     const nearbyRestaurants = await Restaurant.find({
       location: {
         $near: {
@@ -145,11 +137,9 @@ exports.getNearbyCategories = async (req, res) => {
         },
       },
       active: true,
-    }).select("_id");
+    }).select("_id").lean();
 
-    const restaurantIds = nearbyRestaurants.map(r => r._id);
-
-    if (restaurantIds.length === 0) {
+    if (nearbyRestaurants.length === 0) {
       return res.status(200).json({
         message: "No nearby restaurants found.",
         messageType: "success",
@@ -159,23 +149,47 @@ exports.getNearbyCategories = async (req, res) => {
       });
     }
 
-    // 2. Find categories with those restaurantIds and active
+    const restaurantIds = nearbyRestaurants.map(r => r._id);
+
+    // Get categories for these restaurants
     const categories = await Category.find({
       restaurantId: { $in: restaurantIds },
       active: true,
-    });
+    }).lean();
 
-    // Optional: Remove duplicate categories by name (if needed)
-    const uniqueCategoriesMap = new Map();
+    if (categories.length === 0) {
+      return res.status(200).json({
+        message: "No categories found for nearby restaurants.",
+        messageType: "success",
+        statusCode: 200,
+        count: 0,
+        data: [],
+      });
+    }
+
+    // Deduplicate categories by name and count restaurants
+    const categoryMap = new Map();
+
     categories.forEach(cat => {
-      if (!uniqueCategoriesMap.has(cat.name)) {
-        uniqueCategoriesMap.set(cat.name, cat);
+      if (!categoryMap.has(cat.name)) {
+        categoryMap.set(cat.name, {
+          ...cat,
+          restaurantCount: 1,
+        });
+      } else {
+        const existing = categoryMap.get(cat.name);
+        categoryMap.set(cat.name, {
+          ...existing,
+          restaurantCount: existing.restaurantCount + 1,
+        });
       }
     });
 
-    const uniqueCategories = Array.from(uniqueCategoriesMap.values());
+    const uniqueCategories = Array.from(categoryMap.values());
 
-    // 3. Return categories
+    // Sort descending by restaurantCount
+    uniqueCategories.sort((a, b) => b.restaurantCount - a.restaurantCount);
+
     return res.status(200).json({
       message: "Nearby categories fetched successfully.",
       messageType: "success",
@@ -183,6 +197,7 @@ exports.getNearbyCategories = async (req, res) => {
       count: uniqueCategories.length,
       data: uniqueCategories,
     });
+
   } catch (error) {
     console.error(error);
     return res.status(500).json({
@@ -192,6 +207,7 @@ exports.getNearbyCategories = async (req, res) => {
     });
   }
 };
+
 
 
 exports.getRestaurantsByLocationAndCategory = async (req, res) => {

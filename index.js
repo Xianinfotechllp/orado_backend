@@ -24,7 +24,8 @@ const allowedOrigins = [
   'http://localhost:5174',
    'http://localhost:5175',
    'http://localhost:5176',
-   'http://127.0.0.1:5500'
+   'http://127.0.0.1:5500',
+   'https://68551f6efc1bc84123139859--luminous-taffy-dc231c.netlify.app'
 
 ];
 
