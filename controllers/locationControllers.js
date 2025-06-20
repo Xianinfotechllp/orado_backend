@@ -487,7 +487,7 @@ exports.searchRestaurants = async (req, res) => {
         { name: { $regex: query, $options: "i" } },
         { merchantSearchName: { $regex: query, $options: "i" } }
       ],
-      active: true,
+      // active: true,
       approvalStatus: "approved"
     }).select("_id");
 
@@ -514,7 +514,7 @@ exports.searchRestaurants = async (req, res) => {
     // 5️⃣ Geo + Filtered + Paginated query
     const baseQuery = {
       _id: { $in: finalIds },
-      active: true,
+      // active: true,
       approvalStatus: "approved"
     };
 
@@ -554,6 +554,7 @@ exports.searchRestaurants = async (req, res) => {
             updatedAt: 1,
             distance: 1,
             minOrderAmount: 1,
+            active: 1
           }
         }
       ]);
