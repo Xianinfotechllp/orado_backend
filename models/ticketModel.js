@@ -19,7 +19,7 @@ const ticketSchema = new mongoose.Schema({
     {
       sender: { type: String, enum: ["user", "admin"], required: true },
       message: String,
-      timestamp: { type: Date, default: Date.now }
+      createdAt: { type: Date, default: Date.now }
     }
   ]
 });

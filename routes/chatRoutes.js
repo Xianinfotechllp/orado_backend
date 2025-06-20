@@ -8,7 +8,7 @@ router.get('/admin/restaurants', protect, chatController.getAdminRestaurantChats
 router.get('/admin/restaurants/:restaurantId', protect, chatController.getAdminRestaurantChat);
 router.get('/restaurants/admin', protect, chatController.getRestaurantAdminChat);
 router.post('/admin/restaurants/:restaurantId/message', protect, chatController.sendAdminToRestaurantMessage);
-router.post('/restaurant/admins/:adminId/message', protect, chatController.sendRestaurantToAdminMessage);
+router.post('/restaurant/admins/message', protect, chatController.sendRestaurantToAdminMessage);
 
 // ========== CUSTOMER-AGENT CHAT ==========
 router.get('/agent/users', protect, chatController.getAgentUserChats);

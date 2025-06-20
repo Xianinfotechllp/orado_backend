@@ -23,7 +23,7 @@ router.post("/login", loginMerchant)
 router.post("/forgot-password", protect, checkRole('merchant'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassword)
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
-// router.get('/:merchantId', getMerchantDetails); 
+router.get('/merchant', protect, getMerchantDetails); 
 router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
 router.get('/merchant/:merchantId/restaurants',  getRestaurantsByMerchantId);
 
@@ -38,7 +38,18 @@ router.post(
   ]),
   protect, checkRole('merchant'), createRestaurant);
 // router.post("/register",register)
-router.put("/:restaurantId", upload.array('images', 5), protect, checkRole('merchant'), updateRestaurant);
+router.put(
+  "/:restaurantId",
+  upload.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'fssaiDoc', maxCount: 1 },
+    { name: 'gstDoc', maxCount: 1 },
+    { name: 'aadharDoc', maxCount: 1 },
+  ]),
+  protect,
+  checkRole('merchant'),
+  updateRestaurant
+);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
 // router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)
 
@@ -69,14 +80,14 @@ router.delete('/:restaurantId/categories/:categoryId', protect, checkRole('merch
 router.get("/:restaurantId/menu",getRestaurantMenu)
 
 // get restaurant earnigs
-router.get("/:restaurantId/earnigs/summary",protect,checkRole('merchant'),getRestaurantEarningSummary)
-router.get("/:restaurantId/earnigs",protect,getRestaurantEarnings)
-router.get("/:restaurantId/earnigs-list",protect,getRestaurantEarningsList)
+router.get("/:restaurantId/earnings/summary",protect,checkRole('merchant'),getRestaurantEarningSummary)
+router.get("/:restaurantId/earnings",protect,getRestaurantEarnings)
+router.get("/:restaurantId/earnings-list",protect,getRestaurantEarningsList)
 
-router.get("/:restaurantId/earnigsv2",protect,getRestaurantEarningv2)
+router.get("/:restaurantId/earningsv2",protect,getRestaurantEarningv2)
 
 
-router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders)
+router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurantOrders) 
 
 
 
