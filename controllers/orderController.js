@@ -1267,13 +1267,16 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       userCoords,
       restaurant._id
     );
-    if (!isInsideServiceArea) {
-      return res.status(400).json({
-        error:
-          "We currently do not deliver to your location for this restaurant.",
-      });
+   if (!isInsideServiceArea) {
+  return res.status(400).json({
+    success: false,
+    error: {
+      code: "DELIVERY_UNAVAILABLE",  // Standard error code
+      message: "We currently do not deliver to your location for this restaurant.",
+      userMessage: "Delivery unavailable to your selected location" // Frontend-friendly message
     }
-
+  });
+}
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
