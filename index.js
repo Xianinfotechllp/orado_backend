@@ -30,21 +30,19 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS: " + origin));
-    }
+  origin: (origin, callback) => {
+    callback(null, origin);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
 }));
-
 
 const io = socketIo(server, {
   cors: {
-    origin: allowedOrigins,   // same — only allows listed origins
+    origin: (origin, callback) => {
+      console.log("Socket.IO CORS request from:", origin);
+      callback(null, origin); // Echo back the request origin
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true
   }
