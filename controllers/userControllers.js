@@ -397,6 +397,9 @@ exports.addAddress = async (req, res) => {
       latitude 
     } = req.body;
 
+
+    console.log(req.body)
+
     // Convert to numbers explicitly
     const longNum = Number(longitude);
     const latNum = Number(latitude);
