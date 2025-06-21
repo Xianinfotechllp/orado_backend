@@ -20,8 +20,8 @@ const allowedOrigins = [
   "https://685373355e51ac68af207c35--luminous-taffy-dc231c.netlify.app",
   'https://luminous-taffy-dc231c.netlify.app',
   'http://localhost:4173' ,
-  'http://localhost:5173',
-  'http://localhost:5174',
+   'http://localhost:5173',
+   'http://localhost:5174',
    'http://localhost:5175',
    'http://localhost:5176',
    'http://127.0.0.1:5500',
@@ -38,18 +38,17 @@ app.use(cors({
     }
   },
   credentials: true,
-methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
 }));
 
 
 const io = socketIo(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: allowedOrigins,   // same — only allows listed origins
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true
   }
 });
-
 
 // Attach io to app so it can be used in controllers
 app.set("io", io);
