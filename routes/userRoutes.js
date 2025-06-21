@@ -9,7 +9,9 @@ const { registerUser, verifyOtp, loginUser,addAddress,getAddress ,deleteAddressB
       addFavouriteRestaurant,
     getFavouriteRestaurants,
     removeFavouriteRestaurant
-       , getUserNotifications, markAllAsRead,markAsRead,deleteAccount, updateUserProfile
+       , getUserNotifications, markAllAsRead,markAsRead,deleteAccount, updateUserProfile,
+       loginWithOtp,
+       sendOtpToPhone
 } = require("../controllers/userControllers");
 const {initiateWalletTopUp, verifyAndCreditWallet, getWalletBalance} = require('../controllers/walletController')
 
@@ -37,7 +39,8 @@ router.post("/address", protect, checkRole('customer'), addAddress)
 router.post("/address", protect, addAddress)
 router.put("/address/:addressId", protect, checkRole('customer'), updateAddressById)
 router.put("/addresses/:addressId", protect, updateAddressById)
-
+router.post("/send-otp", sendOtpToPhone);               // Send phone OTP
+router.post("/login-with-otp", loginWithOtp); 
 
 router.delete("/delete/:addressId", protect, deleteAddressById)
 

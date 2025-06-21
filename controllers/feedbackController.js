@@ -395,13 +395,11 @@ exports.replyToFeedbackByRestaurant = async (req, res) => {
 };
 
 
-
-
 exports.addProductReview = async (req, res) => {
   try {
-    const {productId} = req.params
-    const {rating, comment, images } = req.body;
-    const userId = req.user._id; // assuming you use auth middleware to set req.user
+    const { productId } = req.params;
+    const { rating, comment } = req.body;
+    const userId = req.user._id;
 
     // Validate productId
     if (!mongoose.Types.ObjectId.isValid(productId)) {
@@ -419,12 +417,24 @@ exports.addProductReview = async (req, res) => {
       });
     }
 
+    // Upload images to Cloudinary if files are sent
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      const uploadPromises = req.files.map(async (file) => {
+        const uploadResult = await uploadOnCloudinary(file.path);
+        return uploadResult.secure_url;
+      });
+
+      imageUrls = await Promise.all(uploadPromises);
+    }
+
+    // Save review
     const newReview = new ProductReview({
       userId,
       productId,
       rating,
       comment,
-      images,
+      images: imageUrls,
     });
 
     await newReview.save();
@@ -434,7 +444,6 @@ exports.addProductReview = async (req, res) => {
       messageType: "success",
       data: newReview,
     });
-
   } catch (error) {
     console.error("Error adding product review:", error);
     return res.status(500).json({
@@ -443,7 +452,6 @@ exports.addProductReview = async (req, res) => {
     });
   }
 };
-
 
 
 exports.getRestaurantProductReviews = async (req, res) => {

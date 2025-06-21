@@ -202,6 +202,133 @@ exports.loginUser = async (req, res) => {
   }
 };
 
+
+
+
+
+exports.loginWithOtp = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+
+    if (!phone || !otp) {
+      return res.status(400).json({ message: "Phone number and OTP are required" });
+    }
+   const formattedPhone = phone.startsWith("+91") ? phone : `+91${phone}`;
+    // Find user by phone
+    const userExist = await User.findOne({ phone : formattedPhone });
+    if (!userExist) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Validate OTP
+    if (userExist.verification.phoneOtp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    // Check expiry
+    if (userExist.verification.otpExpiry < new Date()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ userId: userExist._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    // Limit to 3 active sessions
+    // const MAX_SESSIONS = 3;
+    // const existingSessions = await Session.find({ userId: userExist._id }).sort({ createdAt: 1 });
+
+    // if (existingSessions.length >= MAX_SESSIONS) {
+    //   const oldestSession = existingSessions[0];
+    //   await Session.findByIdAndDelete(oldestSession._id);
+    // }
+
+    // Device + IP info
+    const userAgent = req.headers["user-agent"] || "Unknown Device";
+    const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
+
+    // Save session
+    await Session.create({
+      userId: userExist._id,
+      token,
+      userAgent,
+      ip,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    // Mark phone verified and clear OTP
+    userExist.verification.phoneVerified = true;
+    userExist.verification.phoneOtp = null;
+    userExist.verification.otpExpiry = null;
+    userExist.lastActivity = new Date();
+    await userExist.save();
+
+const user = {
+  _id: userExist._id,
+  name: userExist.name,
+  email: userExist.email,
+  phone: userExist.phone,
+  role: userExist.userType,  // 👈 fix here
+};
+
+    res.json({
+      message: "Logged in successfully with OTP",
+      token,
+      user,
+    });
+  } catch (error) {
+    console.error("OTP login error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+
+exports.sendOtpToPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+
+    // ✅ Find user — no auto-create
+    const formattedPhone = phone.startsWith("+91") ? phone : `+91${phone}`;
+    const user = await User.findOne({ phone:formattedPhone });
+    if (!user) {
+      return res.status(404).json({ message: "User not found. Please register first." });
+    }
+
+    // ✅ Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.verification.phoneOtp = otp;
+    user.verification.otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min validity
+    await user.save();
+
+    // ✅ Send OTP via Twilio
+    await sendSms(phone, `Your Orado login OTP is: ${otp}`);
+
+    return res.json({ message: "OTP sent successfully" });
+
+  } catch (error) {
+    console.error("Send OTP error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
 exports.updateUserProfile = async (req, res) => {
   try {
     const userId = req.user._id;

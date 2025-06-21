@@ -1,5 +1,6 @@
 const express = require('express');
 const { upload } = require('../middlewares/multer');
+const { excelUpload } = require('../middlewares/excelUpload');
 const { protect, checkRole ,checkRestaurantPermission, checkPermission, attachRestaurantFromProduct} = require('../middlewares/authMiddleware');
 const { createProduct, getRestaurantProducts, updateProduct, deleteProduct, toggleProductActive ,getMyRestaurantProducts, getProductsBasedRestaurant, getCategoryProducts,toggleProductStatus, exportProductsToExcel, bulkUpdateProducts } = require('../controllers/productController');
 const router = express.Router();
@@ -44,10 +45,14 @@ try {
 }
 )
 
-
-router.post("/:restaurantId/products/bulk-update",upload.single('file'), bulkUpdateProducts)
-
-
+            
+router.post(
+  "/:restaurantId/products/bulk-update",
+  protect,
+  checkRole('merchant'),
+  excelUpload.single("file"),
+  bulkUpdateProducts
+);
 
 
 

@@ -35,7 +35,7 @@ router.get("/product/restaurants/:restaurantId/",getRestaurantProductReviews )
 router.post('/product-feedback/:feedbackId/reply',replyToProductReview);
 
 //crete product feedback by user 
-router.post("/product/:productId",protect,addProductReview)
+router.post("/product/:productId",protect,  upload.array('images', 5),addProductReview)
 
 
 

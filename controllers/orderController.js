@@ -1812,6 +1812,7 @@ const deliveryFee = await feeService.calculateDeliveryFee(
   isSurge: costSummary.isSurge,
   surgeReason: costSummary.surgeReason,
   agentAssignmentStatus: "not_assigned",
+  instructions:instructions
 });
 
     const savedOrder = await newOrder.save();
@@ -1819,6 +1820,25 @@ const deliveryFee = await feeService.calculateDeliveryFee(
 const populatedOrder = await Order.findById(savedOrder._id)
   .populate("customerId", "name email phone")
   .lean(); 
+
+const sanitizeOrderNumbers = (order, fields) => {
+  fields.forEach((key) => {
+    order[key] = Number(order[key]) || 0;
+  });
+  return order;
+};
+
+
+  sanitizeOrderNumbers(populatedOrder, [
+  'subtotal',
+  'tax',
+  'discountAmount',
+  'deliveryCharge',
+  'offerDiscount',
+  'surgeCharge',
+  'tipAmount',
+  'totalAmount'
+]);
 
 console.log(populatedOrder)
 

@@ -78,7 +78,11 @@ offerDiscount: {
 
   deliveryMode: { type: String, enum: ['contact', 'no_contact', 'do_not_disturb'] },
 
-  instructions: String,
+
+  instructions: {
+  type: String,
+  default: "",
+  },
   orderPreparationDelay: Boolean,
   scheduledTime: Date,
   couponCode: String,

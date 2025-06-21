@@ -99,6 +99,7 @@ exports.checkRestaurantPermission = (permissionKey, allowRequest = false, custom
     try {
       // FIRST check req.restaurantId (set by attachRestaurantFromProduct)
       // THEN fall back to other locations
+      console.log(req.params.restaurantId)
       const restaurantId = req.restaurantId || req.body.restaurantId || req.params.restaurantId || req.query.restaurantId;
       
       if (!restaurantId) {
@@ -109,7 +110,7 @@ exports.checkRestaurantPermission = (permissionKey, allowRequest = false, custom
         _id: restaurantId, 
         ownerId: req.user._id 
       });
-      
+      console.log(restaurant)
       if (!restaurant) {
         return res.status(404).json({ 
           message: "Restaurant not found or you don't have access" 

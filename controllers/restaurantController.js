@@ -346,16 +346,26 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
 };
 
 
-
 exports.updateRestaurant = async (req, res) => {
   try {
     if (!req.body)
       return res.status(400).json({ message: "Request body is missing." });
 
     const { restaurantId } = req.params;
+
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant)
       return res.status(404).json({ message: "Restaurant not found." });
+
+    // Parse address if it's a JSON string
+    if (typeof req.body.address === 'string') {
+      try {
+        req.body.address = JSON.parse(req.body.address);
+      } catch (e) {
+        console.error("Failed to parse address JSON:", e);
+        return res.status(400).json({ message: "Invalid address format." });
+      }
+    }
 
     const {
       name,
@@ -371,13 +381,15 @@ exports.updateRestaurant = async (req, res) => {
       status,
     } = req.body;
 
-    // Update basic fields if they exist
+    // Update basic fields if provided
     if (name) restaurant.name = name;
     if (phone) restaurant.phone = phone;
     if (email) restaurant.email = email;
     if (foodType) restaurant.foodType = foodType;
     if (merchantSearchName) restaurant.merchantSearchName = merchantSearchName;
     if (minOrderAmount) restaurant.minOrderAmount = minOrderAmount;
+
+    // Parse payment methods if string
     if (paymentMethods) {
       try {
         restaurant.paymentMethods = typeof paymentMethods === 'string'
@@ -388,14 +400,14 @@ exports.updateRestaurant = async (req, res) => {
         return res.status(400).json({ message: "Invalid format for paymentMethods" });
       }
     }
-    if (req.body.openingHours) {
+
+    // Parse and update opening hours
+    if (openingHours) {
       try {
-        // Parse the JSON string if it's a string
-        const hoursData = typeof req.body.openingHours === 'string' ? 
-                         JSON.parse(req.body.openingHours) : 
-                         req.body.openingHours;
-        
-        // Convert to the correct schema format
+        const hoursData = typeof openingHours === 'string'
+          ? JSON.parse(openingHours)
+          : openingHours;
+
         restaurant.openingHours = hoursData.map(hour => ({
           day: hour.day,
           openingTime: hour.openingTime || hour.open,
@@ -406,24 +418,44 @@ exports.updateRestaurant = async (req, res) => {
         console.error("Error parsing opening hours:", e);
       }
     }
+
     if (isActive !== undefined) restaurant.isActive = isActive;
     if (status) restaurant.status = status;
 
-    // 🧭 Address and Location
+    // Update address and coordinates if provided
     if (address) {
       restaurant.address.street = address?.street || restaurant.address.street;
       restaurant.address.city = address?.city || restaurant.address.city;
       restaurant.address.state = address?.state || restaurant.address.state;
       restaurant.address.zip = address?.pincode || restaurant.address.zip;
 
-      if (address.coordinates && address.coordinates.length === 2) {
-        restaurant.location = {
-          type: "Point",
-          coordinates: [address.coordinates[1], address.coordinates[0]],
-        };
+      if (address.coordinates) {
+        let coords = address.coordinates;
+
+        if (typeof coords === 'string') {
+          try {
+            coords = JSON.parse(coords);
+          } catch (e) {
+            console.error("Failed to parse address.coordinates:", e);
+            coords = null;
+          }
+        }
+
+        if (Array.isArray(coords) && coords.length === 2) {
+          restaurant.location = {
+            type: "Point",
+            coordinates: [parseFloat(coords[0]), parseFloat(coords[1])],
+          };
+        } else {
+          console.warn("Invalid coordinates format:", address.coordinates);
+        }
       }
     }
 
+    // Log coordinates for debugging
+    console.log("Updated coordinates:", restaurant.location);
+
+    // Handle file uploads if any
     if (req.files) {
       const uploadPromises = Object.entries(req.files).flatMap(([field, fileArray]) =>
         fileArray.map(async (file) => {
@@ -444,11 +476,13 @@ exports.updateRestaurant = async (req, res) => {
       message: "Restaurant updated successfully.",
       restaurant,
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error.", error });
   }
 };
+
 
 exports.deleteRestaurant = async (req, res) => {
   try {
@@ -1369,7 +1403,6 @@ exports.getRestaurantEarningsList = async (req, res) => {
   }
 };
 
-
 exports.getRestaurantEarningv2 = async (req, res) => {
   try {
     const { restaurantId } = req.params;
@@ -1393,7 +1426,7 @@ exports.getRestaurantEarningv2 = async (req, res) => {
       };
     }
 
-    // 1. Get summary data with proper date filtering
+    // 1️⃣ Get summary data
     const summary = await RestaurantEarning.aggregate([
       {
         $match: {
@@ -1417,7 +1450,7 @@ exports.getRestaurantEarningv2 = async (req, res) => {
       }
     ]);
 
-    // 2. Get orders with earnings in a single query
+    // 2️⃣ Get orders with earnings
     const ordersData = await Order.aggregate([
       {
         $match: {
@@ -1463,7 +1496,6 @@ exports.getRestaurantEarningv2 = async (req, res) => {
       },
       {
         $project: {
-          // Include all the fields you need
           orderItems: 1,
           orderTime: 1,
           deliveryTime: 1,
@@ -1490,6 +1522,23 @@ exports.getRestaurantEarningv2 = async (req, res) => {
       }
     ]);
 
+    // 3️⃣ Payment method counts
+    const paymentStats = await Order.aggregate([
+      {
+        $match: {
+          restaurantId: restaurantObjectId,
+          orderStatus: "delivered",
+          ...dateFilter
+        }
+      },
+      {
+        $group: {
+          _id: "$paymentMethod",
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
     // Format the response to match paginate structure
     const result = {
       docs: ordersData[0].data,
@@ -1507,20 +1556,18 @@ exports.getRestaurantEarningv2 = async (req, res) => {
         totalNetRevenue: 0,
         orderCount: 0,
       },
+      paymentSummary: paymentStats,  // 👈 New counts of payment methods
       orders: result,
     });
   } catch (error) {
     console.error("Payout report error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Failed to fetch restaurant earnings",
-      error: error.message 
+      error: error.message
     });
   }
 };
-
-
-
 
 
 

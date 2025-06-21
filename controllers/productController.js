@@ -574,29 +574,33 @@ exports.exportProductsToExcel = async (restaurantId) => {
   return workbook;
 };
 
-
-
 exports.bulkUpdateProducts = async (req, res) => {
   try {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(req.file.path);
-    const worksheet = workbook.getWorksheet('Products');
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
 
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+
+    const worksheet = workbook.getWorksheet('Products');
     const updates = [];
 
     worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header row
+      if (rowNumber === 1) return;
 
       const [
         _id,
         name,
         description,
         price,
-        categoryName,  // Optional: resolve to categoryId if needed
+        categoryName,
         active,
         preparationTime,
         foodType
       ] = row.values.slice(1);
+
+      if (!_id) return;
 
       updates.push({
         updateOne: {
@@ -613,17 +617,16 @@ exports.bulkUpdateProducts = async (req, res) => {
       });
     });
 
-    await Product.bulkWrite(updates);
-    fs.unlinkSync(req.file.path);
+    if (updates.length > 0) {
+      await Product.bulkWrite(updates);
+    }
 
-    res.json({ message: 'Bulk update successful' });
+    res.json({ success: true, updatedCount: updates.length });
   } catch (error) {
     console.error('Bulk update failed:', error);
     res.status(500).json({ message: 'Bulk update failed' });
   }
 };
-
-
 
 
 

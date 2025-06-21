@@ -289,7 +289,7 @@ exports.getRestaurantsByLocationAndCategory = async (req, res) => {
 
 exports.getRecommendedRestaurants = async (req, res) => {
   try {
-    const { latitude, longitude, maxDistance = 20000, minOrderAmount = 0 } = req.query;
+    const { latitude, longitude, maxDistance = 15000, minOrderAmount = 0 } = req.query;
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
@@ -329,6 +329,7 @@ exports.getRecommendedRestaurants = async (req, res) => {
         },
       },
       minOrderAmount: { $gte: minOrder },
+       approvalStatus:"approved",
       active: true,
     })
       .sort({ rating: -1 })
