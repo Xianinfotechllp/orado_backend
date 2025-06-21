@@ -28,7 +28,7 @@ const allowedOrigins = [
    'https://68551f6efc1bc84123139859--luminous-taffy-dc231c.netlify.app'
 
 ];
-
+app.use(express.json());
 app.use(cors({
   origin: (origin, callback) => {
     callback(null, origin);
@@ -397,9 +397,9 @@ io.on("connection", (socket) => {
 // Routes
 app.use("/admin", adminRouter);
 app.use("/user", userRouter);
-app.use("/restaurants", productRouter);
+// app.use("/restaurants", productRouter);
 app.use("/restaurants", resturantRouter);
-app.use("/restaurants", offerRouter);
+// app.use("/restaurants", offerRouter);
 app.use("/order", orderRouter);
 app.use("/coupon", couponRoutes);
 app.use("/chat", chatRouter);

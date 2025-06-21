@@ -3,11 +3,12 @@ const router = express.Router()
 
 const {createCategory,getAResturantCategories,editResturantCategory,deleteResturantCategory} = require('../controllers/categoryController')
 const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll, getMerchantDetails} = require('../controllers/merchantController')
-const {protect, checkRole, checkRestaurantPermission} = require('../middlewares/authMiddleware')
+const {protect, checkRole, checkRestaurantPermission,attachRestaurantFromProduct} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
+const {excelUpload} = require("../middlewares/excelUpload")
 const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas, getRestaurantEarningsList, getRestaurantEarningv2, toggleRestaurantActiveStatus}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
-
+const { createProduct, getRestaurantProducts, updateProduct, deleteProduct, toggleProductActive ,getMyRestaurantProducts, getProductsBasedRestaurant, getCategoryProducts,toggleProductStatus, exportProductsToExcel, bulkUpdateProducts } = require('../controllers/productController');
 // get all restruants (for users)
 
 router.get("/all-restaurants", getAllApprovedRestaurants)
@@ -94,6 +95,97 @@ router.get("/:restaurantId/myorders",protect,checkRole('merchant'),getRestaurant
 router.put("/:restaurantId/toggle-active",protect, toggleRestaurantActiveStatus);
 // restaurant order stauts update 
 // router.get("/orders/:id/status",)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+router.post('/:restaurantId/products', protect, checkRole('merchant'), upload.array('images',5),checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), createProduct);
+router.get('/:restaurantId/products', protect, checkRole('merchant', 'customer'), getRestaurantProducts);
+
+
+
+router.put('/products/:productId', protect, checkRole('merchant','superAdmin'), attachRestaurantFromProduct,checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), upload.array('images'),updateProduct);
+router.delete('/products/:productId', protect, checkRole('merchant','superAdmin'), attachRestaurantFromProduct,checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), deleteProduct);
+router.put('/products/:productId/auto-on-off', protect, checkRole('merchant'), toggleProductActive);
+router.get('/products', protect, checkRole('merchant'), getMyRestaurantProducts);
+// router.get("/:restaurantId/products", protect, checkRole('merchant') ,getProductsBasedRestaurant)
+router.put("/products/:productId/toggle",protect,toggleProductStatus )
+
+
+router.get("/:restaurantId/products/category/:categoryId",getCategoryProducts)
+
+//excel sheet 
+
+router.get("/:restaurantId/products/export",async (req, res) => {
+try {
+    const { restaurantId } = req.params;
+    const workbook = await exportProductsToExcel(restaurantId);
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=products-${restaurantId}.xlsx`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Failed to export products:', err);
+    res.status(500).json({ message: 'Failed to export products' });
+  }
+}
+)
+
+            
+router.post(
+  "/:restaurantId/products/bulk-update",
+  protect,
+  checkRole('merchant'),
+  excelUpload.single("file"),
+  bulkUpdateProducts
+);
+
+
+
+
+
+
+
+
+
+
+
 
 
 module.exports = router
