@@ -65,7 +65,7 @@ offerDiscount: {
   default: 0
 },
 
-
+cartTotal: Number,
 
 
 

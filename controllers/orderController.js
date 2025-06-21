@@ -1799,6 +1799,7 @@ const deliveryFee = await feeService.calculateDeliveryFee(
     longitude: parseFloat(longitude),
   },
   subtotal: costSummary.cartTotal, // ✅ from V2
+  cartTotal: costSummary.cartTotal, 
   tax: costSummary.totalTaxAmount, // ✅ from V2
   discountAmount: costSummary.offerDiscount + costSummary.couponDiscount, // ✅ clean combined discount
   deliveryCharge: costSummary.deliveryFee, // ✅ from V2
