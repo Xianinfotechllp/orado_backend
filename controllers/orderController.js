@@ -1228,79 +1228,81 @@ exports.getOrderPriceSummary = async (req, res) => {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
-};
+  };
 
-exports.getOrderPriceSummaryv2 = async (req, res) => {
-  try {
-    const {
-      longitude,
-      latitude,
-      couponCode,
-      cartId,
-      userId,
-      tipAmount = 0,
-    } = req.body;
+  exports.getOrderPriceSummaryv2 = async (req, res) => {
+    try {
+      const {
+        longitude,
+        latitude,
+        couponCode,
+        cartId,
+        userId,
+        tipAmount = 0,
+      } = req.body;
 
-    if (!cartId || !userId) {
-      return res.status(400).json({ error: "cartId and userId are required" });
-    }
+      if (!cartId || !userId) {
+        return res.status(400).json({ error: "cartId and userId are required" });
+      }
 
-    const cart = await Cart.findOne({ _id: cartId, user: userId });
-    if (!cart) {
-      return res.status(404).json({ error: "Cart not found for this user" });
-    }
+      const cart = await Cart.findOne({ _id: cartId, user: userId });
+      if (!cart) {
+        return res.status(404).json({ error: "Cart not found for this user" });
+      }
 
-    if (!cart.products || cart.products.length === 0) {
-      return res.status(400).json({ error: "Cart is empty" });
-    }
+      if (!cart.products || cart.products.length === 0) {
+        return res.status(400).json({ error: "Cart is empty" });
+      }
 
-    const restaurant = await Restaurant.findById(cart.restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ error: "Restaurant not found" });
-    }
+      const restaurant = await Restaurant.findById(cart.restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ error: "Restaurant not found" });
+      }
 
-    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+      const userCoords = [parseFloat(longitude), parseFloat(latitude)];
 
-    const restaurantCoords = restaurant.location.coordinates;
+      const restaurantCoords = restaurant.location.coordinates;
 
-    const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
-      userCoords,
-      restaurant._id
-    );
-   if (!isInsideServiceArea) {
-  return res.status(400).json({
+      const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+  userCoords,
+  restaurant._id
+);
+      console.log(isInsideServiceArea)
+
+    if (!isInsideServiceArea) {
+ return res.status(400).json({
     success: false,
     error: {
-      code: "DELIVERY_UNAVAILABLE",  // Standard error code
-      message: "We currently do not deliver to your location for this restaurant.",
-      userMessage: "Delivery unavailable to your selected location" // Frontend-friendly message
+      code: "DELIVERY_UNAVAILABLE",               // backend error code
+      message: "We currently do not deliver to your location for this restaurant.", // developer message
+      userMessage: "Delivery unavailable to your selected location."               // user-friendly frontend message
     }
   });
-}
-    const preSurgeOrderAmount = cart.products.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0
-    );
-    // ✅ Fetch active offers for the restaurant
-    const offers = await Offer.find({
-      applicableRestaurants: restaurant._id, // this can also be an array match
-      isActive: true,
-      validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() },
-    }).lean();
+  }
+      const preSurgeOrderAmount = cart.products.reduce(
+        (total, item) => total + item.price * item.quantity,
+        0
+      );
+      // ✅ Fetch active offers for the restaurant
+      const offers = await Offer.find({
+        applicableRestaurants: restaurant._id, // this can also be an array match
+        isActive: true,
+        validFrom: { $lte: new Date() },
+        validTill: { $gte: new Date() },
+      }).lean();
 
-    const surgeObj = await getApplicableSurgeFee(
-      userCoords,
-      preSurgeOrderAmount
-    );
+      const surgeObj = await getApplicableSurgeFee(
+        userCoords,
+        preSurgeOrderAmount
+      );
 
-    // Compute isSurge and surgeFeeAmount based on result
-    const isSurge = !!surgeObj;
-    const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+      // Compute isSurge and surgeFeeAmount based on result
+      const isSurge = !!surgeObj;
+      const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
 
-    const deliveryFee = await feeService.calculateDeliveryFee(
-      restaurantCoords,
-      userCoords
+      const deliveryFee = await feeService.calculateDeliveryFee(
+        restaurantCoords,
+        userCoords
     );
     
     const foodTax = await feeService.getActiveTaxes("food")

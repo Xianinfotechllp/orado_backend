@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const Restaurant = require("../models/restaurantModel");
-
+const ServiceArea = require("../models/serviceAreaModel");
 exports.isPointInsideServiceAreas = async (userCoords, restaurantId) => {
   if (
     !Array.isArray(userCoords) ||
@@ -15,17 +15,17 @@ exports.isPointInsideServiceAreas = async (userCoords, restaurantId) => {
     throw new Error("Invalid restaurant ID");
   }
 
-  const restaurant = await Restaurant.findOne({
-    _id: restaurantId,
-    serviceAreas: {
+  const result = await ServiceArea.findOne({
+    restaurantId,
+    area: {
       $geoIntersects: {
         $geometry: {
           type: "Point",
-          coordinates: userCoords,
-        },
-      },
-    },
+          coordinates: userCoords
+        }
+      }
+    }
   });
 
-  return !!restaurant;
+  return !!result;
 };

@@ -14,6 +14,26 @@ const orderSchema = mongoose.Schema({
 
   }],
 
+
+
+
+onlinePaymentDetails: {
+  razorpayOrderId: { type: String },
+  razorpayPaymentId: { type: String },
+  razorpaySignature: { type: String },
+  verificationStatus: { type: String, enum: ['pending', 'verified', 'failed'], default: 'pending' },
+  failureReason: { type: String }
+},
+
+
+
+
+
+
+
+
+
+
   orderTime: { type: Date, default: Date.now },
   deliveryTime: Date,
 

@@ -13,6 +13,7 @@ const User = require("../models/userModel");
 const Offer = require("../models/offerModel");
 const moment = require("moment");
 const { Types } = require('mongoose');
+const ServiceArea = require("../models/serviceAreaModel");
 exports.createRestaurant = async (req, res) => {
   try {
     // 1️⃣ Required fields validation (removed password, ownerName, email, phone)
@@ -694,7 +695,7 @@ exports.addServiceArea = async (req, res) => {
   try {
     const { restaurantId } = req.params;
     const { serviceAreas } = req.body;
-    console.log(restaurantId);
+
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
         message: "Invalid restaurant ID",
@@ -725,10 +726,7 @@ exports.addServiceArea = async (req, res) => {
       }
     }
 
-    // Cast restaurantId to ObjectId
-    const restaurantObjectId = new mongoose.Types.ObjectId(restaurantId);
-
-    const restaurant = await Restaurant.findById(restaurantObjectId);
+    const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({
         message: "Restaurant not found",
@@ -736,16 +734,25 @@ exports.addServiceArea = async (req, res) => {
       });
     }
 
-    restaurant.serviceAreas = serviceAreas;
-    await restaurant.save();
+    // ✅ Remove old service areas (if you want to replace them)
+    await ServiceArea.deleteMany({ restaurantId });
+
+    // ✅ Add new service areas
+    const insertedAreas = await ServiceArea.insertMany(
+      serviceAreas.map((area) => ({
+        restaurantId,
+        area
+      }))
+    );
 
     return res.status(200).json({
       message: "Service areas updated successfully",
       messageType: "success",
-      data: restaurant.serviceAreas,
+      data: insertedAreas,
     });
+
   } catch (error) {
-    console.error("Error updating serviceAreas:", error);
+    console.error("Error updating service areas:", error);
     return res.status(500).json({
       message: "Server error",
       messageType: "failure",
@@ -766,30 +773,23 @@ exports.getServiceAreas = async (req, res) => {
       });
     }
 
-    // Find restaurant by ID
-    const restaurant = await Restaurant.findById(restaurantId).select("serviceAreas");
-
-    if (!restaurant) {
-      return res.status(404).json({
-        message: "Restaurant not found",
-        messageType: "failure",
-      });
-    }
+    // Fetch service areas for the restaurant
+    const serviceAreas = await ServiceArea.find({ restaurantId });
 
     return res.status(200).json({
       message: "Service areas fetched successfully",
       messageType: "success",
-      data: restaurant.serviceAreas,
+      data: serviceAreas,
     });
 
   } catch (error) {
-    console.error("Error fetching serviceAreas:", error);
+    console.error("Error fetching service areas:", error);
     return res.status(500).json({
       message: "Server error",
       messageType: "failure",
     });
   }
-}
+};
 
 exports.deleteServiceAreas = async (req, res) => {
   try {
@@ -831,7 +831,34 @@ exports.deleteServiceAreas = async (req, res) => {
   }
 };
 
+exports.deleteServiceAreas = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({
+        message: "Invalid restaurant ID",
+        messageType: "failure",
+      });
+    }
+
+    // Delete all service areas for this restaurant
+    const deleteResult = await ServiceArea.deleteMany({ restaurantId });
+
+    return res.status(200).json({
+      message: "Service areas deleted successfully",
+      messageType: "success",
+      deletedCount: deleteResult.deletedCount
+    });
+
+  } catch (error) {
+    console.error(`[ServiceArea::Delete] Error: ${error.message}`);
+    return res.status(500).json({
+      message: "Something went wrong while deleting service areas",
+      messageType: "failure",
+    });
+  }
+};
 
 
 
