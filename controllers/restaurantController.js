@@ -300,9 +300,9 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
     }
 
     // 3️⃣ Get all restaurants for this merchant
-    const restaurants = await Restaurant.find({ ownerId: merchantId })
-      .select('-kycDocuments -location -__v') // Exclude sensitive/unnecessary fields
-      .lean();
+ const restaurants = await Restaurant.find({ ownerId: merchantId })
+  .select('-kycDocuments -__v') // leave out location, it'll be included by default
+  .lean();
 
     // 4️⃣ Format response with status information
     const formattedRestaurants = restaurants.map(restaurant => ({
@@ -315,7 +315,8 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
       status: restaurant.approvalStatus, 
       isActive: restaurant.active, 
       createdAt: restaurant.createdAt,
-      updatedAt: restaurant.updatedAt
+      updatedAt: restaurant.updatedAt,
+      location: restaurant.location 
     }));
 
    

@@ -27,5 +27,8 @@ exports.isPointInsideServiceAreas = async (userCoords, restaurantId) => {
     }
   });
 
+  console.log("Checking coords:", userCoords, "for restaurant:", restaurantId);
+  console.log("Geo query result:", result);
+
   return !!result;
 };
