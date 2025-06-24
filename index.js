@@ -511,6 +511,24 @@ app.post("/socket-test", (req, res) => {
   // Send to all clients (broadcast)
   io.emit("order_status_update", testData);
 
+
+
+
+  const orderData = {
+  orderId: "68567cee840cec15297ddb8a",
+  orderStatus: "delivered",
+  restaurantName: "Biryani Junction",
+  customerName: "Amarnadhs",
+  amount: "$ 188.87",
+  address: "Vsnl Road, 682030, Kakkanad, Ernakulam, Ernakulam, Kerala, India, Ernakulam, Kerala",
+  paymentMethod: "Pay On Delivery",
+  preparationTime: "20 Mins",
+  orderTime: "6/21/2025, 3:05:42 PM",
+  scheduledDeliveryTime: "6/21/2025, 3:05:42 PM"
+};
+
+io.to("admin_682c3a4a2e9fb5869cb96044").emit("new_order", { data: orderData });
+
   io.on("connection", (socket) => {
     console.log("A client connected:", socket.id);
 

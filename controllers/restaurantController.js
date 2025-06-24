@@ -1,25 +1,26 @@
 const Restaurant = require("../models/restaurantModel");
 const RestaurantEarning = require("../models/RestaurantEarningModel");
 const Permission = require("../models/restaurantPermissionModel");
-const Order = require("../models/orderModel")
-const Product = require("../models/productModel")
-const Category = require("../models/categoryModel")
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken')
+const Order = require("../models/orderModel");
+const Product = require("../models/productModel");
+const Category = require("../models/categoryModel");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const Session = require("../models/session");
 const User = require("../models/userModel");
 const Offer = require("../models/offerModel");
 const moment = require("moment");
-const { Types } = require('mongoose');
+const { Types } = require("mongoose");
 const ServiceArea = require("../models/serviceAreaModel");
+const parseCoordinates = require("../utils/parseCoordinates");
 exports.createRestaurant = async (req, res) => {
   try {
     // 1️⃣ Required fields validation (removed password, ownerName, email, phone)
     const requiredFields = [
       "name",
-      "ownerId", 
+      "ownerId",
       "fssaiNumber",
       "ownerId",
       "gstNumber",
@@ -49,7 +50,6 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-
     // 2️⃣ Get owner details from database using ownerId
     const owner = await User.findById(req.body.ownerId);
     if (!owner) {
@@ -69,28 +69,38 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    const validateTimeFormat = (time) => /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
-    const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const validateTimeFormat = (time) =>
+      /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
+    const validDays = [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday",
+    ];
     let openingHours = [];
 
     if (req.body.openingHours) {
       try {
-        openingHours = typeof req.body.openingHours === 'string'
-          ? JSON.parse(req.body.openingHours)
-          : req.body.openingHours;
+        openingHours =
+          typeof req.body.openingHours === "string"
+            ? JSON.parse(req.body.openingHours)
+            : req.body.openingHours;
       } catch (e) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid openingHours format. Must be valid JSON array',
-          code: 'INVALID_OPENING_HOURS_FORMAT'
+          message: "Invalid openingHours format. Must be valid JSON array",
+          code: "INVALID_OPENING_HOURS_FORMAT",
         });
       }
 
       if (!Array.isArray(openingHours)) {
         return res.status(400).json({
           success: false,
-          message: 'openingHours must be an array',
-          code: 'OPENING_HOURS_NOT_ARRAY'
+          message: "openingHours must be an array",
+          code: "OPENING_HOURS_NOT_ARRAY",
         });
       }
 
@@ -108,7 +118,9 @@ exports.createRestaurant = async (req, res) => {
         seenDays.add(daySchedule.day);
 
         if (!validDays.includes(daySchedule.day)) {
-          dayError.errors.push(`Invalid day name. Allowed: ${validDays.join(', ')}`);
+          dayError.errors.push(
+            `Invalid day name. Allowed: ${validDays.join(", ")}`
+          );
         }
 
         if (daySchedule.isClosed) {
@@ -116,19 +128,28 @@ exports.createRestaurant = async (req, res) => {
           return;
         }
 
-        if (!daySchedule.openingTime || !validateTimeFormat(daySchedule.openingTime)) {
-          dayError.errors.push('openingTime must be in HH:MM format');
+        if (
+          !daySchedule.openingTime ||
+          !validateTimeFormat(daySchedule.openingTime)
+        ) {
+          dayError.errors.push("openingTime must be in HH:MM format");
         }
 
-        if (!daySchedule.closingTime || !validateTimeFormat(daySchedule.closingTime)) {
-          dayError.errors.push('closingTime must be in HH:MM format');
+        if (
+          !daySchedule.closingTime ||
+          !validateTimeFormat(daySchedule.closingTime)
+        ) {
+          dayError.errors.push("closingTime must be in HH:MM format");
         }
 
         if (daySchedule.openingTime && daySchedule.closingTime) {
-          if (daySchedule.closingTime <= '04:00' && daySchedule.openingTime > daySchedule.closingTime) {
+          if (
+            daySchedule.closingTime <= "04:00" &&
+            daySchedule.openingTime > daySchedule.closingTime
+          ) {
             // Overnight case — valid
           } else if (daySchedule.openingTime >= daySchedule.closingTime) {
-            dayError.errors.push('closingTime must be after openingTime');
+            dayError.errors.push("closingTime must be after openingTime");
           }
         }
 
@@ -140,9 +161,9 @@ exports.createRestaurant = async (req, res) => {
       if (errors.length > 0) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid opening hours data',
-          code: 'INVALID_OPENING_HOURS_DATA',
-          errors
+          message: "Invalid opening hours data",
+          code: "INVALID_OPENING_HOURS_DATA",
+          errors,
         });
       }
     }
@@ -185,7 +206,6 @@ exports.createRestaurant = async (req, res) => {
         )}. Allowed: ${allowedPaymentMethods.join(", ")}`,
       });
     }
-
 
     const fssaiDoc = await uploadOnCloudinary(req.files.fssaiDoc[0].path);
     const gstDoc = await uploadOnCloudinary(req.files.gstDoc[0].path);
@@ -239,7 +259,7 @@ exports.createRestaurant = async (req, res) => {
         gstDocUrl: gstDoc.secure_url,
         aadharDocUrl: aadharDoc.secure_url,
       },
-      slug
+      slug,
     };
 
     const newRestaurant = await Restaurant.create(restaurantData);
@@ -264,7 +284,6 @@ exports.createRestaurant = async (req, res) => {
         approvalStatus: newRestaurant.approvalStatus,
       },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -275,10 +294,8 @@ exports.createRestaurant = async (req, res) => {
   }
 };
 
-
 exports.getRestaurantsByMerchantId = async (req, res) => {
   try {
-   
     // 1️⃣ Validate merchant ID
     const merchantId = req.params.merchantId;
     if (!merchantId || !mongoose.Types.ObjectId.isValid(merchantId)) {
@@ -300,26 +317,27 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
     }
 
     // 3️⃣ Get all restaurants for this merchant
- const restaurants = await Restaurant.find({ ownerId: merchantId })
-  .select('-kycDocuments -__v') // leave out location, it'll be included by default
-  .lean();
+    const restaurants = await Restaurant.find({ ownerId: merchantId })
+      .select("-kycDocuments -__v") // leave out location, it'll be included by default
+      .lean();
 
     // 4️⃣ Format response with status information
-    const formattedRestaurants = restaurants.map(restaurant => ({
+    const formattedRestaurants = restaurants.map((restaurant) => ({
       id: restaurant._id,
       name: restaurant.name,
       address: restaurant.address,
       phone: restaurant.phone,
       email: restaurant.email,
       foodType: restaurant.foodType,
-      status: restaurant.approvalStatus, 
-      isActive: restaurant.active, 
+      status: restaurant.approvalStatus,
+      isActive: restaurant.active,
       createdAt: restaurant.createdAt,
       updatedAt: restaurant.updatedAt,
-      location: restaurant.location 
+      minOrderAmount:restaurant.minOrderAmount,
+      location: restaurant.location,
+        openingHours: restaurant.openingHours,
+        images:restaurant.images
     }));
-
-   
 
     return res.status(200).json({
       success: true,
@@ -332,27 +350,25 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
           phone: merchant.phone,
         },
         restaurants: formattedRestaurants,
-        count: formattedRestaurants.length
-      }
+        count: formattedRestaurants.length,
+      },
     });
-
   } catch (err) {
     console.error("Error fetching merchant restaurants:", err);
     res.status(500).json({
       success: false,
       message: "Failed to fetch restaurants",
       error: err.message,
-      code: "SERVER_ERROR"
+      code: "SERVER_ERROR",
     });
   }
 };
-
 
 exports.updateRestaurant = async (req, res) => {
   try {
     if (!req.body)
       return res.status(400).json({ message: "Request body is missing." });
-
+ console.log("updte")
     const { restaurantId } = req.params;
 
     const restaurant = await Restaurant.findById(restaurantId);
@@ -360,7 +376,7 @@ exports.updateRestaurant = async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found." });
 
     // Parse address if it's a JSON string
-    if (typeof req.body.address === 'string') {
+    if (typeof req.body.address === "string") {
       try {
         req.body.address = JSON.parse(req.body.address);
       } catch (e) {
@@ -382,7 +398,7 @@ exports.updateRestaurant = async (req, res) => {
       isActive,
       status,
     } = req.body;
-
+   console.log(req.body)
     // Update basic fields if provided
     if (name) restaurant.name = name;
     if (phone) restaurant.phone = phone;
@@ -394,27 +410,31 @@ exports.updateRestaurant = async (req, res) => {
     // Parse payment methods if string
     if (paymentMethods) {
       try {
-        restaurant.paymentMethods = typeof paymentMethods === 'string'
-          ? JSON.parse(paymentMethods)
-          : paymentMethods;
+        restaurant.paymentMethods =
+          typeof paymentMethods === "string"
+            ? JSON.parse(paymentMethods)
+            : paymentMethods;
       } catch (e) {
         console.error("Failed to parse paymentMethods:", e);
-        return res.status(400).json({ message: "Invalid format for paymentMethods" });
+        return res
+          .status(400)
+          .json({ message: "Invalid format for paymentMethods" });
       }
     }
 
     // Parse and update opening hours
     if (openingHours) {
       try {
-        const hoursData = typeof openingHours === 'string'
-          ? JSON.parse(openingHours)
-          : openingHours;
+        const hoursData =
+          typeof openingHours === "string"
+            ? JSON.parse(openingHours)
+            : openingHours;
 
-        restaurant.openingHours = hoursData.map(hour => ({
+        restaurant.openingHours = hoursData.map((hour) => ({
           day: hour.day,
           openingTime: hour.openingTime || hour.open,
           closingTime: hour.closingTime || hour.close,
-          isClosed: hour.isClosed || false
+          isClosed: hour.isClosed || false,
         }));
       } catch (e) {
         console.error("Error parsing opening hours:", e);
@@ -425,50 +445,56 @@ exports.updateRestaurant = async (req, res) => {
     if (status) restaurant.status = status;
 
     // Update address and coordinates if provided
-    if (address) {
-      restaurant.address.street = address?.street || restaurant.address.street;
-      restaurant.address.city = address?.city || restaurant.address.city;
-      restaurant.address.state = address?.state || restaurant.address.state;
-      restaurant.address.zip = address?.pincode || restaurant.address.zip;
+ if (address) {
+  restaurant.address.street = address?.street || restaurant.address.street;
+  restaurant.address.city = address?.city || restaurant.address.city;
+  restaurant.address.state = address?.state || restaurant.address.state;
+  restaurant.address.zip = address?.pincode || restaurant.address.zip;
 
-      if (address.coordinates) {
-        let coords = address.coordinates;
-
-        if (typeof coords === 'string') {
-          try {
-            coords = JSON.parse(coords);
-          } catch (e) {
-            console.error("Failed to parse address.coordinates:", e);
-            coords = null;
-          }
-        }
-
-        if (Array.isArray(coords) && coords.length === 2) {
-          restaurant.location = {
-            type: "Point",
-            coordinates: [parseFloat(coords[0]), parseFloat(coords[1])],
-          };
-        } else {
-          console.warn("Invalid coordinates format:", address.coordinates);
-        }
-      }
+  if (address.coordinates) {
+    const parsedCoords = parseCoordinates(address.coordinates);
+    if (parsedCoords) {
+      restaurant.location = {
+        type: "Point",
+        coordinates: parsedCoords,
+      };
     }
+  }
+}
+
+// If location object is provided in req.body.location
+if (req.body.location) {
+  const { longitude, latitude } = req.body.location;
+  if (longitude !== undefined && latitude !== undefined) {
+    const parsedCoords = parseCoordinates([longitude, latitude]);
+    if (parsedCoords) {
+      restaurant.location = {
+        type: "Point",
+        coordinates: parsedCoords,
+      };
+    }
+  }
+}
 
     // Log coordinates for debugging
-    console.log("Updated coordinates:", restaurant.location);
+    // console.log("Updated res", restaurant);
 
     // Handle file uploads if any
     if (req.files) {
-      const uploadPromises = Object.entries(req.files).flatMap(([field, fileArray]) =>
-        fileArray.map(async (file) => {
-          const result = await uploadOnCloudinary(file.path);
-          if (result && result.secure_url) {
-            if (field === 'fssaiDoc') restaurant.kycDocuments.fssaiDocUrl = result.secure_url;
-            if (field === 'gstDoc') restaurant.kycDocuments.gstDocUrl = result.secure_url;
-            if (field === 'aadharDoc') restaurant.kycDocuments.aadharDocUrl = result.secure_url;
-            if (field === 'images') restaurant.images.push(result.secure_url);
-          }
-        })
+      const uploadPromises = Object.entries(req.files).flatMap(
+        ([field, fileArray]) =>
+          fileArray.map(async (file) => {
+            const result = await uploadOnCloudinary(file.path);
+            if (result && result.secure_url) {
+              if (field === "fssaiDoc")
+                restaurant.kycDocuments.fssaiDocUrl = result.secure_url;
+              if (field === "gstDoc")
+                restaurant.kycDocuments.gstDocUrl = result.secure_url;
+              if (field === "aadharDoc")
+                restaurant.kycDocuments.aadharDocUrl = result.secure_url;
+              if (field === "images") restaurant.images.push(result.secure_url);
+            }
+          })
       );
       await Promise.all(uploadPromises);
     }
@@ -478,12 +504,18 @@ exports.updateRestaurant = async (req, res) => {
       message: "Restaurant updated successfully.",
       restaurant,
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error.", error });
   }
 };
+
+
+
+
+
+
+
 
 
 exports.deleteRestaurant = async (req, res) => {
@@ -509,16 +541,123 @@ exports.deleteRestaurant = async (req, res) => {
     //  Also delete the associated permission
     await Permission.deleteOne({ restaurantId });
 
-    res
-      .status(200)
-      .json({
-        message: "Restaurant and its permissions deleted successfully.",
-      });
+    res.status(200).json({
+      message: "Restaurant and its permissions deleted successfully.",
+    });
   } catch (error) {
     console.error("Error deleting restaurant:", error);
     res.status(500).json({ message: "Server error." });
   }
 };
+
+
+
+
+
+
+
+
+
+exports.updateBasicInfo = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    console.log(restaurantId)
+    const {
+      name,
+      phone,
+      email,
+      foodType,
+      minOrderAmount,
+      active,
+      ownerName,
+      approvalStatus,
+      approvalRejectionReason
+    } = req.body;
+
+    // Build update object dynamically
+    const updateData = {};
+
+    if (name !== undefined) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (email !== undefined) updateData.email = email;
+    if (foodType !== undefined) updateData.foodType = foodType;
+    if (minOrderAmount !== undefined) updateData.minOrderAmount = minOrderAmount;
+    if (active !== undefined) updateData.active = active;
+    if (ownerName !== undefined) updateData.ownerName = ownerName;
+    if (approvalStatus !== undefined) updateData.approvalStatus = approvalStatus;
+    if (approvalRejectionReason !== undefined) updateData.approvalRejectionReason = approvalRejectionReason;
+
+    const updatedRestaurant = await Restaurant.findByIdAndUpdate(restaurantId, updateData, {
+      new: true,
+    });
+
+    if (!updatedRestaurant)
+      return res.status(404).json({ message: "Restaurant not found" });
+
+    res.status(200).json({
+      message: "Basic information updated successfully",
+      restaurant: updatedRestaurant,
+    });
+
+  } catch (error) {
+    console.error("Error updating basic info:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+exports.updateLocationInfo = async (req, res) => {
+  try {
+    const {restaurantId } = req.params;
+    const { longitude, latitude } = req.body;
+
+    if (longitude === undefined || latitude === undefined) {
+      return res.status(400).json({ message: "Longitude and latitude are required." });
+    }
+
+    const updatedRestaurant = await Restaurant.findByIdAndUpdate(
+      restaurantId,
+      {
+        $set: {
+          "location.type": "Point",
+          "location.coordinates": [longitude, latitude],
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedRestaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    res.status(200).json({
+      message: "Location updated successfully.",
+      restaurant: updatedRestaurant,
+    });
+  } catch (error) {
+    console.error("Error updating location info:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -547,23 +686,22 @@ exports.getRestaurantById = async (req, res) => {
     const offers = await Offer.find({
       applicableRestaurants: restaurantId,
       isActive: true,
-              validFrom: { $lte: new Date() },
-          validTill: { $gte: new Date() },
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() },
     });
-  
+
     // Add offers to restaurant object
     restaurant.offers = offers;
 
     res.status(200).json({
       message: "Restaurant fetched successfully.",
-      data: restaurant,  // directly sending restaurant here
+      data: restaurant, // directly sending restaurant here
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error." });
   }
 };
-
 
 exports.updateBusinessHours = async (req, res) => {
   try {
@@ -632,6 +770,99 @@ exports.updateBusinessHours = async (req, res) => {
     res.status(500).json({ message: "Server error." });
   }
 };
+
+
+
+exports.updateOpeningHours = async (req, res) => {
+  try {
+    const {  restaurantId } = req.params;
+    const { openingHours } = req.body;
+
+    if (!Array.isArray(openingHours)) {
+      return res.status(400).json({ message: "Opening hours must be an array." });
+    }
+
+    // Validate that each entry has the required fields
+    for (const hour of openingHours) {
+      if (!hour.day || !hour.openingTime || !hour.closingTime || typeof hour.isClosed !== 'boolean') {
+        return res.status(400).json({ message: "Each opening hour entry must have day, openingTime, closingTime, and isClosed." });
+      }
+    }
+
+    const updatedRestaurant = await Restaurant.findByIdAndUpdate(
+      restaurantId,
+      { $set: { openingHours } },
+      { new: true }
+    );
+
+    if (!updatedRestaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    res.status(200).json({
+      message: "Opening hours updated successfully.",
+      restaurant: updatedRestaurant,
+    });
+  } catch (error) {
+    console.error("Error updating opening hours:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+
+
+exports.updateRestaurantImages = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { remove } = req.body;
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    // Remove images if provided
+    if (Array.isArray(remove) && remove.length) {
+      restaurant.images = restaurant.images.filter((url) => !remove.includes(url));
+    }
+
+    // Upload new images from req.files.images
+    if (req.files && req.files.images) {
+      const uploadPromises = req.files.images.map(async (file) => {
+        const uploadResult = await uploadOnCloudinary(file.path, 'orado_uploads');
+        return uploadResult?.secure_url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+      // Add uploaded URLs to images array
+      restaurant.images.push(...uploadedUrls.filter(Boolean));
+    }
+
+    await restaurant.save();
+
+    res.status(200).json({
+      message: "Images updated successfully.",
+      images: restaurant.images,
+    });
+
+  } catch (error) {
+    console.error("Error updating images:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 exports.addKyc = async (req, res) => {
   try {
@@ -742,7 +973,7 @@ exports.addServiceArea = async (req, res) => {
     const insertedAreas = await ServiceArea.insertMany(
       serviceAreas.map((area) => ({
         restaurantId,
-        area
+        area,
       }))
     );
 
@@ -751,7 +982,6 @@ exports.addServiceArea = async (req, res) => {
       messageType: "success",
       data: insertedAreas,
     });
-
   } catch (error) {
     console.error("Error updating service areas:", error);
     return res.status(500).json({
@@ -760,7 +990,6 @@ exports.addServiceArea = async (req, res) => {
     });
   }
 };
-
 
 exports.getServiceAreas = async (req, res) => {
   try {
@@ -782,7 +1011,6 @@ exports.getServiceAreas = async (req, res) => {
       messageType: "success",
       data: serviceAreas,
     });
-
   } catch (error) {
     console.error("Error fetching service areas:", error);
     return res.status(500).json({
@@ -822,7 +1050,6 @@ exports.deleteServiceAreas = async (req, res) => {
       messageType: "success",
       data: updatedRestaurant.serviceAreas,
     });
-
   } catch (error) {
     console.error(`[ServiceArea::Delete] Error: ${error.message}`);
     return res.status(500).json({
@@ -849,9 +1076,8 @@ exports.deleteServiceAreas = async (req, res) => {
     return res.status(200).json({
       message: "Service areas deleted successfully",
       messageType: "success",
-      deletedCount: deleteResult.deletedCount
+      deletedCount: deleteResult.deletedCount,
     });
-
   } catch (error) {
     console.error(`[ServiceArea::Delete] Error: ${error.message}`);
     return res.status(500).json({
@@ -860,12 +1086,6 @@ exports.deleteServiceAreas = async (req, res) => {
     });
   }
 };
-
-
-
-
-
-
 
 exports.getRestaurantMenu = async (req, res) => {
   const { restaurantId } = req.params;
@@ -983,9 +1203,9 @@ exports.getRestaurantEarningSummary = async (req, res) => {
 
     // Validate restaurantId
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid restaurant ID" 
+      return res.status(400).json({
+        success: false,
+        message: "Invalid restaurant ID",
       });
     }
 
@@ -998,47 +1218,55 @@ exports.getRestaurantEarningSummary = async (req, res) => {
     // Add time filtering based on the requested timeFrame
     let dateFilter = {};
     const now = new Date();
-    
+
     if (timeFrame) {
-      switch(timeFrame.toLowerCase()) {
-        case 'day':
-          dateFilter = { 
-            createdAt: { 
+      switch (timeFrame.toLowerCase()) {
+        case "day":
+          dateFilter = {
+            createdAt: {
               $gte: new Date(now.setHours(0, 0, 0, 0)),
-              $lt: new Date(now.setHours(23, 59, 59, 999))
-            }
+              $lt: new Date(now.setHours(23, 59, 59, 999)),
+            },
           };
           break;
-        case 'week':
+        case "week":
           const startOfWeek = new Date(now);
           startOfWeek.setDate(now.getDate() - now.getDay());
           startOfWeek.setHours(0, 0, 0, 0);
-          
+
           const endOfWeek = new Date(startOfWeek);
           endOfWeek.setDate(startOfWeek.getDate() + 6);
           endOfWeek.setHours(23, 59, 59, 999);
-          
+
           dateFilter = {
             createdAt: {
               $gte: startOfWeek,
-              $lt: endOfWeek
-            }
+              $lt: endOfWeek,
+            },
           };
           break;
-        case 'month':
+        case "month":
           dateFilter = {
             createdAt: {
               $gte: new Date(now.getFullYear(), now.getMonth(), 1),
-              $lt: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
-            }
+              $lt: new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+                999
+              ),
+            },
           };
           break;
-        case 'year':
+        case "year":
           dateFilter = {
             createdAt: {
               $gte: new Date(now.getFullYear(), 0, 1),
-              $lt: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
-            }
+              $lt: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999),
+            },
           };
           break;
         default:
@@ -1050,70 +1278,76 @@ exports.getRestaurantEarningSummary = async (req, res) => {
     // Get earnings with time filter
     const earnings = await RestaurantEarning.find({
       ...baseQuery,
-      ...dateFilter
+      ...dateFilter,
     });
 
     if (earnings.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: `No earnings found for this restaurant${timeFrame ? ` in the current ${timeFrame}` : ''}` 
+      return res.status(404).json({
+        success: false,
+        message: `No earnings found for this restaurant${
+          timeFrame ? ` in the current ${timeFrame}` : ""
+        }`,
       });
     }
 
     // Calculate comprehensive summary
-    const summary = earnings.reduce((acc, curr) => {
-      acc.totalOrders += 1;
-      acc.totalAmount += curr.totalOrderAmount || 0;
-      acc.totalCommission += curr.commissionAmount || 0;
-      acc.totalNetEarnings += curr.restaurantNetEarning || 0;
-      
-      // Track payout status counts
-      const status = curr.payoutStatus?.toLowerCase() || 'pending';
-      acc.payoutStatusCounts[status] = (acc.payoutStatusCounts[status] || 0) + 1;
-      
-      // Track commission types
-      if (curr.commissionType === 'percentage') {
-        acc.percentageCommissionOrders += 1;
-      } else {
-        acc.fixedCommissionOrders += 1;
+    const summary = earnings.reduce(
+      (acc, curr) => {
+        acc.totalOrders += 1;
+        acc.totalAmount += curr.totalOrderAmount || 0;
+        acc.totalCommission += curr.commissionAmount || 0;
+        acc.totalNetEarnings += curr.restaurantNetEarning || 0;
+
+        // Track payout status counts
+        const status = curr.payoutStatus?.toLowerCase() || "pending";
+        acc.payoutStatusCounts[status] =
+          (acc.payoutStatusCounts[status] || 0) + 1;
+
+        // Track commission types
+        if (curr.commissionType === "percentage") {
+          acc.percentageCommissionOrders += 1;
+        } else {
+          acc.fixedCommissionOrders += 1;
+        }
+
+        return acc;
+      },
+      {
+        totalOrders: 0,
+        totalAmount: 0,
+        totalCommission: 0,
+        totalNetEarnings: 0,
+        payoutStatusCounts: {},
+        percentageCommissionOrders: 0,
+        fixedCommissionOrders: 0,
+        averageCommissionRate: 0,
       }
-      
-      return acc;
-    }, {
-      totalOrders: 0,
-      totalAmount: 0,
-      totalCommission: 0,
-      totalNetEarnings: 0,
-      payoutStatusCounts: {},
-      percentageCommissionOrders: 0,
-      fixedCommissionOrders: 0,
-      averageCommissionRate: 0
-    });
+    );
 
     // Calculate average commission rate
-    summary.averageCommissionRate = earnings.length > 0 && summary.totalAmount > 0
-      ? (summary.totalCommission / summary.totalAmount * 100).toFixed(2)
-      : 0;
+    summary.averageCommissionRate =
+      earnings.length > 0 && summary.totalAmount > 0
+        ? ((summary.totalCommission / summary.totalAmount) * 100).toFixed(2)
+        : 0;
 
     // Get time-based breakdown
     const timeBreakdown = await getTimeBreakdown(restaurantObjectId, timeFrame);
 
     res.status(200).json({
       success: true,
-      timeFrame: timeFrame || 'all',
+      timeFrame: timeFrame || "all",
       summary: {
         ...summary,
-        ...timeBreakdown
+        ...timeBreakdown,
       },
-      currency: 'INR'
+      currency: "INR",
     });
-
   } catch (error) {
-    console.error('Error fetching earning summary:', error);
-    res.status(500).json({ 
-      success: false, 
+    console.error("Error fetching earning summary:", error);
+    res.status(500).json({
+      success: false,
       message: "Failed to fetch earning summary",
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -1122,93 +1356,89 @@ exports.getRestaurantEarningSummary = async (req, res) => {
 async function getTimeBreakdown(restaurantId, timeFrame) {
   try {
     const breakdown = {};
-    
+
     // For weekly/monthly/yearly breakdowns
-    if (timeFrame === 'year') {
+    if (timeFrame === "year") {
       // Group by month
       const monthlyEarnings = await RestaurantEarning.aggregate([
         { $match: { restaurantId } },
-        { 
+        {
           $group: {
             _id: { $month: "$createdAt" },
             totalAmount: { $sum: "$totalOrderAmount" },
             totalNetEarnings: { $sum: "$restaurantNetEarning" },
-            count: { $sum: 1 }
-          }
+            count: { $sum: 1 },
+          },
         },
-        { $sort: { "_id": 1 } }
+        { $sort: { _id: 1 } },
       ]);
-      
-      breakdown.monthlyBreakdown = monthlyEarnings.map(month => ({
+
+      breakdown.monthlyBreakdown = monthlyEarnings.map((month) => ({
         month: month._id,
         totalAmount: month.totalAmount,
         totalNetEarnings: month.totalNetEarnings,
-        orderCount: month.count
+        orderCount: month.count,
       }));
-    } 
-    else if (timeFrame === 'month') {
+    } else if (timeFrame === "month") {
       // Group by day
       const dailyEarnings = await RestaurantEarning.aggregate([
         { $match: { restaurantId } },
-        { 
+        {
           $group: {
             _id: { $dayOfMonth: "$createdAt" },
             totalAmount: { $sum: "$totalOrderAmount" },
             totalNetEarnings: { $sum: "$restaurantNetEarning" },
-            count: { $sum: 1 }
-          }
+            count: { $sum: 1 },
+          },
         },
-        { $sort: { "_id": 1 } }
+        { $sort: { _id: 1 } },
       ]);
-      
-      breakdown.dailyBreakdown = dailyEarnings.map(day => ({
+
+      breakdown.dailyBreakdown = dailyEarnings.map((day) => ({
         day: day._id,
         totalAmount: day.totalAmount,
         totalNetEarnings: day.totalNetEarnings,
-        orderCount: day.count
+        orderCount: day.count,
       }));
-    }
-    else if (timeFrame === 'week') {
+    } else if (timeFrame === "week") {
       // Group by day of week
       const weeklyEarnings = await RestaurantEarning.aggregate([
         { $match: { restaurantId } },
-        { 
+        {
           $group: {
             _id: { $dayOfWeek: "$createdAt" },
             totalAmount: { $sum: "$totalOrderAmount" },
             totalNetEarnings: { $sum: "$restaurantNetEarning" },
-            count: { $sum: 1 }
-          }
+            count: { $sum: 1 },
+          },
         },
-        { $sort: { "_id": 1 } }
+        { $sort: { _id: 1 } },
       ]);
-      
-      breakdown.weeklyBreakdown = weeklyEarnings.map(day => ({
+
+      breakdown.weeklyBreakdown = weeklyEarnings.map((day) => ({
         dayOfWeek: day._id,
         totalAmount: day.totalAmount,
         totalNetEarnings: day.totalNetEarnings,
-        orderCount: day.count
+        orderCount: day.count,
       }));
     }
 
     return breakdown;
   } catch (error) {
-    console.error('Error in getTimeBreakdown:', error);
+    console.error("Error in getTimeBreakdown:", error);
     return {};
   }
 }
-
-
 
 // Get all orders for a specific restaurant (with pagination, filtering, and sorting)
 
 exports.getRestaurantOrders = async (req, res) => {
   try {
     const { restaurantId } = req.params;
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 10,
-      status // Optional status filter
+      status, // Optional status filter
     } = req.query;
 
     // Validate restaurantId
@@ -1237,33 +1467,40 @@ exports.getRestaurantOrders = async (req, res) => {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalOrders / limit),
         totalOrders,
-        hasNextPage: (parseInt(page) * parseInt(limit)) < totalOrders,
+        hasNextPage: parseInt(page) * parseInt(limit) < totalOrders,
       },
     });
   } catch (error) {
     console.error("Order fetch error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: "Server error",
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-
 exports.getRestaurantEarnings = async (req, res) => {
-
   try {
-    const { restaurantId, period, fromDate, toDate, page = 1, limit = 50 } = req.query;
+    const {
+      restaurantId,
+      period,
+      fromDate,
+      toDate,
+      page = 1,
+      limit = 50,
+    } = req.query;
     console.log("Query:", req.query);
     const query = {};
     if (restaurantId) {
       if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-        return res.status(400).json({ message: "Invalid restaurantId format." });
+        return res
+          .status(400)
+          .json({ message: "Invalid restaurantId format." });
       }
       query.restaurantId = restaurantId;
     }
-
 
     if (period) {
       let start, end;
@@ -1290,7 +1527,9 @@ exports.getRestaurantEarnings = async (req, res) => {
       const from = new Date(fromDate);
       const to = new Date(toDate);
       if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-        return res.status(400).json({ message: "Invalid fromDate or toDate format" });
+        return res
+          .status(400)
+          .json({ message: "Invalid fromDate or toDate format" });
       }
       query.createdAt = { $gte: from, $lte: to };
     }
@@ -1299,12 +1538,12 @@ exports.getRestaurantEarnings = async (req, res) => {
 
     const earnings = await RestaurantEarning.find(query)
       .populate({
-        path: 'restaurantId',
-        select: 'name location phoneNumber'
+        path: "restaurantId",
+        select: "name location phoneNumber",
       })
       .populate({
-        path: 'orderId',
-        select: 'orderItems totalAmount paymentMethod paymentStatus createdAt'
+        path: "orderId",
+        select: "orderItems totalAmount paymentMethod paymentStatus createdAt",
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -1315,7 +1554,7 @@ exports.getRestaurantEarnings = async (req, res) => {
     let totalCommission = 0;
     let totalNetRevenue = 0;
 
-    const formattedEarnings = earnings.map(item => {
+    const formattedEarnings = earnings.map((item) => {
       totalOrderAmount += item.totalOrderAmount;
       totalCommission += item.commissionAmount;
       totalNetRevenue += item.restaurantNetEarning;
@@ -1335,7 +1574,7 @@ exports.getRestaurantEarnings = async (req, res) => {
         paymentStatus: item.orderId?.paymentStatus,
         orderItems: item.orderId?.orderItems,
         orderDate: item.orderId?.createdAt,
-        earningCreatedAt: item.createdAt
+        earningCreatedAt: item.createdAt,
       };
     });
 
@@ -1345,35 +1584,20 @@ exports.getRestaurantEarnings = async (req, res) => {
       summary: {
         totalOrderAmount,
         totalCommission,
-        totalNetRevenue
+        totalNetRevenue,
       },
       page: parseInt(page),
       limit: parseInt(limit),
-      data: formattedEarnings
+      data: formattedEarnings,
     });
-
   } catch (err) {
     console.error("Error fetching restaurant earnings report:", err);
     res.status(500).json({
       message: "Failed to fetch restaurant earnings report",
-      error: err.message
+      error: err.message,
     });
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 exports.getRestaurantEarningsList = async (req, res) => {
   try {
@@ -1383,7 +1607,7 @@ exports.getRestaurantEarningsList = async (req, res) => {
     if (startDate && endDate) {
       matchStage.date = {
         $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $lte: new Date(endDate),
       };
     }
 
@@ -1395,16 +1619,16 @@ exports.getRestaurantEarningsList = async (req, res) => {
           totalOrderAmount: { $sum: "$totalOrderAmount" },
           totalCommission: { $sum: "$commissionAmount" },
           totalNetRevenue: { $sum: "$restaurantNetEarning" },
-          orderCount: { $sum: 1 }
-        }
+          orderCount: { $sum: 1 },
+        },
       },
       {
         $lookup: {
           from: "restaurants",
           localField: "_id",
           foreignField: "_id",
-          as: "restaurant"
-        }
+          as: "restaurant",
+        },
       },
       { $unwind: "$restaurant" },
       {
@@ -1414,17 +1638,16 @@ exports.getRestaurantEarningsList = async (req, res) => {
           totalOrderAmount: 1,
           totalCommission: 1,
           totalNetRevenue: 1,
-          orderCount: 1
-        }
+          orderCount: 1,
+        },
       },
-      { $sort: { totalOrderAmount: -1 } }
+      { $sort: { totalOrderAmount: -1 } },
     ]);
 
     res.json({
       totalRestaurants: result.length,
-      data: result
+      data: result,
     });
-
   } catch (error) {
     console.error("Error generating earnings summary", error);
     res.status(500).json({ error: "Server error" });
@@ -1612,10 +1835,6 @@ exports.getRestaurantEarningv2 = async (req, res) => {
   }
 };
 
-
-
-
-
 exports.toggleRestaurantActiveStatus = async (req, res) => {
   try {
     const { restaurantId } = req.params;
@@ -1634,10 +1853,11 @@ exports.toggleRestaurantActiveStatus = async (req, res) => {
     );
 
     return res.status(200).json({
-      message: `Restaurant is now ${updatedRestaurant.active ? "Active" : "Inactive"}`,
+      message: `Restaurant is now ${
+        updatedRestaurant.active ? "Active" : "Inactive"
+      }`,
       activeStatus: updatedRestaurant.active,
     });
-
   } catch (error) {
     console.error("Error toggling restaurant active status:", error);
     return res.status(500).json({ message: "Internal Server Error" });

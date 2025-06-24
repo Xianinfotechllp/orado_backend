@@ -72,3 +72,52 @@ exports.getSimpleRectOrderStats = async (req, res) => {
     res.status(500).json([]); // Return empty array on error
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.getAdminOrders = async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate({ path: 'customerId', select: 'name' })
+      .populate({ path: 'restaurantId', select: 'name' })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formattedOrders = orders.map(order => ({
+      orderId: order._id,
+      orderStatus: order.orderStatus,
+      restaurantName: order.restaurantId?.name || 'N/A',
+      customerName: order.customerId?.name || 'Guest',
+      amount: `$ ${order.totalAmount.toFixed(2)}`,
+      address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
+      deliveryMode: order.deliveryMode,
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod === 'cash' ? 'Pay On Delivery' : order.paymentMethod,
+      preparationTime: `${order.preparationTime || 0} Mins`,
+      orderTime: new Date(order.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
+      scheduledDeliveryTime: new Date(order.orderTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
+    }));
+
+    res.status(200).json({
+      messageType: "success",
+      message: "Orders fetched successfully.",
+      data: formattedOrders
+    });
+  } catch (error) {
+    console.error("Error fetching admin orders:", error);
+    res.status(500).json({
+      messageType: "failure",
+      message: "Something went wrong."
+    });
+  }
+};

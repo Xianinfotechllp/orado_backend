@@ -6,7 +6,7 @@ const {registerMerchant, loginMerchant,  logoutMerchant, logoutAll, getMerchantD
 const {protect, checkRole, checkRestaurantPermission,attachRestaurantFromProduct} = require('../middlewares/authMiddleware')
 const {upload} = require('../middlewares/multer')
 const {excelUpload} = require("../middlewares/excelUpload")
-const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas, getRestaurantEarningsList, getRestaurantEarningv2, toggleRestaurantActiveStatus}  = require('../controllers/restaurantController')
+const {createRestaurant, updateRestaurant,deleteRestaurant,getRestaurantById, updateBusinessHours,addServiceArea, addKyc, getKyc,getRestaurantMenu, getAllApprovedRestaurants, getRestaurantEarningSummary, getRestaurantsByMerchantId, getRestaurantOrders, getRestaurantEarnings,getServiceAreas, deleteServiceAreas, getRestaurantEarningsList, getRestaurantEarningv2, toggleRestaurantActiveStatus, updateBasicInfo, updateLocationInfo, updateOpeningHours, updateRestaurantImages}  = require('../controllers/restaurantController')
 const {forgotPassword, resetPassword} = require('../controllers/userControllers')
 const { createProduct, getRestaurantProducts, updateProduct, deleteProduct, toggleProductActive ,getMyRestaurantProducts, getProductsBasedRestaurant, getCategoryProducts,toggleProductStatus, exportProductsToExcel, bulkUpdateProducts } = require('../controllers/productController');
 // get all restruants (for users)
@@ -51,8 +51,14 @@ router.put(
   checkRole('merchant'),
   updateRestaurant
 );
+
+router.put("/:restaurantId/basic",protect, checkRole('merchant'),updateBasicInfo)
+router.put("/:restaurantId/location",protect,updateLocationInfo)
+router.put("/:restaurantId/opening-hours", protect, updateOpeningHours);
 router.delete("/:restaurantId", protect, checkRole('merchant'), deleteRestaurant)
 // router.get("/:restaurantId", protect, checkRole('merchant'), getRestaurantById)
+
+router.put("/:restaurantId/images", protect, upload.fields([{ name: 'images', maxCount: 5 }]), updateRestaurantImages);
 
 router.get("/:restaurantId",getRestaurantById)
 

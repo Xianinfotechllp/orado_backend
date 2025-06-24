@@ -23,7 +23,7 @@ const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
 
-const {getActiveOrdersStats,getSimpleRectOrderStats} = require("../controllers/admin/orderController")
+const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
@@ -147,6 +147,9 @@ router.post('/notifications',sendNotification)
 
 
 
+
+//get all order by admin
+router.get("/order-list",getAdminOrders)
 
 
 module.exports = router;
