@@ -81,6 +81,7 @@ const adminRouter = require("./routes/adminRoutes");
 const merchantRouter = require("./routes/merchantRoutes");
 const TicketRouter = require("./routes/ticketRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const cityRoutes = require("./routes/cityRoutes")
 
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
@@ -413,6 +414,7 @@ app.use("/merchant", merchantRouter);
 app.use("/tickets", TicketRouter);
 
 app.use("/payments", paymentRoutes);
+app.use("/city",cityRoutes)
 
 
 

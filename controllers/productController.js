@@ -630,3 +630,30 @@ exports.bulkUpdateProducts = async (req, res) => {
 
 
 
+
+getProductsByCategory = async (req, res) => {
+  const { restaurantId, categoryId } = req.params;
+
+  try {
+    const products = await Product.find({
+      restaurantId,
+      categoryId
+    });
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      data: products
+    });
+
+  } catch (error) {
+    console.error("Error fetching products by category:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch products by category.",
+      error: error.message
+    });
+  }
+};
+
+

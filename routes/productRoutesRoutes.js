@@ -9,6 +9,7 @@ router.post('/:restaurantId/products', protect, checkRole('merchant'), upload.ar
 router.get('/:restaurantId/products', protect, checkRole('merchant', 'customer'), getRestaurantProducts);
 
 
+// router.get('/:restaurantId/categories/:categoryId/products', protect, checkRole('merchant', 'customer'), productController.getProductsByCategory);
 
 router.put('/products/:productId', protect, checkRole('merchant','superAdmin'), attachRestaurantFromProduct,checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), upload.array('images'),updateProduct);
 router.delete('/products/:productId', protect, checkRole('merchant','superAdmin'), attachRestaurantFromProduct,checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), deleteProduct);
@@ -18,7 +19,7 @@ router.get('/products', protect, checkRole('merchant'), getMyRestaurantProducts)
 router.put("/products/:productId/toggle",protect,toggleProductStatus )
 
 
-router.get("/:restaurantId/products/category/:categoryId",getCategoryProducts)
+// router.get("/:restaurantId/products/category/:categoryId",getCategoryProducts)
 
 //excel sheet 
 

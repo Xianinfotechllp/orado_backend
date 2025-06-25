@@ -185,7 +185,7 @@ router.post(
 
 
 
-
+// router.get("/:restaurantId/products/category/:categoryId",getCategoryProducts)
 
 
 
