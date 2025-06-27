@@ -100,3 +100,44 @@ exports.getCities = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+
+
+exports.getAllCities = async (req, res) => {
+  try {
+    // Optional query params for status filter
+    const { status } = req.query;
+    const query = {};
+    if (status) query.status = status;
+
+    const cities = await City.find(query)
+      .select("_id name type status")
+      .sort({ name: 1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Cities fetched successfully",
+      messageType: "success",
+      data: cities
+    });
+
+  } catch (error) {
+    console.error("Error fetching cities:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      messageType: "failure"
+    });
+  }
+};
+
+
+
+

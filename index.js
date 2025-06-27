@@ -82,6 +82,8 @@ const merchantRouter = require("./routes/merchantRoutes");
 const TicketRouter = require("./routes/ticketRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const cityRoutes = require("./routes/cityRoutes")
+const promoRoutes = require("./routes/promoCodeRoutes")
+const loyalityRoutes = require("./routes/loyalityRoutes")
 
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
@@ -415,8 +417,8 @@ app.use("/tickets", TicketRouter);
 
 app.use("/payments", paymentRoutes);
 app.use("/city",cityRoutes)
-
-
+app.use("/promo",promoRoutes)
+app.use("/loyality",loyalityRoutes)
 
 
 // Default route

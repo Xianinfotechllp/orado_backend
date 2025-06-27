@@ -423,7 +423,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
       io.to(`restaurant_${order.restaurantId._id}`).emit("agent_status_update", {
         agentId,
-        newStatus: "available",
+       activityStatus: "Free",
         orderId,
         timestamp: new Date()
       });
@@ -443,18 +443,19 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
 
 
-// toggle availability and notify nearby restaurants
-exports.  toggleAvailability = async (req, res) => {
+// 
+exports.toggleAvailability = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { agentId } = req.params;
     const { status, location } = req.body;
-    const io = req.app.get("io"); // Get Socket.IO instance
+    const io = req.app.get("io");
 
-    // Validate input
-    if (!["Available", "Unavailable"].includes(status)) {
+    // Validate availability status (UPPERCASE)
+    if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
+    // Validate location format
     if (
       !location ||
       location.type !== "Point" ||
@@ -470,46 +471,34 @@ exports.  toggleAvailability = async (req, res) => {
       });
     }
 
-    // 1. Find user and associated agent
-    const user = await User.findById(userId);
-    if (!user || !user.agentId) {
-      return res.status(404).json({ message: "Agent not linked to user or user not found" });
-    }
-
-    // 2. Update agent availability and location
-    const updatedAgent = await Agent.findByIdAndUpdate(
-      user.agentId,
-      {
-        availabilityStatus: status,
-        location: {
-          type: "Point",
-          coordinates: location.coordinates,
-        },
-        updatedAt: new Date(),
+    // Prepare update data
+    const updateData = {
+      'agentStatus.availabilityStatus': status,
+      location: {
+        type: "Point",
+        coordinates: location.coordinates,
       },
+      updatedAt: new Date(),
+    };
+
+    // Ensure operational status matches availability state
+    updateData['agentStatus.status'] = (status === "AVAILABLE") ? "AVAILABLE" : "OFFLINE";
+
+    // Update agent
+    const updatedAgent = await Agent.findByIdAndUpdate(
+      agentId,
+      updateData,
       { new: true }
     );
 
-    // 3. If available, notify nearby restaurants
-    if (status === "Available") {
-      const nearbyRestaurants = await Restaurant.find({
-        location: {
-          $near: {
-            $geometry: {
-              type: "Point",
-              coordinates: location.coordinates
-            },
-            $maxDistance: 3000, // 3km
-          },
-        },
-      });
+    if (!updatedAgent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
 
-      nearbyRestaurants.forEach((restaurant) => {
-        io.to(`restaurant_${restaurant._id.toString()}`).emit("nearbyAgentLocation", {
-          agentId: user.agentId,
-          location,
-        });
-      });
+    // Emit Socket event to relevant clients if needed
+    if (status === "AVAILABLE") {
+      // Example: emit availability event
+      // io.emit("agentAvailable", { agentId, location });
     }
 
     return res.status(200).json({
@@ -521,8 +510,6 @@ exports.  toggleAvailability = async (req, res) => {
     res.status(500).json({ error: "Server error while toggling agent availability" });
   }
 };
-
-
 exports.addAgentReview = async (req, res) => {
   const { agentId } = req.params;
   const { userId, orderId, rating, comment } = req.body;

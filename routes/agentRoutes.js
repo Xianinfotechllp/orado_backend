@@ -26,7 +26,7 @@ router.post("/logout", protect, checkRole('agent'), logoutAgent)
 router.put("/bank-details", protect, checkRole('agent'), updateAgentBankDetails);
 
 // availability
-router.put('/:userId/availability', protect, checkRole('agent'), toggleAvailability);
+router.put('/:agentId/availability',toggleAvailability);
 
 // delivery routes
 

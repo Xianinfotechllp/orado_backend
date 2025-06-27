@@ -1,4 +1,8 @@
 const mongoose = require('mongoose')
+const DeliveryFeeSetting = require("../../models/deliveryFeeSettingSchema");
+const City = require("../../models/cityModel");
+const Restaurant = require("../../models/restaurantModel");
+
 
 const TaxAndFeeSetting = require('../../models/taxAndFeeSettingModel')
 exports.addTax = async (req, res) => {
@@ -296,6 +300,330 @@ exports.getDeliveryFeeSettings = async (req, res) => {
       message: "Internal server error",
       messageType: "failure",
       error,
+    });
+  }
+};
+
+
+
+
+
+exports.createCityDeliveryFeeSetting = async (req, res) => {
+  try {
+    const {
+      city,
+      restaurant,
+      serviceCategory,
+      feeType,
+      baseFee,
+      baseDistanceKm,
+      perKmFeeBeyondBase,
+      enableSurge,
+      surgeFee
+    } = req.body;
+  
+
+    console.log(req.body)
+    // Validate required fields
+    if (!city || !feeType || baseFee === undefined) {
+      return res.status(400).json({
+        message: "city, feeType, and baseFee are required.",
+        messageType: "failure"
+      });
+    }
+
+    if (!["Fixed", "Per KM"].includes(feeType)) {
+      return res.status(400).json({
+        message: "Invalid feeType value. Should be 'Fixed' or 'Per KM'.",
+        messageType: "failure"
+      });
+    }
+
+    // Optional: check if a fee already exists for this city/restaurant/service combo
+    const existing = await DeliveryFeeSetting.findOne({
+      city,
+      restaurant: restaurant || null,
+      serviceCategory: serviceCategory || null
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        message: "Delivery fee setting already exists for this city/service/restaurant.",
+        messageType: "failure"
+      });
+    }
+
+    // Create new setting
+    const newSetting = new DeliveryFeeSetting({
+      city,
+      restaurant,
+      serviceCategory,
+      feeType,
+      baseFee,
+      baseDistanceKm,
+      perKmFeeBeyondBase,
+      enableSurge,
+      surgeFee
+    });
+
+    await newSetting.save();
+
+    return res.status(201).json({
+      message: "City-based delivery fee setting created successfully.",
+      messageType: "success",
+      data: newSetting
+    });
+
+  } catch (error) {
+    console.error("Error creating city delivery fee setting:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      messageType: "failure",
+      error
+    });
+  }
+};
+
+
+
+
+
+
+
+exports.createOrUpdateCityDeliveryFeeSetting = async (req, res) => {
+  try {
+    const {
+      city,
+      restaurant,
+      serviceCategory,
+      feeType,
+      baseFee,
+      baseDistanceKm,
+      perKmFeeBeyondBase,
+      enableSurge,
+      surgeFee
+    } = req.body;
+
+    // Validate required fields
+    if (!city || !feeType || baseFee === undefined) {
+      return res.status(400).json({
+        message: "city, feeType, and baseFee are required.",
+        messageType: "failure"
+      });
+    }
+
+    if (!["Fixed", "Per KM"].includes(feeType)) {
+      return res.status(400).json({
+        message: "Invalid feeType value. Should be 'Fixed' or 'Per KM'.",
+        messageType: "failure"
+      });
+    }
+
+    // Find existing
+    const query = {
+      city,
+      restaurant: restaurant || null,
+      serviceCategory: serviceCategory || null
+    };
+
+    const update = {
+      feeType,
+      baseFee,
+      baseDistanceKm,
+      perKmFeeBeyondBase,
+      enableSurge,
+      surgeFee
+    };
+
+    const options = { new: true, upsert: true, setDefaultsOnInsert: true };
+
+    const setting = await DeliveryFeeSetting.findOneAndUpdate(query, update, options);
+
+    res.status(200).json({
+      success: true,
+      messageType: "success",
+      message: "Delivery fee setting created or updated successfully.",
+      data: setting
+    });
+
+  } catch (error) {
+    console.error("Error creating/updating delivery fee setting:", error);
+    res.status(500).json({
+      success: false,
+      messageType: "failure",
+      message: "Internal server error",
+      error
+    });
+  }
+};
+
+
+
+
+
+
+
+exports.getCityDeliveryFeeSettings = async (req, res) => {
+  try {
+    const {
+      city,
+      restaurant,
+      serviceCategory,
+      search,
+      fields,
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    const query = {};
+
+    // Safely convert to ObjectId if valid
+    if (city && mongoose.Types.ObjectId.isValid(city)) {
+      query.city = new mongoose.Types.ObjectId(city);
+    }
+    if (restaurant && mongoose.Types.ObjectId.isValid(restaurant)) {
+      query.restaurant = new mongoose.Types.ObjectId(restaurant);
+    }
+    if (serviceCategory) query.serviceCategory = serviceCategory;
+
+    // Base aggregation pipeline
+    const pipeline = [
+      { $match: query },
+
+      // Lookup city details
+      {
+        $lookup: {
+          from: "cities",
+          localField: "city",
+          foreignField: "_id",
+          as: "city",
+        },
+      },
+      { $unwind: "$city" },
+
+      // Lookup restaurant details
+      {
+        $lookup: {
+          from: "restaurants",
+          localField: "restaurant",
+          foreignField: "_id",
+          as: "restaurant",
+        },
+      },
+      {
+        $unwind: {
+          path: "$restaurant",
+          preserveNullAndEmptyArrays: true, // keep null if no restaurant
+        },
+      },
+    ];
+
+    // Optional search by city or restaurant name
+    if (search) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { "city.name": { $regex: search, $options: "i" } },
+            { "restaurant.name": { $regex: search, $options: "i" } },
+          ],
+        },
+      });
+    }
+
+    // Total count before pagination
+    const totalCountAgg = await DeliveryFeeSetting.aggregate([
+      ...pipeline,
+      { $count: "count" },
+    ]);
+    const total = totalCountAgg[0]?.count || 0;
+
+    // Pagination + sorting
+    pipeline.push(
+      { $sort: { createdAt: -1 } },
+      { $skip: (page - 1) * parseInt(limit) },
+      { $limit: parseInt(limit) }
+    );
+
+    // Optional fields projection
+    if (fields) {
+      const projection = {};
+      fields.split(",").forEach((f) => (projection[f.trim()] = 1));
+      pipeline.push({ $project: projection });
+    }
+
+    // Final fetch
+    const feeSettings = await DeliveryFeeSetting.aggregate(pipeline);
+
+    return res.status(200).json({
+      success: true,
+      messageType: "success",
+      message: "Delivery fee settings fetched successfully.",
+      data: feeSettings,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching delivery fee settings:", err);
+    res.status(500).json({
+      success: false,
+      messageType: "failure",
+      message: "Internal server error.",
+    });
+  }
+};
+
+
+
+
+exports.getSingleCityDeliveryFeeSetting = async (req, res) => {
+  try {
+    const { city, restaurant, serviceCategory } = req.query;
+
+    if (!city) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "City ID is required."
+      });
+    }
+
+    const query = { city };
+
+    if (restaurant) query.restaurant = restaurant;
+    else query.restaurant = { $exists: false };  // optional logic if you only want settings without restaurant if none passed
+
+    if (serviceCategory) query.serviceCategory = serviceCategory;
+    else query.serviceCategory = { $exists: false };
+
+    const setting = await DeliveryFeeSetting.find(query)
+      .populate("city", "name")
+      .populate("restaurant", "name")
+      .sort({ createdAt: -1 })
+      .limit(1);
+
+    if (!setting.length) {
+      return res.status(404).json({
+        messageType: "failure",
+        message: "No delivery fee setting found for this city."
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      messageType: "success",
+      message: "Delivery fee setting fetched successfully.",
+      data: setting[0]
+    });
+
+  } catch (err) {
+    console.error("Error fetching delivery fee setting:", err);
+    res.status(500).json({
+      success: false,
+      messageType: "failure",
+      message: "Internal server error."
     });
   }
 };

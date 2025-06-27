@@ -189,6 +189,7 @@ exports.assignRandomAgentSimple = async (orderId) => {
 
     // 3. Update the order
     order.assignedAgent = agent._id;
+    order.agentAssignmentStatus = 'assigned'; 
     await order.save();
 
     // 4. Update agent's status directly in DB

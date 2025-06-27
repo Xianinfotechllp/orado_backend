@@ -390,3 +390,96 @@ exports.setRestaurantCommission = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+
+
+
+exports.getAllRestaurantsDropdown = async (req, res) => {
+  try {
+    // Fetch only active restaurants for dropdown
+    const restaurants = await Restaurant.find({ active: true })
+      .select("_id name")
+      .sort({ name: 1 }) // alphabetically sort
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Restaurants fetched successfully.",
+      data: restaurants
+    });
+    
+  } catch (error) {
+    console.error("Error fetching restaurant list:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch restaurant list."
+    });
+  }
+};
+
+exports.getAllRestaurants = async (req, res) => {
+  try {
+    const restaurants = await Restaurant.find({})
+      .sort({ createdAt: -1 }); // latest first
+
+    // Map the data into your desired frontend format
+    const formattedRestaurants = restaurants.map((restaurant) => ({
+      id: restaurant._id,
+      name: restaurant.name,
+      address: `${restaurant.address.street}, ${restaurant.address.city}, ${restaurant.address.state}, ${restaurant.address.zip}`,
+      phone: restaurant.phone,
+      email: restaurant.email,
+      rating: restaurant.rating ? `${restaurant.rating} / 5` : "NA",
+      servicable: restaurant.active ? "OPEN" : "CLOSED",
+      stripeStatus: "-", // you can link this if you have stripe status in schema
+      city: restaurant.address.city || "-",
+      registeredOn: restaurant.createdAt
+  ? new Date(restaurant.createdAt).toLocaleString("en-US", { hour12: true })
+  : "-"
+    }));
+
+    res.status(200).json({
+      messageType: "success",
+      data: formattedRestaurants,
+    });
+  } catch (error) {
+    console.error("Error fetching restaurants:", error);
+    res.status(500).json({
+      messageType: "failure",
+      message: "Failed to fetch restaurants",
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+exports.getAllRestaurantsForMap = async (req, res) => {
+  try {
+    const restaurants = await Restaurant.find({ active: true }); // Only active ones if you want
+
+    const formattedRestaurants = restaurants.map((restaurant) => ({
+      id: restaurant._id,
+      name: restaurant.name,
+      lng: restaurant.location.coordinates[0],
+      lat: restaurant.location.coordinates[1],
+      rating: restaurant.rating || 0,
+    }));
+
+    res.status(200).json({
+      messageType: "success",
+      data: formattedRestaurants,
+    });
+  } catch (error) {
+    console.error("Error fetching restaurants for map:", error);
+    res.status(500).json({
+      messageType: "failure",
+      message: "Failed to fetch restaurant locations",
+    });
+  }
+};

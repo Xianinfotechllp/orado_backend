@@ -50,8 +50,15 @@ onlinePaymentDetails: {
   assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },  
   agentAssignmentStatus: {
   type: String,
-  enum: [   'awaiting_agent_assignment','not_assigned', 'assigned_waiting_acceptance', 'accepted', 'rejected', 'reassigned'],
-  default: 'not_assigned'
+enum: [
+  'not_assigned',              
+  'assigned_waiting_acceptance', 
+  'accepted',
+   "assigned",               
+  'rejected',                    
+  'reassigned'                   
+],
+default: 'not_assigned'
 },
 
   rejectionHistory: [{

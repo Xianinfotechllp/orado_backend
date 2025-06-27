@@ -1,4 +1,6 @@
 const Order = require("../../models/orderModel")
+const Agent = require("../../models/agentModel")
+const Restaurant = require("../../models/restaurantModel")
 exports.getActiveOrdersStats = async (req, res) => {
   try {
     // Get current date and date from one week ago
@@ -118,6 +120,81 @@ exports.getAdminOrders = async (req, res) => {
     res.status(500).json({
       messageType: "failure",
       message: "Something went wrong."
+    });
+  }
+};
+
+
+
+exports.getAllOrderLocationsForMap = async (req, res) => {
+  try {
+    const orders = await Order.find({
+      deliveryLocation: { $exists: true },
+      'deliveryLocation.coordinates': { $ne: null },
+      orderStatus: { $in: ['in_progress', 'on_the_way', 'picked_up', 'delivered', "accepted_by_restaurant"] } // optional: filter live deliveries
+    }).populate("restaurantId" , "name location address").populate("customerId" , "name phone").select('_id orderStatus deliveryLocation');
+
+    const formattedOrders = orders.map(order => ({
+      id: order._id,
+      orderId: order._id.toString().slice(-6).toUpperCase(),  // OR use your existing order number if you have a field
+      lng: order.deliveryLocation.coordinates[0],
+      lat: order.deliveryLocation.coordinates[1],
+      status: order.orderStatus,
+      restaurant:order.restaurantId,
+      customer:order.customerId
+      
+    }));
+
+    res.status(200).json({
+      messageType: 'success',
+      data: formattedOrders
+    });
+
+  } catch (error) {
+    console.error("Error fetching order locations:", error);
+    res.status(500).json({
+      messageType: 'failure',
+      message: 'Failed to fetch delivery order locations'
+    });
+  }
+};
+
+
+
+exports.getAgentOrderDispatchStatuses = async (req, res) => {
+  try {
+    const orders = await Order.find({})
+      .populate("customerId", "name phone email")
+      .populate("restaurantId", "name")
+      .populate("assignedAgent", "fullName phoneNumber agentStatus")  // populate agentStatus too
+      .sort({ createdAt: -1 });
+
+    const formattedOrders = orders.map(order => ({
+      orderId: order._id,
+      orderTime: order.createdAt,
+      orderStatus: order.orderStatus,
+      agentAssignmentStatus: order.agentAssignmentStatus || "Unassigned",
+      assignedAgent: order.assignedAgent ? order.assignedAgent.fullName : "Unassigned",
+      agentPhone: order.assignedAgent ? order.assignedAgent.phoneNumber : "-",
+      agentCurrentStatus: order.assignedAgent?.agentStatus?.currentStatus || "OFFLINE",
+      agentAvailability: order.assignedAgent?.agentStatus?.availability || "Unavailable",
+      restaurantName: order.restaurantId ? order.restaurantId.name : "-",
+      customerName: order.customerId ? order.customerId.name : "-",
+      customerPhone: order.customerId ? order.customerId.phone : "-",
+      deliveryLocation: order.deliveryLocation?.coordinates || [],
+      deliveryAddress: order.deliveryAddress?.street || "-",
+      totalAmount: order.totalAmount || 0,
+    }));
+
+    res.status(200).json({
+      messageType: "success",
+      data: formattedOrders,
+    });
+  } catch (error) {
+    console.error("Error fetching dispatch statuses:", error);
+    res.status(500).json({
+      messageType: "failure",
+      message: "Failed to fetch agent dispatch statuses",
     });
   }
 };
