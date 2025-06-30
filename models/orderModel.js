@@ -51,12 +51,13 @@ onlinePaymentDetails: {
   agentAssignmentStatus: {
   type: String,
 enum: [
-  'not_assigned',              
-  'assigned_waiting_acceptance', 
-  'accepted',
-   "assigned",               
-  'rejected',                    
-  'reassigned'                   
+    'not_assigned',
+    'assigned_waiting_acceptance',
+    'accepted',
+    'assigned',
+    'rejected',
+    'reassigned'  ,
+    'awaiting_agent_assignment'                
 ],
 default: 'not_assigned'
 },

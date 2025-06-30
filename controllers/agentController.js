@@ -366,7 +366,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     "in_progress",
     "completed",
     "delivered",
-    ,"cancelled_by_customer",
+    "cancelled_by_customer",
     "pending_agent_acceptance",
     "available",
     "arrived",
@@ -396,16 +396,45 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
       });
     }
 
-    agent.status = (newStatus === "delivered") ? "available" : newStatus;
+    // Map order statuses to agent statuses where applicable
+    const statusMap = {
+      "assigned_to_agent": "ORDER_ASSIGNED",
+      "picked_up": "PICKED_UP",
+      "in_progress": "ON_THE_WAY",
+      "arrived": "AT_CUSTOMER_LOCATION",
+      "delivered": "AVAILABLE"
+    };
+
+    // Update agent status
+    if (newStatus === "delivered") {
+      agent.agentStatus.status = "AVAILABLE";
+      agent.agentStatus.availabilityStatus = "AVAILABLE";
+    } else if (statusMap[newStatus]) {
+      agent.agentStatus.status = statusMap[newStatus];
+      agent.agentStatus.availabilityStatus = "UNAVAILABLE";
+    }
+
     await agent.save();
 
-    const orderStatusUpdatable = ["picked_up", "in_progress", "arrived", "delivered"];
+    // Update order status if allowed
+    const orderStatusUpdatable = [
+      "picked_up",
+      "in_progress",
+      "arrived",
+      "delivered"
+    ];
     if (orderStatusUpdatable.includes(newStatus)) {
       order.orderStatus = newStatus;
       await order.save();
     }
 
-    const notifyCustomerStatuses = ["picked_up", "in_progress", "arrived", "delivered"];
+    // Notify customer via Socket.IO if relevant
+    const notifyCustomerStatuses = [
+      "picked_up",
+      "in_progress",
+      "arrived",
+      "delivered"
+    ];
     if (notifyCustomerStatuses.includes(newStatus)) {
       io.to(`user_${order.customerId._id}`).emit("order_status_update", {
         orderId,
@@ -414,6 +443,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
       });
     }
 
+    // If delivered — handle restaurant earning and agent free notification
     if (newStatus === "delivered") {
       try {
         await createRestaurantEarning(order);
@@ -423,7 +453,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
       io.to(`restaurant_${order.restaurantId._id}`).emit("agent_status_update", {
         agentId,
-       activityStatus: "Free",
+        activityStatus: "Free",
         orderId,
         timestamp: new Date()
       });
@@ -431,7 +461,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
     res.status(200).json({
       message: "Agent order status updated successfully",
-      agentStatus: agent.status,
+      agentStatus: agent.agentStatus,
       orderStatus: order.orderStatus
     });
 
@@ -440,7 +470,6 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
-
 
 
 // 

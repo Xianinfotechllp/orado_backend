@@ -35,6 +35,7 @@ const {
   awardDeliveryPoints,
   awardPointsToRestaurant,
 } = require("../utils/awardPoints");
+const { assignTask } = require("../services/allocationService");
 
 exports.createOrder = async (req, res) => {
   try {
@@ -589,7 +590,7 @@ exports.getOrdersByAgent = async (req, res) => {
     const orders = await Order.find(
       {
         assignedAgent: req.params.agentId,
-        status: { $ne: "Delivered" }, // exclude delivered orders
+        orderStatus: { $ne: "delivered" }, // exclude delivered orders
       },
       "_id status totalAmount location"
     )
@@ -1851,7 +1852,7 @@ io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit("new_order", popu
     // Try to assign an agent
     let assignmentResult;
     try {
-      assignmentResult = await assignRandomAgentSimple(savedOrder._id);
+      assignmentResult = await assignTask(savedOrder._id);
       console.log("Agent assignment result:", assignmentResult);
 
 
@@ -1919,11 +1920,7 @@ io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit("new_order", popu
         );
       } else {
         // No agent available - update only assignment status
-        await Order.findByIdAndUpdate(savedOrder._id, {
-          $set: {
-            agentAssignmentStatus: "awaiting_agent_assignment",
-          },
-        });
+      
       }
     } catch (error) {
       console.error("Error during agent assignment:", error);

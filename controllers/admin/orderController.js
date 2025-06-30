@@ -91,7 +91,7 @@ exports.getAdminOrders = async (req, res) => {
   try {
     const orders = await Order.find()
       .populate({ path: 'customerId', select: 'name' })
-      .populate({ path: 'restaurantId', select: 'name' })
+      .populate({ path: 'restaurantId', select: 'name address location' })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -99,6 +99,7 @@ exports.getAdminOrders = async (req, res) => {
       orderId: order._id,
       orderStatus: order.orderStatus,
       restaurantName: order.restaurantId?.name || 'N/A',
+      restaurantAddress:order.restaurantId?.address || "N/A",
       customerName: order.customerId?.name || 'Guest',
       amount: `$ ${order.totalAmount.toFixed(2)}`,
       address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
@@ -165,7 +166,7 @@ exports.getAgentOrderDispatchStatuses = async (req, res) => {
   try {
     const orders = await Order.find({})
       .populate("customerId", "name phone email")
-      .populate("restaurantId", "name")
+      .populate("restaurantId", "name address")
       .populate("assignedAgent", "fullName phoneNumber agentStatus")  // populate agentStatus too
       .sort({ createdAt: -1 });
 
@@ -179,6 +180,7 @@ exports.getAgentOrderDispatchStatuses = async (req, res) => {
       agentCurrentStatus: order.assignedAgent?.agentStatus?.currentStatus || "OFFLINE",
       agentAvailability: order.assignedAgent?.agentStatus?.availability || "Unavailable",
       restaurantName: order.restaurantId ? order.restaurantId.name : "-",
+       restaurantAddress:order.restaurantId ? order.restaurantId.address : "",
       customerName: order.customerId ? order.customerId.name : "-",
       customerPhone: order.customerId ? order.customerId.phone : "-",
       deliveryLocation: order.deliveryLocation?.coordinates || [],

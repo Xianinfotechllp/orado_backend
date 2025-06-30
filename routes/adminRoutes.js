@@ -33,7 +33,8 @@ const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require(".
 const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
 const {sendNotification} = require('../controllers/admin/notificationControllers');
 const { getAllCustomers } = require("../controllers/admin/customerControllers");
-const { getAllAgents } = require("../controllers/admin/agentControllers");
+const { getAllAgents, manualAssignAgent } = require("../controllers/admin/agentControllers");
+const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -178,5 +179,13 @@ router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)
 
 router.get("/agent/list",getAllAgents)
 
+router.post("/agent/manual-assign",manualAssignAgent)
+// alowcation controller for agent 
+
+
+router.put("/allocation-settings", updateAllocationSettings);
+
+router.get("/allocation-settings",getAllocationSettings)
+router.patch('/allocation-settings/toggle-auto-allocation', toggleAutoAllocationStatus);
 module.exports = router;
 

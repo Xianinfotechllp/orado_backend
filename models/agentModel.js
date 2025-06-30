@@ -197,7 +197,7 @@ const agentSchema = new mongoose.Schema(
       enum: ["Free", "Busy", "Inactive"],
       default: "Inactive",
     },
-
+lastAssignedAt: { type: Date, default: null },
   agentStatus: {
   status: {
     type: String,
