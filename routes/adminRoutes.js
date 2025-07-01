@@ -36,6 +36,7 @@ const { getAllCustomers } = require("../controllers/admin/customerControllers");
 const { getAllAgents, manualAssignAgent } = require("../controllers/admin/agentControllers");
 const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
 const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
+const { createManager, getAllManagers, getManagerById, updateManager, deleteManager } = require("../controllers/admin/managerController");
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -198,7 +199,13 @@ router.get("/role/:roleId",getRoleById)
 router.put("/role/:roleId",updateRole)
 router.delete("/role/:roleId",deleteRole)
 
+//maneer routes
 
+router.post("/manager",createManager)
+router.get("/manager",getAllManagers)
+router.get("/manager/:managerId",getManagerById)
+router.put("/manager/:managerId",updateManager)
+router.delete("/manager/:managerId",deleteManager)
 
 module.exports = router;
 
