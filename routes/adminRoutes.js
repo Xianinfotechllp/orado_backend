@@ -35,6 +35,7 @@ const {sendNotification} = require('../controllers/admin/notificationControllers
 const { getAllCustomers } = require("../controllers/admin/customerControllers");
 const { getAllAgents, manualAssignAgent } = require("../controllers/admin/agentControllers");
 const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
+const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -187,5 +188,17 @@ router.put("/allocation-settings", updateAllocationSettings);
 
 router.get("/allocation-settings",getAllocationSettings)
 router.patch('/allocation-settings/toggle-auto-allocation', toggleAutoAllocationStatus);
+
+
+
+//role curd 
+router.post("/role",createRole)
+router.get("/role",getAllRoles)
+router.get("/role/:roleId",getRoleById)
+router.put("/role/:roleId",updateRole)
+router.delete("/role/:roleId",deleteRole)
+
+
+
 module.exports = router;
 

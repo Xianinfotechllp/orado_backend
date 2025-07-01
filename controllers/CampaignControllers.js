@@ -1,4 +1,4 @@
-const Campaign = require("../models/campaignModel");
+const Campaign = require("../models/CampaignModel");
 
 /**
  * @desc   Create a new campaign

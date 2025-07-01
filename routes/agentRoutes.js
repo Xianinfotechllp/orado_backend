@@ -57,5 +57,4 @@ router.get("/agent-earnings/:agentId", protect, checkRole('agent'), getAgentEarn
 
     
 
-
 module.exports = router;
