@@ -947,53 +947,80 @@ exports.getRestaurantsWithPermissions = async (req, res) => {
 
 
 
-
-
-
 exports.createCategory = async (req, res) => {
   try {
-    const { name, restaurantId, active = true, autoOnOff = false, description = '', images = [] } = req.body;
+    const {
+      name,
+      restaurantId,
+      active = true,
+      autoOnOff = false,
+      description = "",
+    } = req.body;
 
+    // Basic validation
     if (!name?.trim() || !restaurantId) {
-      return res.status(400).json({ message: 'Category name and restaurantId are required' });
+      return res.status(400).json({
+        message: "Category name and restaurantId are required",
+      });
     }
 
+    // Validate restaurantId format
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      return res.status(400).json({ message: "Invalid restaurant ID" });
+    }
+
+    // Find restaurant
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
-      return res.status(404).json({ message: 'Restaurant not found' });
+      return res.status(404).json({ message: "Restaurant not found" });
     }
 
-    // ✅ Check if category with same name exists for the restaurant
-    const existingCategory = await Category.findOne({ name: name.trim(), restaurantId });
+    // Check duplicate category name
+    const existingCategory = await Category.findOne({
+      name: name.trim(),
+      restaurantId,
+    });
     if (existingCategory) {
-      return res.status(400).json({ message: 'Category with this name already exists for this restaurant' });
+      return res.status(400).json({
+        message: "Category with this name already exists for this restaurant",
+      });
     }
 
+    // Upload images (if any)
+    const imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const result = await uploadOnCloudinary(file.path, "orado_categories");
+        if (result && result.secure_url) {
+          imageUrls.push(result.secure_url);
+        }
+      }
+    }
+
+    // Create category
     const category = new Category({
       name: name.trim(),
       restaurantId,
       active,
       autoOnOff,
       description,
-      images
+      images: imageUrls,
     });
 
     await category.save();
 
     res.status(201).json({
-      message: 'Category created successfully',
-      category
+      message: "Category created successfully",
+      category,
     });
-
   } catch (error) {
-    console.error('Error creating category:', error.message);
-    if (error.name === 'ValidationError') {
+    console.error("Error creating category:", error.message);
+    if (error.name === "ValidationError") {
       return res.status(400).json({ message: error.message });
     }
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 
 
@@ -1440,7 +1467,8 @@ exports.createProduct = async (req, res) => {
 exports.getCategoryProducts = async (req, res) => {
   try {
     const { restaurantId, categoryId } = req.params;
-
+    const { status, search } = req.query; // optional query params 
+    console.log( restaurantId, categoryId,status, search)
     // Validate IDs
     if (!isValidObjectId(restaurantId) || !isValidObjectId(categoryId)) {
       return res.status(400).json({
@@ -1449,12 +1477,20 @@ exports.getCategoryProducts = async (req, res) => {
       });
     }
 
-    // Find all active products in this category and restaurant
-    const products = await Product.find({
+    const query = {
       restaurantId,
       categoryId
-    })
-    .sort({ name: 1 }) // Sort alphabetically
+    };
+
+    // Filter by approval status if provided
+    if (status) query.approvalStatus = status; // 'approved' | 'pending' | 'rejected'
+
+    // Search by name if provided
+    if (search) query.name = { $regex: search, $options: 'i' };
+
+    // Find products matching filters
+    const products = await Product.find(query)
+      .sort({ name: 1 });
 
     res.status(200).json({
       success: true,

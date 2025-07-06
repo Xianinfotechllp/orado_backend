@@ -63,9 +63,6 @@ exports.getAllCustomers = async (req, res) => {
   }
 };
 
-
-
-
 exports.getOrdersByCustomerForAdmin = async (req, res) => {
   try {
     const { customerId, status, paymentStatus, startDate, endDate, page = 1, limit = 20 } = req.query;
@@ -77,8 +74,11 @@ exports.getOrdersByCustomerForAdmin = async (req, res) => {
       });
     }
 
-    // Build query object
-    const query = { customer: customerId };
+    const parsedLimit = Math.max(parseInt(limit) || 20, 1);
+    const parsedPage = Math.max(parseInt(page) || 1, 1);
+
+    const query = { customerId: customerId };  // ✅ fixed this line
+
     if (status) query.orderStatus = status;
     if (paymentStatus) query.paymentStatus = paymentStatus;
     if (startDate || endDate) {
@@ -90,18 +90,11 @@ exports.getOrdersByCustomerForAdmin = async (req, res) => {
     const total = await Order.countDocuments(query);
 
     const orders = await Order.find(query)
-      .populate("restaurant", "name")
-      .populate("customer", "name email phone")
+      .populate("restaurantId", "name")       // ✅ fixed populate field name
+      .populate("customerId", "name email phone")  // ✅ fixed populate field name
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
-
-    if (!orders.length) {
-      return res.status(404).json({
-        messageType: "failure",
-        message: "No orders found for this customer."
-      });
-    }
+      .skip((parsedPage - 1) * parsedLimit)
+      .limit(parsedLimit);
 
     return res.status(200).json({
       success: true,
@@ -110,9 +103,9 @@ exports.getOrdersByCustomerForAdmin = async (req, res) => {
       data: orders,
       pagination: {
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit)
       }
     });
 
@@ -124,3 +117,39 @@ exports.getOrdersByCustomerForAdmin = async (req, res) => {
     });
   }
 };
+
+
+exports.getSingleCustomerDetails = async (req, res) => {
+  try {
+    const customerId = req.params.customerId;
+
+    // Check if customer exists
+    const customer = await User.findOne({ _id: customerId, userType: "customer" })
+      .select("-password -resetPasswordToken -resetPasswordExpires")
+      .lean();
+
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
+
+    // Fetch all orders of this customer
+    const orders = await Order.find({ customerId: customer._id });
+
+    // Calculate total orders and total spent
+    const totalOrders = orders.length;
+    const totalSpent = orders.reduce((acc, order) => acc + (order.totalAmount || 0), 0);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...customer,
+        totalOrders,
+        totalSpent
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching customer details:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+

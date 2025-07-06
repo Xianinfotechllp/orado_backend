@@ -85,6 +85,11 @@ const cityRoutes = require("./routes/cityRoutes")
 const promoRoutes = require("./routes/promoCodeRoutes")
 const loyalityRoutes = require("./routes/loyalityRoutes")
 const campaignRoutes = require("./routes/campaignRoutes") 
+const managerRoutes = require("./routes/managerRoutes")
+const referalRoutes = require("./routes/referalRoutes")
+const terminologyRoutes = require("./routes/terminologyRoutes")
+const preferencesRoutes = require("./routes/preferencesRoutes");
+
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
   console.log("New client connected: " + socket.id);
@@ -420,6 +425,10 @@ app.use("/city",cityRoutes)
 app.use("/promo",promoRoutes)
 app.use("/loyality",loyalityRoutes)
 app.use("/campaign", campaignRoutes)
+app.use("/manager",managerRoutes)
+app.use("/referal",referalRoutes)
+app.use("/terminology",terminologyRoutes)
+app.use("/preferences", preferencesRoutes);
 
 
 // Default route

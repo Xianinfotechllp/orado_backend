@@ -483,3 +483,95 @@ exports.getAllRestaurantsForMap = async (req, res) => {
     });
   }
 };
+
+
+
+exports.getRestaurantById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const restaurant = await Restaurant.findById(id);
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    res.status(200).json({
+      message: "Restaurant fetched successfully",
+      data: restaurant,
+    });
+  } catch (error) {
+    console.error("Error fetching restaurant:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+
+
+
+exports.updateRestaurantProfile = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const {
+      name,
+      email,
+      phone,
+      foodType,
+      description,
+      status,
+      approvalStatus,
+      kycStatus,
+      street,
+      city,
+      state,
+      zip,
+      displayAddress
+    } = req.body;
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    // ✅ Update text/input fields
+    if (name) restaurant.name = name;
+    if (email) restaurant.email = email;
+    if (phone) restaurant.phone = phone;
+    if (foodType) restaurant.foodType = foodType;
+    if (description) restaurant.description = description;
+    if (status !== undefined) restaurant.active = status;
+    if (approvalStatus) restaurant.approvalStatus = approvalStatus;
+    if (kycStatus) restaurant.kycStatus = kycStatus;
+
+    // ✅ Update address
+    if (street) restaurant.address.street = street;
+    if (city) restaurant.address.city = city;
+    if (state) restaurant.address.state = state;
+    if (zip) restaurant.address.zip = zip;
+    if (displayAddress) restaurant.displayAddress = displayAddress;
+
+    // ✅ Upload multiple images and push to images array
+    if (req.files && req.files.length > 0) {
+      const uploadedImages = [];
+      for (const file of req.files) {
+        const result = await uploadOnCloudinary(file.path, "orado_restaurants");
+        if (result) {
+          uploadedImages.push(result.secure_url);
+        }
+      }
+      restaurant.images.push(...uploadedImages);
+    }
+
+    await restaurant.save();
+
+    res.json({
+      message: "Restaurant profile updated successfully",
+      data: restaurant,
+    });
+
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};

@@ -127,6 +127,86 @@ exports.getAdminOrders = async (req, res) => {
 
 
 
+
+exports.getOrderDetails = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId)
+      .populate([
+        { path: "customerId" },
+        { path: "restaurantId" },
+        { path: "assignedAgent" },
+        { path: "orderItems.productId" }
+      ])
+      .lean();
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // clean up sensitive / unnecessary fields
+    const sanitizedOrder = {
+      _id: order._id,
+      orderTime: order.orderTime,
+      deliveryTime: order.deliveryTime,
+      orderStatus: order.orderStatus,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      subtotal: order.subtotal,
+      totalAmount: order.totalAmount,
+      deliveryMode: order.deliveryMode,
+      preparationTime: order.preparationTime,
+      instructions: order.instructions,
+      scheduledTime: order.scheduledTime,
+
+      customer: {
+        _id: order.customerId._id,
+        name: order.customerId.name,
+        email: order.customerId.email,
+        phone: order.customerId.phone,
+        addresses: order.customerId.addresses,  // if needed
+      },
+
+      restaurant: {
+        _id: order.restaurantId._id,
+        name: order.restaurantId.name,
+        images: order.restaurantId.images,
+        phone: order.restaurantId.phone,
+        address: order.restaurantId.address,
+      },
+
+      assignedAgent: order.assignedAgent
+        ? {
+            _id: order.assignedAgent._id,
+            name: order.assignedAgent.name,
+            phone: order.assignedAgent.phone
+          }
+        : null,
+
+      orderItems: order.orderItems.map((item) => ({
+        _id: item._id,
+        name: item.name,
+        quantity: item.quantity,
+        totalPrice: item.totalPrice,
+        image: item.image,
+        productId: item.productId?._id,
+      })),
+
+      // if needed
+      offerName: order.offerName,
+      offerDiscount: order.offerDiscount,
+      tax: order.tax,
+      discountAmount: order.discountAmount
+    };
+
+    res.json({ message: "Order fetched", data: sanitizedOrder });
+
+  } catch (err) {
+    console.error("Error fetching order:", err.stack);
+    res.status(500).json({ message: "Error fetching order", error: err.message });
+  }
+};
+
+
 exports.getAllOrderLocationsForMap = async (req, res) => {
   try {
     const orders = await Order.find({

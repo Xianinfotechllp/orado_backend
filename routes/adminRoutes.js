@@ -6,7 +6,7 @@ const {
   updateRestaurantApprovalStatus, logoutAdmin, logoutAll, getPendingChangeRequests, getPermissions,
   updatePermissions, reviewChangeRequest, createAdmin, deleteAdmin, updateAdminPermissions,
   getAllAdmins, getAllAgentPermissionRequests, handleAgentPermissionRequest, getAllAccessLogs,
-  getMyLogs, getRestaurantById, updatePermissionsRestuarants, getRestaurantsWithPermissions,
+  getMyLogs,  updatePermissionsRestuarants, getRestaurantsWithPermissions,
   updateRestaurant, getRestaurantCategory, createCategory, getCategoryProducts, createProduct,updateProduct,
   updateCategory,
   deleteCategory,
@@ -18,12 +18,12 @@ const {refundToWallet, getAllRefundTransactions} = require('../controllers/walle
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
 
-const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap } = require("../controllers/admin/restaurantController");
+const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
 
-const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses} = require("../controllers/admin/orderController")
+const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
@@ -32,10 +32,11 @@ const {createRestaurant} = require("../controllers/admin/restaurantController")
 const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController");
 const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
 const {sendNotification} = require('../controllers/admin/notificationControllers');
-const { getAllCustomers } = require("../controllers/admin/customerControllers");
+const { getAllCustomers, getSingleCustomerDetails, getOrdersByCustomerForAdmin } = require("../controllers/admin/customerControllers");
 const { getAllAgents, manualAssignAgent } = require("../controllers/admin/agentControllers");
 const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
 const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
+const { createManager, getAllManagers, getManagerById, updateManager, deleteManager } = require("../controllers/admin/managerController");
 // Authentication routes
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
@@ -65,6 +66,9 @@ router.get("/restaurant-requests", protect, checkPermission('merchants.manage'),
 router.post("/restaurant-application/:restaurantId/update", protect, checkPermission('merchants.manage'), updateRestaurantApprovalStatus);
 router.get("/restaurant/:restaurantId", protect, checkRole('admin', 'superAdmin'), getRestaurantById);
 router.put("/edit/restaurant/:restaurantId",upload.array("images",5), protect, checkRole('admin', 'superAdmin'), updateRestaurant);
+
+
+
 
 // Restaurant permissions
 router.get('/permissions/:restaurantId', protect, checkPermission('merchants.manage'), getPermissions);
@@ -154,10 +158,13 @@ router.post('/notifications',sendNotification)
 
 //get all order by admin
 router.get("/order-list",getAdminOrders)
+router.get("/order-details/:orderId",getOrderDetails)
 
 router.get("/customer-list",getAllCustomers)
+router.get("/customer/:customerId/details",getSingleCustomerDetails)
+
 //get a cutsomer order details 
-router.get("/orders/by-customer",getOrdersByCustomerAdmin)
+router.get("/orders/by-customer",getOrdersByCustomerForAdmin)
 
 
 //rest list for drop down 
@@ -166,6 +173,7 @@ router.get("/restaurants/dropdown-list",getAllRestaurantsDropdown)
 
 //get restuat list for table in admin 
 router.get("/restaurants/table-list",getAllRestaurants)
+router.get('/restaurants/details/:id',getRestaurantById)
 
 //get restuat lsit forn map 
 
@@ -198,7 +206,13 @@ router.get("/role/:roleId",getRoleById)
 router.put("/role/:roleId",updateRole)
 router.delete("/role/:roleId",deleteRole)
 
+//maneer routes
 
+router.post("/manager",createManager)
+router.get("/manager",getAllManagers)
+router.get("/manager/:managerId",getManagerById)
+router.put("/manager/:managerId",updateManager)
+router.delete("/manager/:managerId",deleteManager)
 
 module.exports = router;
 

@@ -11,6 +11,8 @@ const {
   calculateOrderCost2,
   calculateOrderCostV2,
 } = require("../services/orderCostCalculator");
+
+
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const { haversineDistance } = require("../utils/distanceCalculator");
 const { deliveryFeeCalculator } = require("../utils/deliveryFeeCalculator");
@@ -389,7 +391,6 @@ exports.placeOrder = async (req, res) => {
     });
   }
 };
-
 exports.placeOrderWithAddressId = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -403,62 +404,49 @@ exports.placeOrderWithAddressId = async (req, res) => {
     } = req.body;
 
     if (!cartId || !paymentMethod || !addressId) {
-      return res
-        .status(400)
-        .json({ message: "Missing required fields", messageType: "failure" });
+      return res.status(400).json({
+        message: "Missing required fields",
+        messageType: "failure",
+      });
     }
 
-    // Fetch user address
     const user = await User.findById(userId).select("addresses");
     if (!user) {
-      return res
-        .status(404)
-        .json({ message: "User not found", messageType: "failure" });
+      return res.status(404).json({ message: "User not found" });
     }
 
     const selectedAddress = user.addresses.id(addressId);
     if (!selectedAddress) {
-      return res
-        .status(404)
-        .json({ message: "Address not found", messageType: "failure" });
+      return res.status(404).json({ message: "Address not found" });
     }
 
     const { location } = selectedAddress;
     const [userLongitude, userLatitude] = location.coordinates;
 
-    // Fetch cart
     const cart = await Cart.findById(cartId);
     if (!cart) {
-      return res
-        .status(404)
-        .json({ message: "Cart not found", messageType: "failure" });
+      return res.status(404).json({ message: "Cart not found" });
     }
 
-    // Fetch restaurant
     const restaurant = await Restaurant.findById(cart.restaurantId);
     if (!restaurant) {
-      return res
-        .status(404)
-        .json({
-          message: "Restaurant not found for this cart",
-          messageType: "failure",
-        });
+      return res.status(404).json({
+        message: "Restaurant not found for this cart",
+        messageType: "failure",
+      });
     }
 
-    const [restaurantLongitude, restaurantLatitude] =
-      restaurant.location.coordinates;
+    const [restaurantLongitude, restaurantLatitude] = restaurant.location.coordinates;
     const restaurantCoords = {
       latitude: restaurantLatitude,
       longitude: restaurantLongitude,
     };
 
-    // Prepare cart products
     const cartProducts = cart.products.map((item) => ({
       price: item.price,
       quantity: item.quantity,
     }));
 
-    // Calculate bill
     const bill = calculateOrderCostV2({
       cartProducts,
       tipAmount,
@@ -474,7 +462,6 @@ exports.placeOrderWithAddressId = async (req, res) => {
       isSurge: restaurant.isSurge || false,
     });
 
-    // Set order status based on permission
     let orderStatus = "pending";
     const permission = await Permission.findOne({
       restaurantId: restaurant._id,
@@ -483,7 +470,6 @@ exports.placeOrderWithAddressId = async (req, res) => {
       orderStatus = "accepted_by_restaurant";
     }
 
-    // Create order
     const newOrder = new Order({
       customerId: userId,
       restaurantId: restaurant._id,
@@ -497,14 +483,10 @@ exports.placeOrderWithAddressId = async (req, res) => {
       tipAmount,
       paymentMethod,
       paymentStatus: "pending",
-
-      // Delivery location
       deliveryLocation: {
         type: "Point",
         coordinates: [userLongitude, userLatitude],
       },
-
-      // Detailed address
       deliveryAddress: {
         street: selectedAddress.street,
         area: selectedAddress.area || "",
@@ -514,16 +496,42 @@ exports.placeOrderWithAddressId = async (req, res) => {
         pincode: selectedAddress.pincode || "2323",
         country: selectedAddress.country || "India",
       },
-
       instructions,
       couponCode,
       distanceKm: bill.distanceKm || 0,
-      billSummary: bill,
     });
 
     await newOrder.save();
 
-    // Assign nearest agent
+    // ✅ If payment method is online, create Razorpay order
+    if (paymentMethod === "online") {
+      const razorpayOrder = await razorpay.orders.create({
+        amount: Math.round(bill.finalAmount * 100),
+        currency: "INR",
+        receipt: newOrder._id.toString(),
+        notes: {
+          restaurantName: restaurant.name,
+          userId: userId.toString(),
+          orderId: newOrder._id.toString(),
+        },
+      });
+
+      // Save Razorpay orderId into order document
+      newOrder.onlinePaymentDetails.razorpayOrderId = razorpayOrder.id;
+      await newOrder.save();
+
+      return res.status(200).json({
+        message: "Order created. Proceed to payment.",
+        messageType: "success",
+        orderId: newOrder._id,
+        razorpayOrderId: razorpayOrder.id,
+        amount: bill.finalAmount,
+        currency: "INR",
+        keyId: process.env.RAZORPAY_KEY_ID,
+      });
+    }
+
+    // if not online → assign agent immediately
     try {
       const assignmentResult = await assignNearestAgentSimple(newOrder._id);
       if (!assignmentResult.success) {
@@ -539,7 +547,6 @@ exports.placeOrderWithAddressId = async (req, res) => {
       console.error("Error during agent assignment:", error);
     }
 
-    // ✅ Return response with order + bill
     res.status(201).json({
       message: "Order placed successfully",
       messageType: "success",
@@ -1229,85 +1236,86 @@ exports.getOrderPriceSummary = async (req, res) => {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
-  };
+};
 
-  exports.getOrderPriceSummaryv2 = async (req, res) => {
-    try {
-      const {
-        longitude,
-        latitude,
-        couponCode,
-        cartId,
-        userId,
-        tipAmount = 0,
-      } = req.body;
+exports.getOrderPriceSummaryv2 = async (req, res) => {
+  try {
+    const {
+      longitude,
+      latitude,
+      couponCode,
+      cartId,
+      userId,
+      tipAmount = 0,
+    } = req.body;
 
-      if (!cartId || !userId) {
-        return res.status(400).json({ error: "cartId and userId are required" });
-      }
+    if (!cartId || !userId) {
+      return res.status(400).json({ error: "cartId and userId are required" });
+    }
 
-      const cart = await Cart.findOne({ _id: cartId, user: userId });
-      if (!cart) {
-        return res.status(404).json({ error: "Cart not found for this user" });
-      }
+    const cart = await Cart.findOne({ _id: cartId, user: userId });
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found for this user" });
+    }
 
-      if (!cart.products || cart.products.length === 0) {
-        return res.status(400).json({ error: "Cart is empty" });
-      }
+    if (!cart.products || cart.products.length === 0) {
+      return res.status(400).json({ error: "Cart is empty" });
+    }
 
-      const restaurant = await Restaurant.findById(cart.restaurantId);
-      if (!restaurant) {
-        return res.status(404).json({ error: "Restaurant not found" });
-      }
+    const restaurant = await Restaurant.findById(cart.restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
 
-      const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
 
-      const restaurantCoords = restaurant.location.coordinates;
+    const restaurantCoords = restaurant.location.coordinates;
 
-      const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
-  userCoords,
-  restaurant._id
-);
-      console.log(isInsideServiceArea)
+    const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+      userCoords,
+      restaurant._id
+    );
+    console.log(isInsideServiceArea);
 
     if (!isInsideServiceArea) {
- return res.status(400).json({
-    success: false,
-    error: {
-      code: "DELIVERY_UNAVAILABLE",               // backend error code
-      message: "We currently do not deliver to your location for this restaurant.", // developer message
-      userMessage: "Delivery unavailable to your selected location."               // user-friendly frontend message
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "DELIVERY_UNAVAILABLE", // backend error code
+          message:
+            "We currently do not deliver to your location for this restaurant.", // developer message
+          userMessage: "Delivery unavailable to your selected location.", // user-friendly frontend message
+        },
+      });
     }
-  });
-  }
-      const preSurgeOrderAmount = cart.products.reduce(
-        (total, item) => total + item.price * item.quantity,
-        0
-      );
-      // ✅ Fetch active offers for the restaurant
-      const offers = await Offer.find({
-        applicableRestaurants: restaurant._id, // this can also be an array match
-        isActive: true,
-        validFrom: { $lte: new Date() },
-        validTill: { $gte: new Date() },
-      }).lean();
-
-      const surgeObj = await getApplicableSurgeFee(
-        userCoords,
-        preSurgeOrderAmount
-      );
-
-      // Compute isSurge and surgeFeeAmount based on result
-      const isSurge = !!surgeObj;
-      const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
-
-      const deliveryFee = await feeService.calculateDeliveryFee(
-        restaurantCoords,
-        userCoords
+    const preSurgeOrderAmount = cart.products.reduce(
+      (total, item) => total + item.price * item.quantity,
+      0
     );
-    
-    const foodTax = await feeService.getActiveTaxes("food")
-     
+    // ✅ Fetch active offers for the restaurant
+    const offers = await Offer.find({
+      applicableRestaurants: restaurant._id, // this can also be an array match
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() },
+    }).lean();
+
+    const surgeObj = await getApplicableSurgeFee(
+      userCoords,
+      preSurgeOrderAmount
+    );
+
+    // Compute isSurge and surgeFeeAmount based on result
+    const isSurge = !!surgeObj;
+    const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+
+    const deliveryFee = await feeService.calculateDeliveryFee(
+      restaurantCoords,
+      userCoords
+    );
+
+    const foodTax = await feeService.getActiveTaxes("food");
+
     // ✅ Compute billing summary using V2 utility
     const costSummary = calculateOrderCostV2({
       cartProducts: cart.products,
@@ -1318,7 +1326,7 @@ exports.getOrderPriceSummary = async (req, res) => {
       userCoords,
       offers,
       revenueShare: { type: "percentage", value: 20 },
-       taxes: foodTax ,
+      taxes: foodTax,
       isSurge,
       surgeFeeAmount,
     });
@@ -1703,38 +1711,34 @@ exports.placeOrderV2 = async (req, res) => {
     }
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
-       const restaurantCoords = restaurant.location.coordinates;
- const preSurgeOrderAmount = cart.products.reduce(
+    const restaurantCoords = restaurant.location.coordinates;
+    const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
 
-
-      const offers = await Offer.find({
+    const offers = await Offer.find({
       applicableRestaurants: restaurant._id,
       isActive: true,
       validFrom: { $lte: new Date() },
       validTill: { $gte: new Date() },
     }).lean();
 
-
     const surgeObj = await getApplicableSurgeFee(
       userCoords,
       preSurgeOrderAmount
     );
 
-        const isSurge = !!surgeObj;
+    const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
 
-
-const deliveryFee = await feeService.calculateDeliveryFee(
+    const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
       userCoords
     );
-        const foodTax = await feeService.getActiveTaxes("food");
+    const foodTax = await feeService.getActiveTaxes("food");
 
-
-          const costSummary = calculateOrderCostV2({
+    const costSummary = calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
       couponCode,
@@ -1745,10 +1749,6 @@ const deliveryFee = await feeService.calculateDeliveryFee(
       isSurge,
       surgeFeeAmount,
     });
-
-
-
-
 
     // Calculate bill summary
     const billSummary = calculateOrderCost({
@@ -1783,108 +1783,96 @@ const deliveryFee = await feeService.calculateDeliveryFee(
     }
 
     // Create and save order
- const newOrder = new Order({
-  customerId: userId,
-  restaurantId: cart.restaurantId,
-  orderItems,
-  paymentMethod,
-  orderStatus: orderStatus,
-  deliveryLocation: { type: "Point", coordinates: userCoords },
-  deliveryAddress: {
-    street,
-    area,
-    landmark,
-    city,
-    state,
-    pincode,
-    country,
-    latitude: parseFloat(latitude),
-    longitude: parseFloat(longitude),
-  },
-  subtotal: costSummary.cartTotal, // ✅ from V2
-  cartTotal: costSummary.cartTotal, 
-  tax: costSummary.totalTaxAmount, // ✅ from V2
-  discountAmount: costSummary.offerDiscount + costSummary.couponDiscount, // ✅ clean combined discount
-  deliveryCharge: costSummary.deliveryFee, // ✅ from V2
-  offerId: costSummary.appliedOffer?._id || null,
-  offerName: costSummary.appliedOffer?.title || null,
-  offerDiscount: costSummary.offerDiscount,
-  surgeCharge: costSummary.surgeFee,
-  tipAmount,
-  totalAmount: costSummary.finalAmount, // ✅ final payable
-  couponCode,
-  isSurge: costSummary.isSurge,
-  surgeReason: costSummary.surgeReason,
-  agentAssignmentStatus: "not_assigned",
-  instructions:instructions
-});
+    const newOrder = new Order({
+      customerId: userId,
+      restaurantId: cart.restaurantId,
+      orderItems,
+      paymentMethod,
+      orderStatus: orderStatus,
+      deliveryLocation: { type: "Point", coordinates: userCoords },
+      deliveryAddress: {
+        street,
+        area,
+        landmark,
+        city,
+        state,
+        pincode,
+        country,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+      },
+      subtotal: costSummary.cartTotal, // ✅ from V2
+      cartTotal: costSummary.cartTotal,
+      tax: costSummary.totalTaxAmount, // ✅ from V2
+      discountAmount: costSummary.offerDiscount + costSummary.couponDiscount, // ✅ clean combined discount
+      deliveryCharge: costSummary.deliveryFee, // ✅ from V2
+      offerId: costSummary.appliedOffer?._id || null,
+      offerName: costSummary.appliedOffer?.title || null,
+      offerDiscount: costSummary.offerDiscount,
+      surgeCharge: costSummary.surgeFee,
+      tipAmount,
+      totalAmount: costSummary.finalAmount, // ✅ final payable
+      couponCode,
+      isSurge: costSummary.isSurge,
+      surgeReason: costSummary.surgeReason,
+      agentAssignmentStatus: "not_assigned",
+      instructions: instructions,
+    });
 
     const savedOrder = await newOrder.save();
     const io = req.app.get("io");
-const populatedOrder = await Order.findById(savedOrder._id)
-  .populate("customerId", "name email phone")
-  .lean(); 
+    const populatedOrder = await Order.findById(savedOrder._id)
+      .populate("customerId", "name email phone")
+      .lean();
 
-const sanitizeOrderNumbers = (order, fields) => {
-  fields.forEach((key) => {
-    order[key] = Number(order[key]) || 0;
-  });
-  return order;
-};
+    const sanitizeOrderNumbers = (order, fields) => {
+      fields.forEach((key) => {
+        order[key] = Number(order[key]) || 0;
+      });
+      return order;
+    };
 
+    sanitizeOrderNumbers(populatedOrder, [
+      "subtotal",
+      "tax",
+      "discountAmount",
+      "deliveryCharge",
+      "offerDiscount",
+      "surgeCharge",
+      "tipAmount",
+      "totalAmount",
+    ]);
 
-  sanitizeOrderNumbers(populatedOrder, [
-  'subtotal',
-  'tax',
-  'discountAmount',
-  'deliveryCharge',
-  'offerDiscount',
-  'surgeCharge',
-  'tipAmount',
-  'totalAmount'
-]);
+    console.log(populatedOrder);
 
-console.log(populatedOrder)
-
-
-
-io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit("new_order", populatedOrder);
+    io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+      "new_order",
+      populatedOrder
+    );
     // Try to assign an agent
     let assignmentResult;
     try {
       assignmentResult = await assignTask(savedOrder._id);
       console.log("Agent assignment result:", assignmentResult);
 
+      console.log(`Emitting to restaurant_${savedOrder.restaurantId}`);
+      //   const updatedOrder = await Order.findByIdAndUpdate(orderId, {
+      //     $set: { assignedAgent: agentId, agentAssignmentStatus: "accepted", agentAcceptedAt: new Date() }
+      //   })
+      //   .populate("customerId", "name email")
+      //   .populate("assignedAgent", "fullName phoneNumber email")
 
-
-
-
- console.log(`Emitting to restaurant_${savedOrder.restaurantId}`);
-//   const updatedOrder = await Order.findByIdAndUpdate(orderId, { 
-//     $set: { assignedAgent: agentId, agentAssignmentStatus: "accepted", agentAcceptedAt: new Date() }
-//   })
-//   .populate("customerId", "name email")
-//   .populate("assignedAgent", "fullName phoneNumber email")
-
-// const orderObj = updatedOrder.toObject();
-
-
-
+      // const orderObj = updatedOrder.toObject();
 
       if (assignmentResult.success) {
         // Update only agent assignment fields, not main order status
-       
 
-
-//  io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
-//   success: true,
-//   message: "Agent assigned to order",
-//   updateType: "agent_assigned",
-//   order: mapOrder(orderObj)
-// });
-
-
-
+        //  io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
+        //   success: true,
+        //   message: "Agent assigned to order",
+        //   updateType: "agent_assigned",
+        //   order: mapOrder(orderObj)
+        // });
 
         // Notify all parties about assignment (not pickup)
         io.to(`agent_${assignmentResult.agentId}`).emit("delivery_assigned", {
@@ -1920,7 +1908,6 @@ io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit("new_order", popu
         );
       } else {
         // No agent available - update only assignment status
-      
       }
     } catch (error) {
       console.error("Error during agent assignment:", error);
