@@ -89,7 +89,8 @@ const managerRoutes = require("./routes/managerRoutes")
 const referalRoutes = require("./routes/referalRoutes")
 const terminologyRoutes = require("./routes/terminologyRoutes")
 const preferencesRoutes = require("./routes/preferencesRoutes");
-
+const commissionRoutes = require("./routes/commissionRoutes");
+const geofenceRoutes = require("./routes/geofenceRoutes");
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
   console.log("New client connected: " + socket.id);
@@ -429,6 +430,9 @@ app.use("/manager",managerRoutes)
 app.use("/referal",referalRoutes)
 app.use("/terminology",terminologyRoutes)
 app.use("/preferences", preferencesRoutes);
+app.use("/commission",commissionRoutes)
+app.use("/geofences", geofenceRoutes);
+
 
 
 // Default route

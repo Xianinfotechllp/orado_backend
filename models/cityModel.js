@@ -5,49 +5,48 @@ const citySchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      unique: true,  // prevent duplicate city names
+      unique: true,
       trim: true,
+      maxlength: 100
     },
-
-    type: {
+    description: {
       type: String,
-      enum: ["Polygon", "Circle"],
-      required: true,
+      default: "",
+      maxlength: 500
     },
-
-    // For Polygon cities
-    area: {
-      type: {
-        type: String,
-        enum: ["Polygon"],
-      },
-      coordinates: {
-        type: [[[Number]]], // array of linear rings of [lng, lat]
-      },
+    geofences: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Geofence"
+      }
+    ],
+    chargeType: {
+      type: String,
+      enum: ["Fixed Price", "Dynamic"],
+      default: "Fixed Price"
     },
-
-    // For Circle cities
-    center: {
-      type: [Number], // [lng, lat]
-    },
-
-    radius: {
-      type: Number, // in meters
-    },
-
     status: {
-      type: String,
-      enum: ["active", "inactive"],
-      default: "active",
+      type: Boolean,
+      default: true
     },
+    isNormalOrderActive: {
+      type: Boolean,
+      default: false
+    },
+    normalOrderChargeCalculation: {
+      type: Boolean,
+      default: false
+    },
+    isCustomOrderActive: {
+      type: Boolean,
+      default: false
+    },
+    customOrderChargeCalculation: {
+      type: Boolean,
+      default: false
+    }
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
-
-// Geo indexes for efficient spatial queries
-citySchema.index({ area: "2dsphere" });
-citySchema.index({ center: "2dsphere" });
 
 module.exports = mongoose.model("City", citySchema);
