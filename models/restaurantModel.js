@@ -120,6 +120,10 @@ const restaurantSchema = new mongoose.Schema(
   },
     rating: { type: Number, default: 0 },
 
+    city: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "City",
+},
     serviceAreas: [
       {
         type: {
@@ -153,6 +157,7 @@ const restaurantSchema = new mongoose.Schema(
       { type: String, enum: ['cod',"cash", "online", "wallet"] },
     ],
   },
+  
   
   
   { timestamps: true }

@@ -97,6 +97,10 @@ const themeSettingsRoutes = require("./routes/themeSettingsRoutes");
 const templateRoutes = require("./routes/templateRoutes");
 const deliveySettingRoutes = require("./routes/deliverySettingRoutes")
 const discountRoutes = require("./routes/discountRoutes");
+const globalOrdersettingsRoutes = require("./routes/globalOrderSettingsRoutes")
+const taxRoutes = require("./routes/taxRoutes");
+
+
 // const orderSettingsRoutes = require("./routes/orderSettingsRoutes");
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
@@ -445,8 +449,8 @@ app.use("/templates", templateRoutes);
 app.use("/delivey-settings",deliveySettingRoutes)
 // app.use("/order-settings",orderSettingsRoutes)
 app.use("/discounts", discountRoutes);
-
-
+app.use("/global-order-settings",globalOrdersettingsRoutes)
+app.use("/taxes",taxRoutes)
 // Default route
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
