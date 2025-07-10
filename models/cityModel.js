@@ -20,15 +20,8 @@ const citySchema = new mongoose.Schema(
         ref: "Geofence"
       }
     ],
-    chargeType: {
-      type: String,
-      enum: ["Fixed Price", "Dynamic"],
-      default: "Fixed Price"
-    },
-    status: {
-      type: Boolean,
-      default: true
-    },
+
+    // ⚙️ Normal Orders Settings
     isNormalOrderActive: {
       type: Boolean,
       default: false
@@ -37,6 +30,32 @@ const citySchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    normalOrdersChargeType: {
+      type: String,
+      enum: ["Fixed", "Dynamic"],
+      default: "Fixed"
+    },
+    fixedDeliveryChargesNormalOrders: {
+      type: Number,
+      default: 0
+    },
+    dynamicChargesTemplateNormalOrders: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Template",
+      default: null
+    },
+    dynamicChargesTemplateScheduleOrder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Template",
+      default: null
+    },
+    earningTemplateNormalOrder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Template",
+      default: null
+    },
+
+    // ⚙️ Custom Orders Settings
     isCustomOrderActive: {
       type: Boolean,
       default: false
@@ -44,6 +63,21 @@ const citySchema = new mongoose.Schema(
     customOrderChargeCalculation: {
       type: Boolean,
       default: false
+    },
+    cityChargeType: {
+      type: String,
+      enum: ["Fixed", "Dynamic"],
+      default: "Fixed"
+    },
+    fixedDeliveryChargesCustomOrders: {
+      type: Number,
+      default: 0
+    },
+
+    // Status
+    status: {
+      type: Boolean,
+      default: true
     }
   },
   { timestamps: true }

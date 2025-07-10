@@ -144,26 +144,31 @@ const City  = require("../models/cityModel")
 
 
 
-
 exports.createCity = async (req, res) => {
   try {
     const {
       name,
       description,
       geofences,
-      chargeType,
-      status,
       isNormalOrderActive,
       normalOrderChargeCalculation,
+      normalOrdersChargeType,
+      fixedDeliveryChargesNormalOrders,
+      dynamicChargesTemplateNormalOrders,
+      dynamicChargesTemplateScheduleOrder,
+      earningTemplateNormalOrder,
       isCustomOrderActive,
-      customOrderChargeCalculation
+      customOrderChargeCalculation,
+      cityChargeType,
+      fixedDeliveryChargesCustomOrders,
+      status
     } = req.body;
 
     // Basic validations
-    if (!name || !chargeType) {
+    if (!name) {
       return res.status(400).json({
         success: false,
-        message: "City name and charge type are required"
+        message: "City name is required"
       });
     }
 
@@ -181,12 +186,24 @@ exports.createCity = async (req, res) => {
       name: name.trim(),
       description: description || "",
       geofences: geofences || [],
-      chargeType,
-      status: status !== undefined ? status : true,
+
+      // Normal Order Settings
       isNormalOrderActive: !!isNormalOrderActive,
       normalOrderChargeCalculation: !!normalOrderChargeCalculation,
+      normalOrdersChargeType: normalOrdersChargeType || "Fixed",
+      fixedDeliveryChargesNormalOrders: fixedDeliveryChargesNormalOrders !== undefined ? fixedDeliveryChargesNormalOrders : 0,
+      dynamicChargesTemplateNormalOrders: dynamicChargesTemplateNormalOrders || "",
+      dynamicChargesTemplateScheduleOrder: dynamicChargesTemplateScheduleOrder || "",
+      earningTemplateNormalOrder: earningTemplateNormalOrder || "",
+
+      // Custom Order Settings
       isCustomOrderActive: !!isCustomOrderActive,
-      customOrderChargeCalculation: !!customOrderChargeCalculation
+      customOrderChargeCalculation: !!customOrderChargeCalculation,
+      cityChargeType: cityChargeType || "Fixed",
+      fixedDeliveryChargesCustomOrders: fixedDeliveryChargesCustomOrders !== undefined ? fixedDeliveryChargesCustomOrders : 0,
+
+      // Status
+      status: status !== undefined ? status : true
     });
 
     await newCity.save();
@@ -213,7 +230,6 @@ exports.createCity = async (req, res) => {
 
 
 
-
 exports.getCities = async (req, res) => {
   try {
     const cities = await City.find()
@@ -231,6 +247,146 @@ exports.getCities = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while fetching cities"
+    });
+  }
+
+  
+};
+
+
+
+
+exports.toggleCityStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find the city
+    const city = await City.findById(id);
+    if (!city) {
+      return res.status(404).json({
+        success: false,
+        message: "City not found"
+      });
+    }
+
+    // Toggle status
+    city.status = !city.status;
+
+    // Save updated city
+    await city.save();
+
+    res.status(200).json({
+      success: true,
+      message: `City status updated to ${city.status ? "Active" : "Inactive"}`,
+      data: city
+    });
+
+  } catch (error) {
+    console.error("Error toggling city status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while toggling city status"
+    });
+  }
+};
+
+
+exports.deleteCity = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if city exists
+    const city = await City.findById(id);
+    if (!city) {
+      return res.status(404).json({
+        success: false,
+        message: "City not found"
+      });
+    }
+
+    // Delete city
+    await city.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: "City deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting city:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting city"
+    });
+  }
+};
+
+exports.updateCity = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find city
+    const city = await City.findById(id);
+    if (!city) {
+      return res.status(404).json({
+        success: false,
+        message: "City not found"
+      });
+    }
+
+    // Update fields if present in req.body
+    const {
+      name,
+      description,
+      geofences,
+      isNormalOrderActive,
+      normalOrderChargeCalculation,
+      normalOrdersChargeType,
+      fixedDeliveryChargesNormalOrders,
+      dynamicChargesTemplateNormalOrders,
+      dynamicChargesTemplateScheduleOrder,
+      earningTemplateNormalOrder,
+      isCustomOrderActive,
+      customOrderChargeCalculation,
+      cityChargeType,
+      fixedDeliveryChargesCustomOrders,
+      status
+    } = req.body;
+
+    if (name) city.name = name.trim();
+    if (description !== undefined) city.description = description;
+    if (geofences) city.geofences = geofences;
+
+    // Normal Orders settings
+    if (isNormalOrderActive !== undefined) city.isNormalOrderActive = !!isNormalOrderActive;
+    if (normalOrderChargeCalculation !== undefined) city.normalOrderChargeCalculation = !!normalOrderChargeCalculation;
+    if (normalOrdersChargeType) city.normalOrdersChargeType = normalOrdersChargeType;
+    if (fixedDeliveryChargesNormalOrders !== undefined) city.fixedDeliveryChargesNormalOrders = fixedDeliveryChargesNormalOrders;
+    if (dynamicChargesTemplateNormalOrders !== undefined) city.dynamicChargesTemplateNormalOrders = dynamicChargesTemplateNormalOrders;
+    if (dynamicChargesTemplateScheduleOrder !== undefined) city.dynamicChargesTemplateScheduleOrder = dynamicChargesTemplateScheduleOrder;
+    if (earningTemplateNormalOrder !== undefined) city.earningTemplateNormalOrder = earningTemplateNormalOrder;
+
+    // Custom Orders settings
+    if (isCustomOrderActive !== undefined) city.isCustomOrderActive = !!isCustomOrderActive;
+    if (customOrderChargeCalculation !== undefined) city.customOrderChargeCalculation = !!customOrderChargeCalculation;
+    if (cityChargeType) city.cityChargeType = cityChargeType;
+    if (fixedDeliveryChargesCustomOrders !== undefined) city.fixedDeliveryChargesCustomOrders = fixedDeliveryChargesCustomOrders;
+
+    // Status
+    if (status !== undefined) city.status = !!status;
+
+    await city.save();
+
+    res.status(200).json({
+      success: true,
+      message: "City updated successfully",
+      data: city
+    });
+
+  } catch (error) {
+    console.error("Error updating city:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating city"
     });
   }
 };

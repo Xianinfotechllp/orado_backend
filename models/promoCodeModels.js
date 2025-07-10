@@ -46,7 +46,7 @@ const promoCodeSchema = new mongoose.Schema({
   },
 promoAppliedOn: {
   type: String,
-  enum: ['cartValue', 'deliveryCharge', 'specificProducts'],
+  enum: ['cartvalue', 'deliveryCharge', 'specificProducts'],
   required: true
 },
   applicableOrderNumbers: [Number],

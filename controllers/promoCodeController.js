@@ -23,7 +23,10 @@ exports.createPromo = async (req, res) => {
       applicableOrderNumbers,
       assignedRestaurants,
     } = req.body;
-
+console.log(req.body)
+    if (!["Percentage", "Flat"].includes(promotionType)) {
+      return res.status(400).json({ success: false, message: "Invalid promotion type" });
+    }
     // Validate required fields
     if (!promotionType || !promotionName || discountValue === undefined) {
       return res.status(400).json({
@@ -31,10 +34,7 @@ exports.createPromo = async (req, res) => {
         message: "Promotion Type, Name, and Discount Value are required",
       });
     }
-
-    if (!["Percentage", "Flat"].includes(promotionType)) {
-      return res.status(400).json({ success: false, message: "Invalid promotion type" });
-    }
+  
 
     if (discountValue < 0) {
       return res.status(400).json({ success: false, message: "Discount value cannot be negative" });

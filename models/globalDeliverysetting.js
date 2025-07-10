@@ -1,12 +1,6 @@
 const mongoose = require("mongoose");
 
-const deliverySettingsSchema = new mongoose.Schema({
-  restaurantId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Restaurant",
-    default: null   // null for global settings
-  },
-
+const globalDeliverySettingsSchema = new mongoose.Schema({
   deliveryModes: {
     virtualMeet: { type: Boolean, default: false },
     homeDelivery: { type: Boolean, default: true },
@@ -28,11 +22,21 @@ const deliverySettingsSchema = new mongoose.Schema({
   },
 
   distanceWiseDelivery: { type: Boolean, default: false },
-  onDemandTemplate: { type: String, default: "Food Delivery" },
-  scheduledTemplate: { type: String, default: "Order Details" },
 
+  onDemandTemplate: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Template",
+    default: null
+  },
+
+  scheduledTemplate: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Template",
+    default: null
+  },
   freeDelivery: { type: Boolean, default: false },
-  
+  freeDeliveryAmount: { type: Number, default: 0 },
+
   merchantDeliveryManagement: { type: Boolean, default: false },
   externalDeliveryCharge: { type: Boolean, default: false },
   trackingLinkConfig: { type: Boolean, default: false },
@@ -52,8 +56,8 @@ const deliverySettingsSchema = new mongoose.Schema({
     tipType: { type: String, enum: ["fixed", "percentage", ""], default: "" },
     allowManualTip: { type: Boolean, default: false },
     tipOptions: { type: Boolean, default: false }
-  },
+  }
 
 }, { timestamps: true });
 
-module.exports = mongoose.model("DeliverySettings", deliverySettingsSchema);
+module.exports = mongoose.model("GlobalDeliverySettings", globalDeliverySettingsSchema);

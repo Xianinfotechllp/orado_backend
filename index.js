@@ -59,7 +59,7 @@ app.use((req, res, next) => {
 // Load environment variables and DB config
 dotenv.config();
 require("./config/dbConfig")();
-
+const centralSocket = require("./sockets/centralSocket");
 // Import models
 const Agent = require("./models/agentModel");
 const Chat = require("./models/chatModel");
@@ -91,6 +91,13 @@ const terminologyRoutes = require("./routes/terminologyRoutes")
 const preferencesRoutes = require("./routes/preferencesRoutes");
 const commissionRoutes = require("./routes/commissionRoutes");
 const geofenceRoutes = require("./routes/geofenceRoutes");
+
+const themeSettingsRoutes = require("./routes/themeSettingsRoutes");
+
+const templateRoutes = require("./routes/templateRoutes");
+const deliveySettingRoutes = require("./routes/deliverySettingRoutes")
+const discountRoutes = require("./routes/discountRoutes");
+// const orderSettingsRoutes = require("./routes/orderSettingsRoutes");
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
   console.log("New client connected: " + socket.id);
@@ -431,8 +438,13 @@ app.use("/referal",referalRoutes)
 app.use("/terminology",terminologyRoutes)
 app.use("/preferences", preferencesRoutes);
 app.use("/commission",commissionRoutes)
-app.use("/geofences", geofenceRoutes);
 
+app.use("/geofences", geofenceRoutes);
+app.use("/theme-settings", themeSettingsRoutes);
+app.use("/templates", templateRoutes);
+app.use("/delivey-settings",deliveySettingRoutes)
+// app.use("/order-settings",orderSettingsRoutes)
+app.use("/discounts", discountRoutes);
 
 
 // Default route
@@ -556,6 +568,10 @@ io.to("admin_682c3a4a2e9fb5869cb96044").emit("new_order", { data: orderData });
       console.log(`Client joined room: order_${orderId}`);
     });
   });
+
+
+
+    centralSocket.emit("sendMessage", { text: "Hello via route test!" });
 
   res.json({hi:"socket"})
 
