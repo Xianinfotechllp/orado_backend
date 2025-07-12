@@ -23,7 +23,7 @@ const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
 
-const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails} = require("../controllers/admin/orderController")
+const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails,updateOrderStatus} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
@@ -181,6 +181,7 @@ router.get("/restaurants/location-map",getAllRestaurantsForMap)
 
 //get all delieveryed lcoaiont for map
 router.get("/orders/location-map",getAllOrderLocationsForMap)
+router.patch("/orders/:orderId/status",updateOrderStatus)
 
 
 router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)

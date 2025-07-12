@@ -63,6 +63,7 @@ const restaurantSchema = new mongoose.Schema(
       }
     ]
     ,
+  
      openingHours: [openingHourSchema],
 
     categories: [

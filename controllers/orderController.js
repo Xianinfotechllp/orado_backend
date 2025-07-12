@@ -1275,19 +1275,19 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       userCoords,
       restaurant._id
     );
-    console.log(isInsideServiceArea);
+    // console.log(isInsideServiceArea);
 
-    if (!isInsideServiceArea) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "DELIVERY_UNAVAILABLE", // backend error code
-          message:
-            "We currently do not deliver to your location for this restaurant.", // developer message
-          userMessage: "Delivery unavailable to your selected location.", // user-friendly frontend message
-        },
-      });
-    }
+    // if (!isInsideServiceArea) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     error: {
+    //       code: "DELIVERY_UNAVAILABLE", // backend error code
+    //       message:
+    //         "We currently do not deliver to your location for this restaurant.", // developer message
+    //       userMessage: "Delivery unavailable to your selected location.", // user-friendly frontend message
+    //     },
+    //   });
+    // }
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
@@ -1309,14 +1309,36 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
 
+
+    
+    const cityId = await geoService.findCityByCoordinates(longitude, latitude);
+    console.log(cityId)
     const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
-      userCoords
+      userCoords,
+      cityId 
     );
 
+    // const dynamiFee = await feeService.calculateDeliveryFeeByCityId(cityId,"normal")
+    // console.log("hope",dynamiFee)
     const foodTax = await feeService.getActiveTaxes("food");
 
-    // ✅ Compute billing summary using V2 utility
+
+
+
+
+
+// const breakdown = await feeService.getBillChargesAndTaxesBreakdown({
+//   appliedOn: "product",
+//   restaurantId: "68447efc5be58fed7ddcfaa3",
+//   cityId: "686cb6ba87676457586fb92b"
+// });
+//        console.log(breakdown)
+// const foodTaxes = await feeService.getActiveTaxes("product", { restaurantId: cart.restaurantId, cityId });
+// const deliveryTaxes = await feeService.getActiveTaxes("delivery", { cityId })
+//     // ✅ Compute billing summary using V2 utility
+
+
     const costSummary = calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
@@ -1337,7 +1359,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     );
 
     const summary = {
-      deliveryFee: costSummary.deliveryFee,
+      deliveryFee: deliveryFee,
       discount: costSummary.offerDiscount,
       distanceKm, // raw kilometers
       subtotal: costSummary.cartTotal,
@@ -1736,6 +1758,8 @@ exports.placeOrderV2 = async (req, res) => {
       restaurantCoords,
       userCoords
     );
+
+    const cityId = await geoService.findCityByCoordinates(longitude, latitude);
     const foodTax = await feeService.getActiveTaxes("food");
 
     const costSummary = calculateOrderCostV2({

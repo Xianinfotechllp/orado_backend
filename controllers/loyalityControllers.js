@@ -1,40 +1,39 @@
 const LoyaltySetting = require("../models/LoyaltySettingModel");
 
 // Create or update Loyalty Settings
+
 exports.createOrUpdateLoyaltySettings = async (req, res) => {
   try {
     const {
-      earningCriteria,
       pointsPerAmount,
       minOrderAmountForEarning,
       maxEarningPoints,
       expiryDurationDays,
       redemptionCriteria,
-      pointsPerRedemptionAmount,
+      valuePerPoint,
       minOrderAmountForRedemption,
       minPointsForRedemption,
       maxRedemptionPercent
     } = req.body;
 
-    // Basic validation (optional — customize as needed)
-    if (!earningCriteria || !pointsPerAmount) {
+    // Basic validation (example)
+    if (!pointsPerAmount || !valuePerPoint) {
       return res.status(400).json({
         success: false,
-        message: "Earning criteria and points per amount are required."
+        message: "Points per amount and value per point are required."
       });
     }
 
-    // Upsert: if settings exist, update them — else create new
+    // Upsert single global config
     const settings = await LoyaltySetting.findOneAndUpdate(
-      {}, // single config document for entire platform
+      {},
       {
-        earningCriteria,
         pointsPerAmount,
         minOrderAmountForEarning,
         maxEarningPoints,
         expiryDurationDays,
         redemptionCriteria,
-        pointsPerRedemptionAmount,
+        valuePerPoint,
         minOrderAmountForRedemption,
         minPointsForRedemption,
         maxRedemptionPercent
@@ -56,6 +55,7 @@ exports.createOrUpdateLoyaltySettings = async (req, res) => {
     });
   }
 };
+
 
 
 

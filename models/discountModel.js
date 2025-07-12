@@ -1,10 +1,19 @@
 const mongoose = require("mongoose");
 
 const discountSchema = new mongoose.Schema({
+
+
+    
   discountType: {
     type: String,
     enum: ["Percentage", "Flat"],
     required: true
+  },
+
+   name: {                      // 👈 added this
+    type: String,
+    required: true,
+    trim: true
   },
   applicationLevel: {
     type: String,
@@ -14,11 +23,16 @@ const discountSchema = new mongoose.Schema({
   restaurant: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Restaurant",
-    required: true
+    required: function() {
+      return this.applicationLevel === "Restaurant" || this.applicationLevel === "Product";
+    }
   },
   product: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Product"  // only required if applicationLevel is 'Product'
+    ref: "Product",
+    required: function() {
+      return this.applicationLevel === "Product";
+    }
   },
   discountValue: {
     type: Number,
@@ -32,10 +46,12 @@ const discountSchema = new mongoose.Schema({
     maxlength: 150
   },
   validFrom: {
-    type: Date
+    type: Date,
+    required: true
   },
   validTo: {
-    type: Date
+    type: Date,
+    required: true
   },
   isActive: {
     type: Boolean,

@@ -37,15 +37,15 @@ onlinePaymentDetails: {
   orderTime: { type: Date, default: Date.now },
   deliveryTime: Date,
 
-  orderStatus: {
-    type: String,
-    default: 'pending',
-    enum: [
-      'pending', 'pending_agent_acceptance', 'accepted_by_restaurant', 'rejected_by_restaurant',
-      'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'on_the_way','in_progress',
-      'arrived', 'completed',"delivered", 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
-    ]
-  },
+    orderStatus: {
+      type: String,
+      default: 'pending',
+      enum: [
+        'pending', 'pending_agent_acceptance', 'accepted_by_restaurant', 'rejected_by_restaurant',
+        'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'on_the_way','in_progress',
+        'arrived', 'completed',"delivered", 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
+      ]
+    },
 
   assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },  
   agentAssignmentStatus: {
@@ -130,6 +130,12 @@ cartTotal: Number,
   type: String,
   default: ""
 },
+
+taxDetails: [{
+  name: { type: String }, // eg. 'CGST', 'SGST', 'Service Tax'
+  percentage: { type: Number },
+  amount: { type: Number }
+}],
   deliveryLocation: {
     type: {
       type: String,
