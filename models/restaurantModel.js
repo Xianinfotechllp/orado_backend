@@ -63,7 +63,6 @@ const restaurantSchema = new mongoose.Schema(
       }
     ]
     ,
-  
      openingHours: [openingHourSchema],
 
     categories: [
@@ -124,6 +123,7 @@ const restaurantSchema = new mongoose.Schema(
     city: {
   type: mongoose.Schema.Types.ObjectId,
   ref: "City",
+  required: false // or false if optional
 },
     serviceAreas: [
       {

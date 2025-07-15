@@ -98,7 +98,8 @@ const templateRoutes = require("./routes/templateRoutes");
 const deliveySettingRoutes = require("./routes/deliverySettingRoutes")
 const discountRoutes = require("./routes/discountRoutes");
 const globalOrdersettingsRoutes = require("./routes/globalOrderSettingsRoutes")
-const taxRoutes = require("./routes/taxRoutes");
+// const taxRoutes = require("./routes/taxRoutes");
+const taxAndChargeRoutes = require("./routes/taxAndChargeRoutes");
 
 
 // const orderSettingsRoutes = require("./routes/orderSettingsRoutes");
@@ -434,7 +435,7 @@ app.use("/tickets", TicketRouter);
 
 app.use("/payments", paymentRoutes);
 app.use("/city",cityRoutes)
-app.use("/promo",promoRoutes)
+app.use("/promo-code",promoRoutes)
 app.use("/loyality",loyalityRoutes)
 app.use("/campaign", campaignRoutes)
 app.use("/manager",managerRoutes)
@@ -450,7 +451,9 @@ app.use("/delivey-settings",deliveySettingRoutes)
 // app.use("/order-settings",orderSettingsRoutes)
 app.use("/discounts", discountRoutes);
 app.use("/global-order-settings",globalOrdersettingsRoutes)
-app.use("/taxes",taxRoutes)
+// app.use("/taxes",taxRoutes)
+app.use("/tax-and-charge", taxAndChargeRoutes);
+
 // Default route
 app.get("/", (req, res) => {
   res.send("API is running 🚀");

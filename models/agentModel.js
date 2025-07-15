@@ -8,6 +8,8 @@ const agentSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     profilePicture: { type: String }, // URL to the profile picture
 
+
+    
     bankAccountDetails: {
       accountNumber: { type: String },
       bankName: { type: String },

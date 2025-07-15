@@ -38,6 +38,7 @@ const {
   awardPointsToRestaurant,
 } = require("../utils/awardPoints");
 const { assignTask } = require("../services/allocationService");
+const { awardPoints } = require("../services/loyaltyPointService");
 
 exports.createOrder = async (req, res) => {
   try {
@@ -1319,13 +1320,11 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       cityId 
     );
 
-    // const dynamiFee = await feeService.calculateDeliveryFeeByCityId(cityId,"normal")
-    // console.log("hope",dynamiFee)
+  
     const foodTax = await feeService.getActiveTaxes("food");
 
 
-
-
+ 
 
 
 // const breakdown = await feeService.getBillChargesAndTaxesBreakdown({
@@ -1844,6 +1843,8 @@ exports.placeOrderV2 = async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
+
+    await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
     const io = req.app.get("io");
     const populatedOrder = await Order.findById(savedOrder._id)
       .populate("customerId", "name email phone")

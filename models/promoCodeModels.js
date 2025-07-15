@@ -1,69 +1,68 @@
 const mongoose = require("mongoose");
 
 const promoCodeSchema = new mongoose.Schema({
-  language: {
-    type: String,
-    default: "en",
-  },
-  promotionType: {
-    type: String,
-    enum: ["Percentage", "Flat"],
-    required: true,
-  },
-  promotionName: {
+  code: {
     type: String,
     required: true,
-  },
-  discountValue: {
-    type: Number,
-    required: true,
+    unique: true,
+    uppercase: true,
+    trim: true
   },
   description: {
     type: String,
-    maxlength: 150,
+    required: false, // Optional — you can make it true if you want to enforce it
+    trim: true
   },
-  from: Date,
-  till: Date,
-  maximumDiscountValue: Number, // for percentage type promos
-  maximumNoOfAllowedUsers: Number,
-  minimumOrderAmount: Number,
-  applicationMode: {
+  discountType: {
     type: String,
-    enum: ["Public", "Hidden", "AutoApply"],
-    default: "Public",
+    enum: ["fixed", "percentage"],
+    required: true
   },
-  isReusableBySameUser: {
-    type: Boolean,
-    default: true,
+  discountValue: {
+    type: Number,
+    required: true
   },
-  allowLoyaltyRedeem: {
-    type: Boolean,
-    default: true,
+  minOrderValue: {
+    type: Number,
+    default: 0
   },
-  allowLoyaltyEarn: {
-    type: Boolean,
-    default: true,
-  },
-promoAppliedOn: {
-  type: String,
-  enum: ['cartvalue', 'deliveryCharge', 'specificProducts'],
-  required: true
-},
-  applicableOrderNumbers: [Number],
-  assignedRestaurants: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Restaurant",
-    },
-  ],
-  createdAt: {
+  validFrom: {
     type: Date,
-    default: Date.now,
+    required: true
+  },
+  validTill: {
+    type: Date,
+    required: true
   },
   isActive: {
     type: Boolean,
-    default: true,
+    default: true
   },
-});
+  isMerchantSpecific: {
+    type: Boolean,
+    default: false
+  },
+  applicableMerchants: [
+    { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }
+  ],
+  isCustomerSpecific: {
+    type: Boolean,
+    default: false
+  },
+  applicableCustomers: [
+    { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+  ],
+  maxUsagePerCustomer: {
+    type: Number,
+    default: 0 // 0 means unlimited
+  },
+  totalUsageCount: {
+    type: Number,
+    default: 0
+  },
+  customersUsed: [
+    { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+  ]
+}, { timestamps: true });
 
 module.exports = mongoose.model("PromoCode", promoCodeSchema);

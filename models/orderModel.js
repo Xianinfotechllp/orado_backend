@@ -14,9 +14,6 @@ const orderSchema = mongoose.Schema({
 
   }],
 
-
-
-
 onlinePaymentDetails: {
   razorpayOrderId: { type: String },
   razorpayPaymentId: { type: String },

@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const otpGenerator = require("../utils/otpGenerator");
 const { sendEmail } = require("../utils/sendEmail");
 const Restaurant = require("../models/restaurantModel")
+const LoyaltyPointTransaction = require("../models/loyaltyTransactionModel")
 
 const Favourite = require("../models/favouriteModel")
 
@@ -1027,3 +1028,60 @@ exports.markAllAsRead = async (req, res) => {
 };
 
 
+
+
+
+exports.getUserLoyaltyBalance = async (req, res) => {
+  try {
+    const  userId  = req.user._id;
+
+    const user = await User.findById(userId).select("loyaltyPoints");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Loyalty points fetched successfully",
+      data: { loyaltyPoints: user.loyaltyPoints }
+    });
+
+  } catch (error) {
+    console.error("Error fetching loyalty points:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch loyalty points"
+    });
+  }
+};
+
+
+
+
+
+// Get loyalty transaction history for the logged-in user
+exports.getLoyaltyTransactionHistory = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const transactions = await LoyaltyPointTransaction.find({ customerId: userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Loyalty transaction history fetched successfully.",
+      data: transactions,
+    });
+  } catch (error) {
+    console.error("Error fetching loyalty transaction history:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch loyalty transaction history.",
+    });
+  }
+};
