@@ -37,10 +37,10 @@ exports.registerAgent = async (req, res) => {
       });
     }
 
-    // Check if email/phone exists
-    const existingUser = await Agent.findOne({ $or: [{ email }, { phone }] });
-    if (existingUser) {
-      return res.status(409).json({ message: "User already exists" });
+    // Check if agent exists
+    const existingAgent = await Agent.findOne({ $or: [{ email }, { phoneNumber: phone }] });
+    if (existingAgent) {
+      return res.status(409).json({ message: "Agent already exists" });
     }
 
     // Hash password
@@ -52,7 +52,7 @@ exports.registerAgent = async (req, res) => {
       insurance,
       profilePicture,
       rcBook,
-      pollutionCertificate
+      pollutionCertificate,
     } = req.files || {};
 
     let licenseUrl = "", insuranceUrl = "", profilePicUrl = "", rcBookUrl = "", pollutionUrl = "";
@@ -61,84 +61,63 @@ exports.registerAgent = async (req, res) => {
       const result = await uploadOnCloudinary(license[0].path);
       licenseUrl = result?.secure_url;
     }
-
     if (insurance?.[0]) {
       const result = await uploadOnCloudinary(insurance[0].path);
       insuranceUrl = result?.secure_url;
     }
-
     if (profilePicture?.[0]) {
       const result = await uploadOnCloudinary(profilePicture[0].path);
       profilePicUrl = result?.secure_url;
     }
-
     if (rcBook?.[0]) {
       const result = await uploadOnCloudinary(rcBook[0].path);
       rcBookUrl = result?.secure_url;
     }
-
     if (pollutionCertificate?.[0]) {
       const result = await uploadOnCloudinary(pollutionCertificate[0].path);
       pollutionUrl = result?.secure_url;
     }
 
-    // Parse location
-    // let location = null;
-    // try {
-    //   if (req.body.location) {
-    //     location = JSON.parse(req.body.location);
 
-    //     if (
-    //       location.type !== "Point" ||
-    //       !Array.isArray(location.coordinates) ||
-    //       location.coordinates.length !== 2
-    //     ) {
-    //       return res.status(400).json({ message: "Invalid location format" });
-    //     }
-    //   } else {
-    //     return res.status(400).json({ message: "Location is required" });
-    //   }
-    // } catch (err) {
-    //   return res.status(400).json({ message: "Invalid location JSON format" });
-    // }
-
-    // Create new user with agent application
-    const newUser = new Agent({
-      name,
+    // Create new Agent
+    const newAgent = new Agent({
+      fullName: name,
       email,
-      phone,
+      phoneNumber: phone,
       password: hashedPassword,
-      userType: "customer", // This can be "agent" after approval
-      isAgent: false,
-      agentApplicationStatus: "pending",
       profilePicture: profilePicUrl || null,
+      applicationStatus: "pending",
+      role: "agent",
+
       agentApplicationDocuments: {
-        license: licenseUrl || null,
-        insurance: insuranceUrl || null,
-        rcBook: rcBookUrl || null,
-        pollutionCertificate: pollutionUrl || null,
+        license: licenseUrl,
+        insurance: insuranceUrl,
+        rcBook: rcBookUrl,
+        pollutionCertificate: pollutionUrl,
         submittedAt: new Date(),
       },
+
+      // Defaults initialized from schema:
+      // bankAccountDetails, payoutDetails, dashboard, deliveryStatus, etc.
     });
 
-    await newUser.save();
+    await newAgent.save();
 
     return res.status(201).json({
-      message: "Agent application submitted. Pending approval.",
-      user: {
-        _id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        agentApplicationStatus: newUser.agentApplicationStatus,
+      message: "Agent application submitted. Pending admin approval.",
+      agent: {
+        _id: newAgent._id,
+        fullName: newAgent.fullName,
+        email: newAgent.email,
+        phoneNumber: newAgent.phoneNumber,
+        applicationStatus: newAgent.applicationStatus,
       },
     });
   } catch (error) {
     console.error("Agent registration error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 
 exports.loginAgent = async (req, res) => {

@@ -129,6 +129,31 @@ const agentSchema = new mongoose.Schema(
 
 
 
+
+
+applicationStatus: {
+  type: String,
+  enum: ["pending", "approved", "rejected"],
+  default: "pending"
+},
+
+role: {
+  type: String,
+  enum: ["agent", "admin", "super_admin"], // more roles if needed
+  default: "agent"
+},
+
+
+
+
+
+
+
+
+
+
+
+
     agentApplicationDocuments: {
   license: { type: String },
   insurance: { type: String },
