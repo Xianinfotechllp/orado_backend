@@ -38,7 +38,7 @@ exports.registerAgent = async (req, res) => {
     }
 
     // Check if email/phone exists
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+    const existingUser = await Agent.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
       return res.status(409).json({ message: "User already exists" });
     }
@@ -103,7 +103,7 @@ exports.registerAgent = async (req, res) => {
     // }
 
     // Create new user with agent application
-    const newUser = new User({
+    const newUser = new Agent({
       name,
       email,
       phone,
