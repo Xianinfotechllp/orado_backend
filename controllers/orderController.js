@@ -1033,6 +1033,19 @@ exports.updateOrderStatus = async (req, res) => {
           timestamp: new Date(),
         }
       );
+   
+// flutter
+       io.to(`user_${order.customerId._id.toString()}`).emit(
+        "order_status_update_flutter",
+        {
+          orderId: order._id,
+          newStatus,
+          previousStatus,
+          timestamp: new Date(),
+        }
+      );
+
+
 
       // Notify restaurant for certain statuses
       if (
