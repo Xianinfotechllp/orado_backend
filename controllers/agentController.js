@@ -120,14 +120,13 @@ exports.registerAgent = async (req, res) => {
 };
 
 
+
 exports.loginAgent = async (req, res) => {
   try {
     const { identifier, password } = req.body;
 
     if (!identifier || !password) {
-      return res
-        .status(400)
-        .json({ message: "Phone/email and password are required" });
+      return res.status(400).json({ message: "Phone/email and password are required" });
     }
 
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
@@ -137,65 +136,66 @@ exports.loginAgent = async (req, res) => {
       return res.status(400).json({ message: "Invalid phone/email format" });
     }
 
-    const user = await User.findOne(
-      isEmail ? { email: identifier } : { phone: identifier }
+    // Find agent by email or phoneNumber
+    const agent = await Agent.findOne(
+      isEmail ? { email: identifier } : { phoneNumber: identifier }
     );
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
     }
 
-    if (user.agentApplicationStatus !== "approved" || user.userType !== "agent") {
+    if (agent.applicationStatus !== "approved") {
       return res.status(403).json({ message: "Agent not approved yet" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(password, agent.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Incorrect password" });
     }
 
     const token = jwt.sign(
-      { userId: user._id, userType: user.userType },
+      { agentId: agent._id, role: agent.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Max 1 sessions limit
+    // Optional: session handling
     const MAX_SESSIONS = 1;
-    const existingSessions = await Session.find({ userId: user._id }).sort({ createdAt: 1 });
+    const existingSessions = await Session.find({ userId: agent._id }).sort({ createdAt: 1 });
 
     if (existingSessions.length >= MAX_SESSIONS) {
-      const oldestSession = existingSessions[0];
-      await Session.findByIdAndDelete(oldestSession._id); // Kick out oldest session
+      const oldest = existingSessions[0];
+      await Session.findByIdAndDelete(oldest._id);
     }
 
-    // Optional: track device + IP info
     const userAgent = req.headers["user-agent"] || "Unknown Device";
-    const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
+    const ip = req.ip || req.connection?.remoteAddress || "Unknown IP";
 
     await Session.create({
-      userId: user._id,
+      userId: agent._id,
       token,
       userAgent,
       ip,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Login successful",
       token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        profilePicture: user.profilePicture,
-        agentApplicationDocuments: user.agentApplicationDocuments,
+      agent: {
+        _id: agent._id,
+        fullName: agent.fullName,
+        email: agent.email,
+        phoneNumber: agent.phoneNumber,
+        profilePicture: agent.profilePicture,
+        role: agent.role,
+        applicationStatus: agent.applicationStatus,
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Agent login error:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
