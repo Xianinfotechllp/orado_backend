@@ -8,7 +8,12 @@ const agentSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     profilePicture: { type: String }, // URL to the profile picture
 
-
+ password: {
+  type: String,
+  required: true,
+  minlength: 6,
+select: false
+},
 
     bankAccountDetails: {
       accountNumber: { type: String },
@@ -21,12 +26,7 @@ const agentSchema = new mongoose.Schema(
       default: false,
     },
 
-  password: {
-  type: String,
-  required: true,
-  minlength: 6,
-  select: true,
-},
+ 
 
     payoutDetails: {
       totalEarnings: { type: Number, default: 0 },

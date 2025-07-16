@@ -139,7 +139,7 @@ exports.loginAgent = async (req, res) => {
     // Find agent by email or phoneNumber
     const agent = await Agent.findOne(
       isEmail ? { email: identifier } : { phoneNumber: identifier }
-    );
+    ).select("+password");
 
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
