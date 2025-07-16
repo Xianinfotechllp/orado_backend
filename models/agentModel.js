@@ -21,6 +21,13 @@ const agentSchema = new mongoose.Schema(
       default: false,
     },
 
+  password: {
+  type: String,
+  required: true,
+  minlength: 6,
+  select: true,
+},
+
     payoutDetails: {
       totalEarnings: { type: Number, default: 0 },
       tips: { type: Number, default: 0 },
