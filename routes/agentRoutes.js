@@ -13,7 +13,9 @@ router.post(
   upload.fields([
     { name: "license", maxCount: 1 },
     { name: "insurance", maxCount: 1 },
-    { name: "profilePicture", maxCount: 1 }
+    { name: "profilePicture", maxCount: 1 },
+    { name: "rcBook", maxCount: 1 },             // ✅ new
+    { name: "pollutionCertificate", maxCount: 1 } // ✅ new
   ]),
   registerAgent
 );

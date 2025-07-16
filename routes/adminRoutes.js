@@ -18,7 +18,7 @@ const {refundToWallet, getAllRefundTransactions} = require('../controllers/walle
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
 
-const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById} = require("../controllers/admin/restaurantController");
+const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
@@ -86,6 +86,8 @@ router.post("/restaurant/:restaurantId/category", protect, upload.array('images'
 router.put("/restaurant/:restaurantId/category/:categoryId", protect, upload.array('images', 5), updateCategory)
 router.delete("/restaurant/:restaurantId/category/:categoryId", protect, upload.array('images', 5), deleteCategory)
 
+
+router.get('/products/by-restaurant/:restaurantId', getProductsByRestaurant);
 
 router.get("/restaurant/:restaurantId/category/:categoryId", protect, getCategoryProducts);
 router.post("/restaurant/:restaurantId/product", protect, upload.array('images', 5), createProduct);

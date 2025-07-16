@@ -9,7 +9,7 @@ const agentSchema = new mongoose.Schema(
     profilePicture: { type: String }, // URL to the profile picture
 
 
-    
+
     bankAccountDetails: {
       accountNumber: { type: String },
       bankName: { type: String },
@@ -122,10 +122,20 @@ const agentSchema = new mongoose.Schema(
       },
     ],
 
-    documents: {
-      license: { type: String },
-      insurance: { type: String },
-    },
+    // documents: {
+    //   license: { type: String },
+    //   insurance: { type: String },
+    // },
+
+
+
+    agentApplicationDocuments: {
+  license: { type: String },
+  insurance: { type: String },
+  rcBook: { type: String }, // ✅ new
+  pollutionCertificate: { type: String }, // ✅ new
+  submittedAt: { type: Date },
+},
 
     feedback: {
       averageRating: { type: Number, default: 0, min: 0, max: 5 },

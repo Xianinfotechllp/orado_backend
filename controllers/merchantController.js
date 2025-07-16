@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary');
 const Restaurant = require("../models/restaurantModel")
-
+const Order = require('../models/orderModel')
 
 exports.registerMerchant = async (req, res) => {
   try {
@@ -635,6 +635,30 @@ exports.changePassword = async (req, res) => {
       message: 'Internal server error.',
       error: error.message
     });
+  }
+};
+
+
+
+
+
+exports.getOrdersByCustomer = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ error: "Customer ID is required" });
+    }
+
+    const orders = await Order.find({ customerId: userId })
+      .populate("restaurantId", "name location address")
+      .populate("assignedAgent", "fullName phone")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: orders });
+  } catch (err) {
+    console.error("Error fetching orders by customer:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch customer orders" });
   }
 };
 

@@ -16,17 +16,15 @@ exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // Validation
+    // Basic Validation
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
     const phoneRegex = /^(\+91)?[6-9]\d{9}$/;
-
     if (!phoneRegex.test(phone)) {
-      return res.status(400).json({ message: "Invalid phone number format. Must be a 10-digit Indian number, with or without +91" });
+      return res.status(400).json({ message: "Invalid Indian phone number format" });
     }
-
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -35,11 +33,11 @@ exports.registerAgent = async (req, res) => {
 
     if (password.length < 6 || !/\d/.test(password)) {
       return res.status(400).json({
-        message: "Password must be at least 6 characters and include a number",
+        message: "Password must be at least 6 characters and contain a number",
       });
     }
 
-    // Check if user exists
+    // Check if email/phone exists
     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
       return res.status(409).json({ message: "User already exists" });
@@ -48,69 +46,84 @@ exports.registerAgent = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Upload documents and profile picture
-    const license = req.files?.license?.[0];
-    const insurance = req.files?.insurance?.[0];
-    const profilePicture = req.files?.profilePicture?.[0];
+    // Upload documents from req.files
+    const {
+      license,
+      insurance,
+      profilePicture,
+      rcBook,
+      pollutionCertificate
+    } = req.files || {};
 
-    let licenseUrl = "", insuranceUrl = "", profilePicUrl = "";
+    let licenseUrl = "", insuranceUrl = "", profilePicUrl = "", rcBookUrl = "", pollutionUrl = "";
 
-    if (license) {
-      const result = await uploadOnCloudinary(license.path);
+    if (license?.[0]) {
+      const result = await uploadOnCloudinary(license[0].path);
       licenseUrl = result?.secure_url;
     }
 
-    if (insurance) {
-      const result = await uploadOnCloudinary(insurance.path);
+    if (insurance?.[0]) {
+      const result = await uploadOnCloudinary(insurance[0].path);
       insuranceUrl = result?.secure_url;
     }
 
-    if (profilePicture) {
-      const result = await uploadOnCloudinary(profilePicture.path);
+    if (profilePicture?.[0]) {
+      const result = await uploadOnCloudinary(profilePicture[0].path);
       profilePicUrl = result?.secure_url;
     }
 
-    let location = null;
-    try {
-      if (req.body.location) {
-        location = JSON.parse(req.body.location);
-
-        if (
-          location.type !== "Point" ||
-          !Array.isArray(location.coordinates) ||
-          location.coordinates.length !== 2
-        ) {
-          return res.status(400).json({ message: "Invalid location format. Must be GeoJSON with type 'Point' and two coordinates." });
-        }
-      } else {
-        return res.status(400).json({ message: "Location is required" });
-      }
-    } catch (err) {
-      return res.status(400).json({ message: "Invalid location JSON format" });
+    if (rcBook?.[0]) {
+      const result = await uploadOnCloudinary(rcBook[0].path);
+      rcBookUrl = result?.secure_url;
     }
-    console.log("Parsed location:", location);
 
+    if (pollutionCertificate?.[0]) {
+      const result = await uploadOnCloudinary(pollutionCertificate[0].path);
+      pollutionUrl = result?.secure_url;
+    }
 
-    // Create user with agent application info
+    // Parse location
+    // let location = null;
+    // try {
+    //   if (req.body.location) {
+    //     location = JSON.parse(req.body.location);
+
+    //     if (
+    //       location.type !== "Point" ||
+    //       !Array.isArray(location.coordinates) ||
+    //       location.coordinates.length !== 2
+    //     ) {
+    //       return res.status(400).json({ message: "Invalid location format" });
+    //     }
+    //   } else {
+    //     return res.status(400).json({ message: "Location is required" });
+    //   }
+    // } catch (err) {
+    //   return res.status(400).json({ message: "Invalid location JSON format" });
+    // }
+
+    // Create new user with agent application
     const newUser = new User({
       name,
       email,
       phone,
       password: hashedPassword,
-      userType: "customer",
+      userType: "customer", // This can be "agent" after approval
       isAgent: false,
       agentApplicationStatus: "pending",
       profilePicture: profilePicUrl || null,
       agentApplicationDocuments: {
         license: licenseUrl || null,
         insurance: insuranceUrl || null,
+        rcBook: rcBookUrl || null,
+        pollutionCertificate: pollutionUrl || null,
         submittedAt: new Date(),
       },
     });
 
     await newUser.save();
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Agent application submitted. Pending approval.",
       user: {
         _id: newUser._id,
@@ -125,7 +138,6 @@ exports.registerAgent = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 
 
