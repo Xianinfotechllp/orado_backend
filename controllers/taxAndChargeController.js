@@ -14,7 +14,15 @@ exports.createTaxAndCharge = async (req, res) => {
       status
     } = req.body;
 
-    if (!name || !value || !type || !applicableOn || !category || !level) {
+    // Auto-set applicableOn if category is PackingCharge
+    let finalApplicableOn = applicableOn;
+
+    if (category === 'PackingCharge') {
+      finalApplicableOn = 'Packing Charge';
+    }
+
+    // Validate required fields
+    if (!name || !value || !type || !category || !level || !finalApplicableOn) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields."
@@ -25,7 +33,7 @@ exports.createTaxAndCharge = async (req, res) => {
       name,
       value,
       type,
-      applicableOn,
+      applicableOn: finalApplicableOn,
       category,
       level,
       merchant: merchant || null,
@@ -49,7 +57,7 @@ exports.createTaxAndCharge = async (req, res) => {
     });
   }
 };
-
+  
 
 
 

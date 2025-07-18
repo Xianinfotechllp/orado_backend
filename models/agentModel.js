@@ -68,10 +68,10 @@ select: false
         default: "available",
       },
       estimatedDeliveryTime: { type: Date }, // estimated time of arrival
-      location: {
-        latitude: { type: Number },
-        longitude: { type: Number },
-      },
+      // location: {
+      //   latitude: { type: Number },
+      //   longitude: { type: Number },
+      // },
       accuracy: { type: Number }, // GPS accuracy in meters
       currentOrderCount: { type: Number, default: 0 },
     },
@@ -86,6 +86,10 @@ select: false
         type: [Number], // [longitude, latitude]
         default: [0, 0],
       },
+        accuracy: {
+    type: Number, // in meters
+    default: 0,
+  }
     },
 
     leaveStatus: {

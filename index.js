@@ -100,7 +100,7 @@ const discountRoutes = require("./routes/discountRoutes");
 const globalOrdersettingsRoutes = require("./routes/globalOrderSettingsRoutes")
 // const taxRoutes = require("./routes/taxRoutes");
 const taxAndChargeRoutes = require("./routes/taxAndChargeRoutes");
-
+const incentiveRoutes = require('./routes/incentiveRoutes');
 
 // const orderSettingsRoutes = require("./routes/orderSettingsRoutes");
 // Socket.io Connection Handler
@@ -453,6 +453,7 @@ app.use("/discounts", discountRoutes);
 app.use("/global-order-settings",globalOrdersettingsRoutes)
 // app.use("/taxes",taxRoutes)
 app.use("/tax-and-charge", taxAndChargeRoutes);
+app.use("/incentive",incentiveRoutes)
 
 // Default route
 app.get("/", (req, res) => {

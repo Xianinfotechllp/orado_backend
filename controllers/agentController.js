@@ -470,55 +470,60 @@ exports.toggleAvailability = async (req, res) => {
     const { status, location } = req.body;
     const io = req.app.get("io");
 
-    // Validate availability status (UPPERCASE)
+    // ✅ Validate status
     if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
-    // Validate location format
+    // ✅ Convert lat/lng to GeoJSON if needed
+    let geoLocation;
     if (
-      !location ||
-      location.type !== "Point" ||
-      !Array.isArray(location.coordinates) ||
-      location.coordinates.length !== 2 ||
-      typeof location.coordinates[0] !== "number" ||
-      typeof location.coordinates[1] !== "number" ||
-      isNaN(location.coordinates[0]) ||
-      isNaN(location.coordinates[1])
+      location &&
+      typeof location.lat === "number" &&
+      typeof location.lng === "number" &&
+      !isNaN(location.lat) &&
+      !isNaN(location.lng)
     ) {
+      geoLocation = {
+        type: "Point",
+        coordinates: [location.lng, location.lat],
+        accuracy: location.accuracy || 0,
+      };
+    } else if (
+      location &&
+      location.type === "Point" &&
+      Array.isArray(location.coordinates) &&
+      location.coordinates.length === 2
+    ) {
+      geoLocation = {
+        type: "Point",
+        coordinates: location.coordinates,
+        accuracy: location.accuracy || 0,
+      };
+    } else {
       return res.status(400).json({
-        message: "Invalid location format. Must be GeoJSON Point with numeric coordinates.",
+        message: "Invalid location. Provide either { lat, lng } or GeoJSON format.",
       });
     }
 
-    // Prepare update data
+    // ✅ Prepare update data
     const updateData = {
       'agentStatus.availabilityStatus': status,
-      location: {
-        type: "Point",
-        coordinates: location.coordinates,
-      },
+      'agentStatus.status': status === "AVAILABLE" ? "AVAILABLE" : "OFFLINE",
+      location: geoLocation,
       updatedAt: new Date(),
     };
 
-    // Ensure operational status matches availability state
-    updateData['agentStatus.status'] = (status === "AVAILABLE") ? "AVAILABLE" : "OFFLINE";
-
-    // Update agent
-    const updatedAgent = await Agent.findByIdAndUpdate(
-      agentId,
-      updateData,
-      { new: true }
-    );
+    // ✅ Update agent
+    const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, { new: true });
 
     if (!updatedAgent) {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    // Emit Socket event to relevant clients if needed
+    // ✅ Emit socket event (optional)
     if (status === "AVAILABLE") {
-      // Example: emit availability event
-      // io.emit("agentAvailable", { agentId, location });
+      // io.emit("agentAvailable", { agentId, location: geoLocation });
     }
 
     return res.status(200).json({
@@ -530,6 +535,7 @@ exports.toggleAvailability = async (req, res) => {
     res.status(500).json({ error: "Server error while toggling agent availability" });
   }
 };
+
 exports.addAgentReview = async (req, res) => {
   const { agentId } = req.params;
   const { userId, orderId, rating, comment } = req.body;

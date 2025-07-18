@@ -1369,7 +1369,15 @@ exports.createProduct = async (req, res) => {
       unit = "piece",
       stock = 0,
       reorderLevel = 0,
-      revenueShare = { type: "percentage", value: 10 }
+      revenueShare = { type: "percentage", value: 10 },
+
+      // New fields
+      minQty,
+      maxQty,
+      costPrice,
+      preparationTime,
+      isRecurring = false,
+      availability = { type: "always" }
     } = req.body;
 
     const { restaurantId } = req.params;
@@ -1391,7 +1399,7 @@ exports.createProduct = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid category ID format" });
     }
 
-    // Validate food type
+    // Validate foodType
     if (!["veg", "non-veg"].includes(foodType)) {
       return res.status(400).json({
         success: false,
@@ -1411,7 +1419,7 @@ exports.createProduct = async (req, res) => {
         .map(result => result.secure_url);
     }
 
-    // Create Product
+    // Create product
     const newProduct = await Product.create({
       name: name.trim(),
       description: description?.trim(),
@@ -1425,7 +1433,15 @@ exports.createProduct = async (req, res) => {
       unit,
       stock: parseInt(stock),
       reorderLevel: parseInt(reorderLevel),
-      revenueShare
+      revenueShare,
+
+      // New fields
+      minQty: minQty ? parseInt(minQty) : 1,
+      maxQty: maxQty ? parseInt(maxQty) : undefined,
+      costPrice: costPrice ? parseFloat(costPrice) : undefined,
+      preparationTime: preparationTime ? parseInt(preparationTime) : undefined,
+      isRecurring,
+      availability
     });
 
     const response = newProduct.toObject();
@@ -1440,6 +1456,7 @@ exports.createProduct = async (req, res) => {
   } catch (error) {
     console.error("Error creating product:", error);
 
+    // Clean up uploaded files if error
     if (req.files?.length) {
       await Promise.all(req.files.map(file =>
         fs.promises.unlink(file.path).catch(console.error)
@@ -1461,7 +1478,6 @@ exports.createProduct = async (req, res) => {
     });
   }
 };
-
 
 
 exports.getCategoryProducts = async (req, res) => {
