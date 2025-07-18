@@ -97,6 +97,13 @@ exports.manualAssignAgent = async (req, res) => {
 
     await agent.save();
 
+const io = req.app.get("io"); // or import it from your socket file
+io.to(`agent_${agent._id}`).emit("orderAssigned", {
+  orderId: order._id,
+  message: "New order assigned to you.",
+  orderDetails: order,
+});
+
     res.status(200).json({
       message: "Agent assigned successfully.",
       order,

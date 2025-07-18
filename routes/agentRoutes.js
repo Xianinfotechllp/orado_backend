@@ -1,7 +1,9 @@
 const express = require('express')
 const router = express.Router()
 const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, getAgentReviews, updateAgentBankDetails, logoutAgent, requestPermission,
-   activateUnlockedPermissions, getAgentEarnings, getMyPermissionRequests, handleAgentResponse
+   activateUnlockedPermissions, getAgentEarnings, getMyPermissionRequests, handleAgentResponse,
+   getAgentAvailabilityStatus,
+   addOrUpdateAgentDeviceInfo
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole } = require('../middlewares/authMiddleware');
@@ -29,7 +31,7 @@ router.put("/bank-details", protect, checkRole('agent'), updateAgentBankDetails)
 
 // availability
 router.put('/:agentId/availability',toggleAvailability);
-
+router.get('/:agentId/availability', getAgentAvailabilityStatus);
 // delivery routes
 
 
@@ -56,6 +58,7 @@ router.post('/activate-unlocked-perks', protect, checkRole('agent'), activateUnl
 
 //get agent earnigs
 router.get("/agent-earnings/:agentId", protect, checkRole('agent'), getAgentEarnings)
+router.post('/device-info', protect,addOrUpdateAgentDeviceInfo);
 
     
 

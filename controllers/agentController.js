@@ -11,7 +11,7 @@ const {addAgentEarnings,addRestaurantEarnings ,createRestaurantEarning} = requir
 const { uploadOnCloudinary } = require('../utils/cloudinary');
 const { findAndAssignNearestAgent } = require('../services/findAndAssignNearestAgent');
 const { sendPushNotification } = require('../utils/sendPushNotification');
-
+const AgentDeviceInfo = require('../models/AgentDeviceInfoModel');
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -553,6 +553,39 @@ exports.toggleAvailability = async (req, res) => {
 };
 
 
+
+
+
+
+
+
+
+
+exports.getAgentAvailabilityStatus = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const agent = await Agent.findById(agentId, {
+      agentStatus: 1,
+      location: 1,
+    });
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    return res.status(200).json({
+      status: agent.agentStatus,
+      location: agent.location,
+    });
+  } catch (err) {
+    console.error("Error fetching agent status:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
 exports.addAgentReview = async (req, res) => {
   const { agentId } = req.params;
   const { userId, orderId, rating, comment } = req.body;
@@ -773,4 +806,68 @@ exports.activateUnlockedPermissions = async (req, res) => {
     maxActiveOrders: agent.maxActiveOrders,
     maxCODAmount: agent.maxCODAmount,
   });
+};
+
+
+
+
+
+
+// Add or update agent device info
+exports.addOrUpdateAgentDeviceInfo = async (req, res) => {
+  try {
+    const {
+      agent,
+      deviceId,
+      os,
+      osVersion,
+      appVersion,
+      model,
+      batteryLevel,
+      networkType,
+      timezone,
+      locationEnabled,
+      isRooted,
+    } = req.body;
+
+    // Basic validation
+    if (!agent || !deviceId) {
+      return res.status(400).json({
+        message: 'agent and deviceId are required.',
+        status: 'failure',
+      });
+    }
+
+    const updateData = {
+      os,
+      osVersion,
+      appVersion,
+      model,
+      batteryLevel,
+      networkType,
+      timezone,
+      locationEnabled,
+      isRooted,
+      updatedAt: new Date(),
+    };
+
+    const deviceInfo = await AgentDeviceInfo.findOneAndUpdate(
+      { agent, deviceId },
+      { $set: updateData },
+      { upsert: true, new: true }
+    );
+
+    return res.status(200).json({
+      message: 'Device info saved successfully.',
+      status: 'success',
+      data: deviceInfo,
+    });
+
+  } catch (error) {
+    console.error('Error saving agent device info:', error);
+    return res.status(500).json({
+      message: 'Internal Server Error',
+      status: 'failure',
+    });
+  }
 };
