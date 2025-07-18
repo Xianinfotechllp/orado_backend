@@ -534,10 +534,16 @@ exports.toggleAvailability = async (req, res) => {
       // io.emit("agentAvailable", { agentId, location: geoLocation });
     }
 
-    return res.status(200).json({
-      message: "Agent availability and location updated successfully",
-      agent: updatedAgent,
+
+      return res.status(200).json({
+      message: "Status and location updated",
+      data: {
+        id: updatedAgent._id,
+        status: updatedAgent.agentStatus,
+        location: updatedAgent.location,
+      },
     });
+ 
   } catch (error) {
     console.error("Error toggling agent availability:", error);
     return res
