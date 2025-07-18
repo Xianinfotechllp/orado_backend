@@ -475,8 +475,9 @@ exports.toggleAvailability = async (req, res) => {
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
-    // ✅ Convert lat/lng to GeoJSON if needed
+    // ✅ Convert location to GeoJSON (from lat/lng OR coordinates)
     let geoLocation;
+
     if (
       location &&
       typeof location.lat === "number" &&
@@ -484,6 +485,7 @@ exports.toggleAvailability = async (req, res) => {
       !isNaN(location.lat) &&
       !isNaN(location.lng)
     ) {
+      // ✅ Handle { lat, lng }
       geoLocation = {
         type: "Point",
         coordinates: [location.lng, location.lat],
@@ -493,8 +495,11 @@ exports.toggleAvailability = async (req, res) => {
       location &&
       location.type === "Point" &&
       Array.isArray(location.coordinates) &&
-      location.coordinates.length === 2
+      location.coordinates.length === 2 &&
+      typeof location.coordinates[0] === "number" &&
+      typeof location.coordinates[1] === "number"
     ) {
+      // ✅ Handle GeoJSON { type, coordinates }
       geoLocation = {
         type: "Point",
         coordinates: location.coordinates,
@@ -506,7 +511,7 @@ exports.toggleAvailability = async (req, res) => {
       });
     }
 
-    // ✅ Prepare update data
+    // ✅ Prepare update object
     const updateData = {
       'agentStatus.availabilityStatus': status,
       'agentStatus.status': status === "AVAILABLE" ? "AVAILABLE" : "OFFLINE",
@@ -514,15 +519,18 @@ exports.toggleAvailability = async (req, res) => {
       updatedAt: new Date(),
     };
 
-    // ✅ Update agent
-    const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, { new: true });
+    // ✅ Update agent in database
+    const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, {
+      new: true,
+    });
 
     if (!updatedAgent) {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    // ✅ Emit socket event (optional)
-    if (status === "AVAILABLE") {
+    // ✅ Emit socket event if agent becomes available (optional)
+    if (status === "AVAILABLE" && io) {
+      // Example:
       // io.emit("agentAvailable", { agentId, location: geoLocation });
     }
 
@@ -532,9 +540,12 @@ exports.toggleAvailability = async (req, res) => {
     });
   } catch (error) {
     console.error("Error toggling agent availability:", error);
-    res.status(500).json({ error: "Server error while toggling agent availability" });
+    return res
+      .status(500)
+      .json({ error: "Server error while toggling agent availability" });
   }
 };
+
 
 exports.addAgentReview = async (req, res) => {
   const { agentId } = req.params;
