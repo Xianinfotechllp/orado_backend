@@ -58,7 +58,7 @@ router.post('/activate-unlocked-perks', protect, checkRole('agent'), activateUnl
 
 //get agent earnigs
 router.get("/agent-earnings/:agentId", protect, checkRole('agent'), getAgentEarnings)
-router.post('/device-info', protect,addOrUpdateAgentDeviceInfo);
+router.post('/device-info', addOrUpdateAgentDeviceInfo);
 
     
 

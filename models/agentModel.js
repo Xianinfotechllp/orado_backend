@@ -246,29 +246,29 @@ role: {
       default: "Inactive",
     },
 lastAssignedAt: { type: Date, default: null },
-  agentStatus: {
-  status: {
-    type: String,
-    enum: [
-      "OFFLINE",
-      "AVAILABLE",
-      "ORDER_ASSIGNED",
-      "ORDER_ACCEPTED",
-      "ARRIVED_AT_RESTAURANT",
-      "PICKED_UP",
-      "ON_THE_WAY",
-      "AT_CUSTOMER_LOCATION",
-      "DELIVERED",
-      "ON_BREAK",
-    ],
-    default: "OFFLINE",
+    agentStatus: {
+    status: {
+      type: String,
+      enum: [
+        "OFFLINE",
+        "AVAILABLE",
+        "ORDER_ASSIGNED",
+        "ORDER_ACCEPTED",
+        "ARRIVED_AT_RESTAURANT",
+        "PICKED_UP",
+        "ON_THE_WAY",
+        "AT_CUSTOMER_LOCATION",
+        "DELIVERED",
+        "ON_BREAK",
+      ],
+      default: "OFFLINE",
+    },
+    availabilityStatus: {
+      type: String,
+      enum: ["AVAILABLE", "UNAVAILABLE"],
+      default: "UNAVAILABLE",
+    },
   },
-  availabilityStatus: {
-    type: String,
-    enum: ["AVAILABLE", "UNAVAILABLE"],
-    default: "UNAVAILABLE",
-  },
-},
   },
   { timestamps: true }
 );
