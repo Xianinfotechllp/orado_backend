@@ -329,6 +329,7 @@ exports.getRecommendedRestaurants = async (req, res) => {
         },
       },
       minOrderAmount: { $gte: minOrder },
+       storeType: "restaurant",
        approvalStatus:"approved",
       active: true,
     })
@@ -612,3 +613,67 @@ exports.searchRestaurants = async (req, res) => {
   }
 };
 
+exports.getNearbyGroceryStores = async (req, res) => {
+  try {
+    const { latitude, longitude, maxDistance = 15000, minOrderAmount = 0 } = req.query;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "Latitude and longitude are required.",
+      });
+    }
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const dist = parseInt(maxDistance, 10);
+    const minOrder = parseInt(minOrderAmount, 10);
+
+    if (isNaN(lat) || lat < -90 || lat > 90 || isNaN(lng) || lng < -180 || lng > 180) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "Invalid latitude or longitude values.",
+      });
+    }
+
+    if (isNaN(dist) || dist <= 0) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "maxDistance must be a positive number (meters).",
+      });
+    }
+
+    const groceryStores = await Restaurant.find({
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+          $maxDistance: dist,
+        },
+      },
+      storeType: "grocery",
+      minOrderAmount: { $gte: minOrder },
+      approvalStatus: "approved",
+      active: true,
+    })
+      .sort({ rating: -1 })
+      .limit(20)
+      .select("name address minOrderAmount phone rating images location");
+
+    return res.status(200).json({
+      messageType: "success",
+      message: "Nearby grocery stores fetched successfully.",
+      count: groceryStores.length,
+      data: groceryStores,
+    });
+
+  } catch (error) {
+    console.error("Error fetching grocery stores:", error);
+    return res.status(500).json({
+      messageType: "failure",
+      message: "Server error while fetching grocery stores.",
+    });
+  }
+};

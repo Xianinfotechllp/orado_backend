@@ -10,7 +10,7 @@ const server = http.createServer(app);
 
 
 // Middlewares
-app.use(express.json());
+// app.use(express.json());
 
 // Allowed frontend origins for REST API
 const allowedOrigins = [
@@ -67,6 +67,8 @@ const Chat = require("./models/chatModel");
 // Import routes
 const userRouter = require("./routes/userRoutes");
 const productRouter = require("./routes/productRoutesRoutes");
+
+const storeRoutes = require("./routes/storeRoutes")
 const resturantRouter = require("./routes/restaurantRoutes");
 const locationRouter = require("./routes/locationRoutes");
 const agentRouter = require("./routes/agentRoutes");
@@ -107,33 +109,33 @@ const incentiveRoutes = require('./routes/incentiveRoutes');
 io.on("connection", (socket) => {
   console.log("New client connected: " + socket.id);
 
-  // Join rooms based on user type
-  socket.on("join-room", ({ userId, userType }) => {
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return socket.emit("error", { message: "Invalid user ID" });
-    }
+    // Join rooms based on user type
+    socket.on("join-room", ({ userId, userType }) => {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return socket.emit("error", { message: "Invalid user ID" });
+      }
 
-    switch (userType) {
-      case "admin":
-        socket.join(`admin_${userId}`);
-        socket.join(`admin_group`);
-        console.log(
-          `Socket ${socket.id} joined rooms: admin_${userId} and admin_group`
-        );
-        break;
-      case "agent":
-        socket.join(`agent_${userId}`);
-        console.log(`Socket ${socket.id} joined room: agent_${userId}`);
-        break;
-      case "restaurant":
-        socket.join(`restaurant_${userId}`);
-        console.log(`Socket ${socket.id} joined room: restaurant_${userId}`);
-        break;
-      default: // customer/user
-        socket.join(`user_${userId}`);
-        console.log(`Socket ${socket.id} joined room: user_${userId}`);
-    }
-  });
+      switch (userType) {
+        case "admin":
+          socket.join(`admin_${userId}`);
+          socket.join(`admin_group`);
+          console.log(
+            `Socket ${socket.id} joined rooms: admin_${userId} and admin_group`
+          );
+          break;
+        case "agent":
+          socket.join(`agent_${userId}`);
+          console.log(`Socket ${socket.id} joined room: agent_${userId}`);
+          break;
+        case "restaurant":
+          socket.join(`restaurant_${userId}`);
+          console.log(`Socket ${socket.id} joined room: restaurant_${userId}`);
+          break;
+        default: // customer/user
+          socket.join(`user_${userId}`);
+          console.log(`Socket ${socket.id} joined room: user_${userId}`);
+      }
+    });
 
   // Agent live status + location
   socket.on(
@@ -421,6 +423,7 @@ app.use("/admin", adminRouter);
 app.use("/user", userRouter);
 // app.use("/restaurants", productRouter);
 app.use("/restaurants", resturantRouter);
+app.use("/store",storeRoutes)
 // app.use("/restaurants", offerRouter);
 app.use("/order", orderRouter);
 app.use("/coupon", couponRoutes);
@@ -567,15 +570,7 @@ app.post("/socket-test", (req, res) => {
 
 io.to("admin_682c3a4a2e9fb5869cb96044").emit("new_order", { data: orderData });
 
-  io.on("connection", (socket) => {
-    console.log("A client connected:", socket.id);
-
-    // Example: Let clients join order-specific rooms
-    socket.on("join_order_room", (orderId) => {
-      socket.join(`order_${orderId}`);
-      console.log(`Client joined room: order_${orderId}`);
-    });
-  });
+ 
 
 
 
@@ -589,4 +584,4 @@ io.to("admin_682c3a4a2e9fb5869cb96044").emit("new_order", { data: orderData });
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
-});
+}); 

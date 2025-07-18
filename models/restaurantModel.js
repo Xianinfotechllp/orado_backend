@@ -1,58 +1,62 @@
 const mongoose = require("mongoose");
+
+// ✅ Opening Hour Subdocument Schema
 const openingHourSchema = new mongoose.Schema({
   day: {
     type: String,
     enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
     required: true
   },
-  openingTime: {
-    type: String, // e.g. '09:00'
-    required: true
-  },
-  closingTime: {
-    type: String, // e.g. '22:00'
-    required: true
-  },
-  isClosed: {
-    type: Boolean,
-    default: false
-  }
+  openingTime: { type: String, required: true },
+  closingTime: { type: String, required: true },
+  isClosed: { type: Boolean, default: false }
 });
+
+// ✅ Main Restaurant Schema
 const restaurantSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-
-    ownerId: { 
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true 
-    },
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    ownerName: String,
+    phone: { type: String, required: true },
+    email: { type: String, required: true },
     images: [String],
+    banners: [String],
+
     address: {
       street: String,
       city: String,
       state: String,
-      zip: String,
-
+      zip: String
     },
+
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+      coordinates: { type: [Number], default: [0, 0] } // [lng, lat]
     },
-    ownerName:String,
-    phone: { type: String, required: true },
-    email: { type: String, required: true },
-  
-    offers: [
+
+    serviceAreas: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Offer'
+        type: {
+          type: String,
+          enum: ["Polygon"],
+          default: "Polygon",
+          required: true
+        },
+        coordinates: {
+          type: [[[Number]]], // Array of Polygon coordinates
+          required: true
+        }
       }
-    ]
-    ,
+    ],
+
+    offers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Offer' }],
+    categories: [{ type: mongoose.Schema.Types.ObjectId, ref: "Category" }],
+    products: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+
     points: {
       totalPoints: { type: Number, default: 0 },
-      lastAwardedDate: { type: Date },
+      lastAwardedDate: { type: Date }
     },
     pointsHistory: [
       {
@@ -61,110 +65,80 @@ const restaurantSchema = new mongoose.Schema(
         date: { type: Date, default: Date.now },
         orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', default: null }
       }
-    ]
-    ,
-     openingHours: [openingHourSchema],
+    ],
 
-    categories: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
-    ],
-    products: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
-    ],
-    active: { type: Boolean, default: true },
-    autoOnOff: { type: Boolean, default: true },
+    storeType: {
+      type: String,
+      enum: ["restaurant", "grocery", "meat", "pharmacy"],
+      required: true
+    },
+
+    openingHours: [openingHourSchema],
     foodType: {
       type: String,
       enum: ["veg", "non-veg", "both"],
-      required: true,
+      required: true
     },
-    banners: [String],
+
     kyc: {
-    fssaiNumber: { type: String },
-    gstNumber: { type: String},
-    aadharNumber: { type: String},
+      fssaiNumber: String,
+      gstNumber: String,
+      aadharNumber: String
     },
     kycDocuments: {
-      fssaiDocUrl: { type: String },
-      gstDocUrl: { type: String},
-      aadharDocUrl: { type: String},
+      fssaiDocUrl: String,
+      gstDocUrl: String,
+      aadharDocUrl: String
     },
     kycStatus: {
       type: String,
       enum: ["pending", "approved", "rejected"],
-      default: "pending",
+      default: "pending"
     },
-    kycRejectionReason: {
-      type: String,
-      default: null,
-    },
-     approvalRejectionReason: {
-      type: String,
-      default: null,
-    },
-    
+    kycRejectionReason: { type: String, default: null },
+    approvalRejectionReason: { type: String, default: null },
     approvalStatus: {
       type: String,
       enum: ["pending", "approved", "rejected"],
       default: "pending"
     },
+
     permissions: {
-    canManageMenu: {
-      type: Boolean,
-      default: false
+      canManageMenu: { type: Boolean, default: false },
+      canAcceptOrder: { type: Boolean, default: false }
     },
-    canAcceptOrder: {
-      type: Boolean,
-      default: false
-    },
-  },
+
     rating: { type: Number, default: 0 },
 
-    city: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "City",
-  required: false // or false if optional
-},
-    serviceAreas: [
-      {
-        type: {
-          type: String,
-          enum: ["Polygon"],
-          required: true,
-          default: "Polygon",
-        },
-        coordinates: {
-          type: [[[Number]]],
-          required: true,
-        },
-      },
-    ],
+    // city: {
+    //   type: mongoose.Schema.Types.ObjectId,
+    //   ref: "City",
+    //   required: false
+    // },
+
     minOrderAmount: { type: Number },
     commission: {
-  type: {
-    type: String,
-    enum: ["percentage", "fixed"],
-    default: "percentage"
-  },
-  value: {
-    type: Number,
-    default: 20 // 20% commission
-  }
-}, preparationTime: {
-    type: Number, // in minutes
-    default: 20,
-  },
+      type: {
+        type: String,
+        enum: ["percentage", "fixed"],
+        default: "percentage"
+      },
+      value: { type: Number, default: 20 }
+    },
+
+    preparationTime: { type: Number, default: 20 }, // in minutes
+
     paymentMethods: [
-      { type: String, enum: ['cod',"cash", "online", "wallet"] },
+      { type: String, enum: ['cod', 'cash', 'online', 'wallet'] }
     ],
+
+    active: { type: Boolean, default: true },
+    autoOnOff: { type: Boolean, default: true }
   },
-  
-  
-  
   { timestamps: true }
 );
 
-// ✅ Create geospatial indexes
+// ✅ Indexes for Geospatial Queries
 restaurantSchema.index({ location: "2dsphere" });
 restaurantSchema.index({ serviceAreas: "2dsphere" });
 

@@ -871,3 +871,58 @@ exports.addOrUpdateAgentDeviceInfo = async (req, res) => {
     });
   }
 };
+
+
+exports.getAssignedOrders = async (req, res) => {
+  try {
+    const agentId = req.user._id; // from JWT middleware
+
+    const orders = await Order.find({
+      assignedAgent: agentId,
+      orderStatus: {
+        $in: [
+          "pending_agent_acceptance",
+          "assigned_to_agent",
+          "picked_up",
+          "on_the_way",
+          "in_progress",
+          "arrived"
+        ],
+      },
+    })
+      .select("orderStatus totalPrice deliveryAddress createdAt customerId restaurantId") // only needed fields
+      .sort({ createdAt: -1 })
+      .populate("restaurantId", "name address")
+      .populate("customerId", "fullName phoneNumber");
+
+    // Clean and format the response
+    const assignedOrders = orders.map(order => ({
+      id: order._id,
+      status: order.orderStatus,
+      totalPrice: order.totalPrice,
+      deliveryAddress: order.deliveryAddress,
+      createdAt: order.createdAt,
+      customer: {
+        name: order.customerId?.fullName || "",
+        phone: order.customerId?.phoneNumber || "",
+      },
+      restaurant: {
+        name: order.restaurantId?.name || "",
+        address: order.restaurantId?.address || "",
+      },
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      assignedOrders,
+    });
+  } catch (error) {
+    console.error("Error fetching assigned orders:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to fetch assigned orders",
+      error: error.message,
+    });
+  }
+};
+

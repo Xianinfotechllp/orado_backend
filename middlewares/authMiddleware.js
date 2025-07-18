@@ -5,7 +5,7 @@ const Permission = require("../models/restaurantPermissionModel");
 const Session = require("../models/session");
 const ChangeRequest = require("../models/changeRequest");
 const Product = require("../models/productModel")
-
+const Agent = require("../models/agentModel");
 exports.protect = async (req, res, next) => {
   let token;
 
@@ -46,6 +46,48 @@ exports.protect = async (req, res, next) => {
   }
 };
 
+exports.protectAgent = async (req, res, next) => {
+  let token;
+
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
+    try {
+      token = req.headers.authorization.split(" ")[1];
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Validate session exists
+      // const session = await Session.findOne({ token, userId: decoded.agentId });
+      // if (!session) {
+      //   return res.status(401).json({ message: "Session expired or invalid" });
+      // }
+
+      // // Optional: Session expiry check
+      // if (session.expiresAt && new Date() > session.expiresAt) {
+      //   await session.deleteOne();
+      //   return res.status(401).json({ message: "Session expired" });
+      // }
+
+      // Get agent data
+      const agent = await Agent.findById(decoded.agentId).select("-password");
+      if (!agent) {
+        return res.status(401).json({ message: "Agent not found" });
+      }
+
+      req.user = agent;
+      // req.session = session;
+      next();
+
+    } catch (err) {
+      console.error("Agent Auth Error:", err);
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+  } else {
+    return res.status(401).json({ message: "No token provided" });
+  }
+};
 
 exports.checkRole = (...allowedRoles) => {
   return (req, res, next) => {
