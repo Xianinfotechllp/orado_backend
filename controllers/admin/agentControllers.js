@@ -65,7 +65,7 @@ exports.manualAssignAgent = async (req, res) => {
     const order = await Order.findById(orderId)
       .populate({
         path: 'customerId',
-        select: 'fullName phoneNumber',
+        select: 'name phone email',
       })
       .populate({
         path: 'restaurantId',
