@@ -3,35 +3,41 @@ const Order = require("../../models/orderModel")
 exports.getAllAgents = async (req, res) => {
   try {
     const agents = await Agent.find().select(
-      "fullName phoneNumber agentStatus.status agentStatus.availabilityStatus"
+      "fullName phoneNumber agentStatus.status agentStatus.availabilityStatus location"
     );
 
     const formattedAgents = agents.map((agent) => {
       let derivedStatus = 'Inactive';
 
-     
-        if (agent.agentStatus.status === 'AVAILABLE') {
-          derivedStatus = 'Free';
-        } else if (
-          [
-            'ORDER_ASSIGNED',
-            'ORDER_ACCEPTED',
-            'ARRIVED_AT_RESTAURANT',
-            'PICKED_UP',
-            'ON_THE_WAY',
-            'AT_CUSTOMER_LOCATION'
-          ].includes(agent.agentStatus.status)
-        ) {
-          derivedStatus = 'Busy';
-        }
-      
+      if (agent.agentStatus.status === 'AVAILABLE') {
+        derivedStatus = 'Free';
+      } else if (
+        [
+          'ORDER_ASSIGNED',
+          'ORDER_ACCEPTED',
+          'ARRIVED_AT_RESTAURANT',
+          'PICKED_UP',
+          'ON_THE_WAY',
+          'AT_CUSTOMER_LOCATION'
+        ].includes(agent.agentStatus.status)
+      ) {
+        derivedStatus = 'Busy';
+      }
+
+      const coordinates = agent.location?.coordinates || [0, 0];
+      const accuracy = agent.location?.accuracy || 0;
 
       return {
         id: agent._id,
         name: agent.fullName,
         phone: agent.phoneNumber,
-        status: derivedStatus, // Free / Busy / Inactive
+        status: derivedStatus,
         currentStatus: agent.agentStatus.status,
+        location: {
+          lat: coordinates[1],
+          lng: coordinates[0],
+          accuracy: accuracy,
+        },
       };
     });
 
@@ -119,6 +125,24 @@ io.to(`agent_${agent._id}`).emit("orderAssigned", {
     },
   ],
 });
+
+console.log("soce is sendt to" ,`agent_${agent._id}`,  [
+    {
+      id: order._id,
+      status: order.orderStatus,
+      totalPrice: order.totalPrice,
+      deliveryAddress: order.deliveryAddress,
+      createdAt: order.createdAt,
+      customer: {
+        name: order.customerId?.fullName || "",
+        phone: order.customerId?.phoneNumber || "",
+      },
+      restaurant: {
+        name: order.restaurantId?.name || "",
+        address: order.restaurantId?.address || "",
+      },
+    },
+  ])
 
     res.status(200).json({
       message: "Agent assigned successfully.",
