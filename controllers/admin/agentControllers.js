@@ -61,88 +61,77 @@ exports.manualAssignAgent = async (req, res) => {
   try {
     const { orderId, agentId } = req.body;
 
-    // Validate order
-    const order = await Order.findById(orderId);
+    // Fetch order with customer & restaurant info
+    const order = await Order.findById(orderId)
+      .populate({
+        path: 'customerId',
+        select: 'fullName phoneNumber',
+      })
+      .populate({
+        path: 'restaurantId',
+        select: 'name address location',
+      });
+
     if (!order) {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    // Check if order is already assigned or completed
-    if (
-      ["completed", "delivered", "cancelled_by_customer"].includes(order.orderStatus)
-    ) {
-      return res.status(400).json({
-        message: "Order already completed or invalid for assignment.",
-      });
+    // Ensure order is valid for assignment
+    if (["completed", "delivered", "cancelled_by_customer"].includes(order.orderStatus)) {
+      return res.status(400).json({ message: "Order already completed or invalid for assignment." });
     }
 
-    // Validate agent
     const agent = await Agent.findById(agentId);
     if (!agent) {
       return res.status(404).json({ message: "Agent not found." });
     }
 
-    // Check if agent is AVAILABLE
     if (agent.agentStatus.status !== "AVAILABLE") {
-      return res
-        .status(400)
-        .json({ message: "Agent is not currently available for new orders." });
+      return res.status(400).json({ message: "Agent is not currently available for new orders." });
     }
 
-    // Assign agent to order
+    // Assign order
     order.assignedAgent = agentId;
     order.agentAssignmentStatus = "assigned";
     await order.save();
 
-    // Update agent status and assign order
+    // Update agent info
     agent.deliveryStatus.currentOrderId.push(order._id);
     agent.deliveryStatus.currentOrderCount += 1;
-
     agent.agentStatus.status = "ORDER_ASSIGNED";
     agent.lastAssignedAt = new Date();
-
     await agent.save();
 
-const io = req.app.get("io");
+    // Prepare Socket payload
+    const io = req.app.get("io");
 
-io.to(`agent_${agent._id}`).emit("orderAssigned", {
-  status: "success",
-  assignedOrders: [
-    {
-      id: order._id,
-      status: order.orderStatus,
-      totalPrice: order.totalPrice,
-      deliveryAddress: order.deliveryAddress,
-      createdAt: order.createdAt,
-      customer: {
-        name: order.customerId?.fullName || "",
-        phone: order.customerId?.phoneNumber || "",
-      },
-      restaurant: {
-        name: order.restaurantId?.name || "",
-        address: order.restaurantId?.address || "",
-      },
-    },
-  ],
-});
+    const payload = {
+      status: "success",
+      assignedOrders: [
+        {
+          id: order._id,
+          status: order.orderStatus,
+          totalPrice: order.totalPrice,
+          deliveryAddress: order.deliveryAddress,
+          createdAt: order.createdAt,
+          paymentMethod: order.paymentMethod,
+          items: order.items || [], // Assuming it's an array of products with name, qty, price
+          customer: {
+            name: order.customerId?.fullName || "",
+            phone: order.customerId?.phoneNumber || "",
+          },
+          restaurant: {
+            name: order.restaurantId?.name || "",
+            address: order.restaurantId?.address || "",
+            location: order.restaurantId?.location || null,
+          },
+        },
+      ],
+    };
 
-console.log("soce is sendt to" ,`agent_${agent._id}`,  [
-    {
-      id: order._id,
-      status: order.orderStatus,
-      totalPrice: order.totalPrice,
-      deliveryAddress: order.deliveryAddress,
-      createdAt: order.createdAt,
-      customer: {
-        name: order.customerId?.fullName || "",
-        phone: order.customerId?.phoneNumber || "",
-      },
-      restaurant: {
-        name: order.restaurantId?.name || "",
-        address: order.restaurantId?.address || "",
-      },
-    },
-  ])
+    io.to(`agent_${agent._id}`).emit("orderAssigned", payload);
+
+    console.log("Socket sent to", `agent_${agent._id}`, payload);
 
     res.status(200).json({
       message: "Agent assigned successfully.",
@@ -157,5 +146,6 @@ console.log("soce is sendt to" ,`agent_${agent._id}`,  [
     });
   }
 };
+
 
 
