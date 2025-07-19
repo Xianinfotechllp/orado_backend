@@ -92,6 +92,14 @@ select: false
   }
     },
 
+
+    fcmTokens: [
+  {
+    token: { type: String },
+    updatedAt: { type: Date, default: Date.now },
+  },
+],
+
     leaveStatus: {
       leaveApplied: { type: Boolean, default: false },
       leaveStartDate: { type: Date },

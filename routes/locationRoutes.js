@@ -8,5 +8,5 @@ router.get("/nearby-restaurants/recommended", getRecommendedRestaurants);
 router.get("/nearby-products",getNearbyProducts)
 router.get("/nearby/restaurants/search",searchRestaurants)
 router.get("/nearby-grocery",getNearbyGroceryStores)
-
+    
 module.exports = router;

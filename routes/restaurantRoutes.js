@@ -133,7 +133,9 @@ router.put("/:restaurantId/toggle-active",protect, toggleRestaurantActiveStatus)
 
 
 
-router.post('/:restaurantId/products', protect, checkRole('merchant'), upload.array('images',5),checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), createProduct);
+// router.post('/:restaurantId/products', protect, checkRole('merchant'), upload.array('images',5),checkRestaurantPermission("canManageMenu",false,"you dont have permission to manage menu"), createProduct);
+router.post('/:restaurantId/products', protect, checkRole('merchant'), upload.array('images',5),createProduct);
+
 router.get('/:restaurantId/products', protect, checkRole('merchant', 'customer'), getRestaurantProducts);
 
 

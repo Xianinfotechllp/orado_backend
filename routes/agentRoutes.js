@@ -8,7 +8,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
-const {forgotPassword, resetPassword} = require('../controllers/userControllers')
+const {forgotPassword, resetPassword} = require('../controllers/userControllers');
+const { saveFcmToken } = require('../controllers/admin/agentControllers');
 
 
 router.post(
@@ -61,7 +62,7 @@ router.post('/activate-unlocked-perks', protect, checkRole('agent'), activateUnl
 router.get("/agent-earnings/:agentId", protectAgent, checkRole('agent'), getAgentEarnings)
 router.post('/device-info', addOrUpdateAgentDeviceInfo);
 
-    
+router.post("/save-fcm-token", saveFcmToken);
 //get assinged routes
 
 router.get("/assigned-orders",protectAgent,getAssignedOrders);

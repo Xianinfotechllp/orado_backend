@@ -4,6 +4,11 @@ const socketIo = require("socket.io");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const redisClient = require("./config/redisClient");
+
+
+
+
 
 const app = express();
 const server = http.createServer(app);
@@ -136,6 +141,27 @@ io.on("connection", (socket) => {
           console.log(`Socket ${socket.id} joined room: user_${userId}`);
       }
     });
+
+socket.on("agent:location", (data) => {
+    const { agentId, lat, lng } = data;
+
+    // Optionally: Save to Redis GEOSET
+    redis.geoadd("agent_locations", lng, lat, agentId);
+
+    // Broadcast to admin dashboards or dispatchers
+    socket.broadcast.emit("admin:updateLocation", {
+      agentId,
+      lat,
+      lng,
+    });
+
+    // Update agent lastSeen for availability timeout logic
+    redis.set(`agent_last_seen:${agentId}`, Date.now(), "EX", 60);
+  });
+
+
+
+
 
   // Agent live status + location
   socket.on(
