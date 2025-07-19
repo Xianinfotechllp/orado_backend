@@ -113,6 +113,7 @@ exports.manualAssignAgent = async (req, res) => {
           status: order.orderStatus,
           totalPrice: order.totalPrice,
           deliveryAddress: order.deliveryAddress,
+          deliveryLocation:order.deliveryLocation,
           createdAt: order.createdAt,
           paymentMethod: order.paymentMethod,
           items: order.items || [], // Assuming it's an array of products with name, qty, price
