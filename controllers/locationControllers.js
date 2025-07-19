@@ -650,7 +650,7 @@ exports.getNearbyGroceryStores = async (req, res) => {
             type: "Point",
             coordinates: [lng, lat],
           },
-          $maxDistance: dist,
+          $maxDistance: maxDistance,
         },
       },
       storeType: "grocery",

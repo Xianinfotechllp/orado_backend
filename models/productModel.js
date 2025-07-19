@@ -39,6 +39,12 @@ preparationTime: {
   type: Number, // in minutes
   default: 10,  // default 10 mins
 },
+
+
+availableAfterTime: {
+  type: String,
+  default: null  // e.g., '17:00' = 5 PM
+},
   foodType: {
     type: String,
     enum: ['veg', 'non-veg'],
