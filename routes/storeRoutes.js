@@ -8,6 +8,7 @@ const {
   createStore,
  
 } = require("../controllers/storeController");
+const { getNearbyStores } = require("../controllers/locationControllers");
 router.post(
   "/register",
   protect,
@@ -20,4 +21,6 @@ router.post(
   ]),
   createStore
 );
+
+router.get("/nearby", getNearbyStores);
 module.exports = router;
