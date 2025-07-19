@@ -117,8 +117,9 @@ exports.manualAssignAgent = async (req, res) => {
           paymentMethod: order.paymentMethod,
           items: order.items || [], // Assuming it's an array of products with name, qty, price
           customer: {
-            name: order.customerId?.fullName || "",
-            phone: order.customerId?.phoneNumber || "",
+            name: order.customerId?.name || "",
+            phone: order.customerId?.phone || "",
+            email:order.customerId?.email || ""
           },
           restaurant: {
             name: order.restaurantId?.name || "",
