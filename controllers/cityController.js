@@ -164,7 +164,7 @@ exports.createCity = async (req, res) => {
       status
     } = req.body;
 
-    // Basic validations
+    // Basic validation
     if (!name) {
       return res.status(400).json({
         success: false,
@@ -181,22 +181,28 @@ exports.createCity = async (req, res) => {
       });
     }
 
+    // Clean conversion: if empty string, convert to null
+    const cleanObjectId = (value) => {
+      if (typeof value === "string" && value.trim() === "") return null;
+      return value || null;
+    };
+
     // Create new city
     const newCity = new City({
       name: name.trim(),
       description: description || "",
       geofences: geofences || [],
 
-      // Normal Order Settings
+      // Normal Orders Settings
       isNormalOrderActive: !!isNormalOrderActive,
       normalOrderChargeCalculation: !!normalOrderChargeCalculation,
       normalOrdersChargeType: normalOrdersChargeType || "Fixed",
       fixedDeliveryChargesNormalOrders: fixedDeliveryChargesNormalOrders !== undefined ? fixedDeliveryChargesNormalOrders : 0,
-      dynamicChargesTemplateNormalOrders: dynamicChargesTemplateNormalOrders || "",
-      dynamicChargesTemplateScheduleOrder: dynamicChargesTemplateScheduleOrder || "",
-      earningTemplateNormalOrder: earningTemplateNormalOrder || "",
+      dynamicChargesTemplateNormalOrders: cleanObjectId(dynamicChargesTemplateNormalOrders),
+      dynamicChargesTemplateScheduleOrder: cleanObjectId(dynamicChargesTemplateScheduleOrder),
+      earningTemplateNormalOrder: cleanObjectId(earningTemplateNormalOrder),
 
-      // Custom Order Settings
+      // Custom Orders Settings
       isCustomOrderActive: !!isCustomOrderActive,
       customOrderChargeCalculation: !!customOrderChargeCalculation,
       cityChargeType: cityChargeType || "Fixed",
@@ -208,7 +214,7 @@ exports.createCity = async (req, res) => {
 
     await newCity.save();
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "City created successfully",
       data: newCity
@@ -216,7 +222,7 @@ exports.createCity = async (req, res) => {
 
   } catch (error) {
     console.error("Error creating city:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server error while creating city"
     });
@@ -387,6 +393,95 @@ exports.updateCity = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while updating city"
+    });
+  }
+};
+
+
+
+
+
+
+
+exports.updateCityDeliveryFeeSetting = async (req, res) => {
+  try {
+    const { cityId } = req.params;
+    const {
+      isCustomFeeEnabled,
+      deliveryFeeType,
+      baseDeliveryFee,
+      baseDistanceKm,
+      perKmFeeBeyondBase
+    } = req.body;
+
+    // Check if city exists
+    const city = await City.findById(cityId);
+    if (!city) {
+      return res.status(404).json({
+        success: false,
+        message: "City not found."
+      });
+    }
+
+    // Ensure cityDeliveryFeeSetting exists
+    if (!city.cityDeliveryFeeSetting) {
+      city.cityDeliveryFeeSetting = {};
+    }
+
+    const { cityDeliveryFeeSetting } = city;
+
+    // Update only the provided fields
+    if (isCustomFeeEnabled !== undefined) cityDeliveryFeeSetting.isCustomFeeEnabled = isCustomFeeEnabled;
+    if (deliveryFeeType !== undefined) cityDeliveryFeeSetting.deliveryFeeType = deliveryFeeType;
+    if (baseDeliveryFee !== undefined) cityDeliveryFeeSetting.baseDeliveryFee = baseDeliveryFee;
+    if (baseDistanceKm !== undefined) cityDeliveryFeeSetting.baseDistanceKm = baseDistanceKm;
+    if (perKmFeeBeyondBase !== undefined) cityDeliveryFeeSetting.perKmFeeBeyondBase = perKmFeeBeyondBase;
+
+    await city.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "City delivery fee setting updated successfully.",
+      data: city
+    });
+  } catch (error) {
+    console.error("Error updating city delivery fee setting:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong.",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+exports.getCityDeliveryFeeSetting = async (req, res) => {
+  try {
+    const { cityId } = req.params;
+
+    // Check if city exists
+    const city = await City.findById(cityId);
+    if (!city) {
+      return res.status(404).json({
+        success: false,
+        message: "City not found."
+      });
+    }
+
+    // Return only delivery fee setting
+    return res.status(200).json({
+      success: true,
+      message: "City delivery fee setting fetched successfully.",
+      data: city.cityDeliveryFeeSetting
+    });
+  } catch (error) {
+    console.error("Error fetching city delivery fee setting:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong.",
+      error: error.message
     });
   }
 };

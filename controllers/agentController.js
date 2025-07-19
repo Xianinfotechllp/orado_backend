@@ -11,22 +11,20 @@ const {addAgentEarnings,addRestaurantEarnings ,createRestaurantEarning} = requir
 const { uploadOnCloudinary } = require('../utils/cloudinary');
 const { findAndAssignNearestAgent } = require('../services/findAndAssignNearestAgent');
 const { sendPushNotification } = require('../utils/sendPushNotification');
-
+const AgentDeviceInfo = require('../models/AgentDeviceInfoModel');
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // Validation
+    // Basic Validation
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
     const phoneRegex = /^(\+91)?[6-9]\d{9}$/;
-
     if (!phoneRegex.test(phone)) {
-      return res.status(400).json({ message: "Invalid phone number format. Must be a 10-digit Indian number, with or without +91" });
+      return res.status(400).json({ message: "Invalid Indian phone number format" });
     }
-
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -35,97 +33,91 @@ exports.registerAgent = async (req, res) => {
 
     if (password.length < 6 || !/\d/.test(password)) {
       return res.status(400).json({
-        message: "Password must be at least 6 characters and include a number",
+        message: "Password must be at least 6 characters and contain a number",
       });
     }
 
-    // Check if user exists
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
-    if (existingUser) {
-      return res.status(409).json({ message: "User already exists" });
+    // Check if agent exists
+    const existingAgent = await Agent.findOne({ $or: [{ email }, { phoneNumber: phone }] });
+    if (existingAgent) {
+      return res.status(409).json({ message: "Agent already exists" });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Upload documents and profile picture
-    const license = req.files?.license?.[0];
-    const insurance = req.files?.insurance?.[0];
-    const profilePicture = req.files?.profilePicture?.[0];
+    // Upload documents from req.files
+    const {
+      license,
+      insurance,
+      profilePicture,
+      rcBook,
+      pollutionCertificate,
+    } = req.files || {};
 
-    let licenseUrl = "", insuranceUrl = "", profilePicUrl = "";
+    let licenseUrl = "", insuranceUrl = "", profilePicUrl = "", rcBookUrl = "", pollutionUrl = "";
 
-    if (license) {
-      const result = await uploadOnCloudinary(license.path);
+    if (license?.[0]) {
+      const result = await uploadOnCloudinary(license[0].path);
       licenseUrl = result?.secure_url;
     }
-
-    if (insurance) {
-      const result = await uploadOnCloudinary(insurance.path);
+    if (insurance?.[0]) {
+      const result = await uploadOnCloudinary(insurance[0].path);
       insuranceUrl = result?.secure_url;
     }
-
-    if (profilePicture) {
-      const result = await uploadOnCloudinary(profilePicture.path);
+    if (profilePicture?.[0]) {
+      const result = await uploadOnCloudinary(profilePicture[0].path);
       profilePicUrl = result?.secure_url;
     }
-
-    let location = null;
-    try {
-      if (req.body.location) {
-        location = JSON.parse(req.body.location);
-
-        if (
-          location.type !== "Point" ||
-          !Array.isArray(location.coordinates) ||
-          location.coordinates.length !== 2
-        ) {
-          return res.status(400).json({ message: "Invalid location format. Must be GeoJSON with type 'Point' and two coordinates." });
-        }
-      } else {
-        return res.status(400).json({ message: "Location is required" });
-      }
-    } catch (err) {
-      return res.status(400).json({ message: "Invalid location JSON format" });
+    if (rcBook?.[0]) {
+      const result = await uploadOnCloudinary(rcBook[0].path);
+      rcBookUrl = result?.secure_url;
     }
-    console.log("Parsed location:", location);
+    if (pollutionCertificate?.[0]) {
+      const result = await uploadOnCloudinary(pollutionCertificate[0].path);
+      pollutionUrl = result?.secure_url;
+    }
 
 
-    // Create user with agent application info
-    const newUser = new User({
-      name,
+    // Create new Agent
+    const newAgent = new Agent({
+      fullName: name,
       email,
-      phone,
+      phoneNumber: phone,
       password: hashedPassword,
-      userType: "customer",
-      isAgent: false,
-      agentApplicationStatus: "pending",
       profilePicture: profilePicUrl || null,
+      applicationStatus: "pending",
+      role: "agent",
+
       agentApplicationDocuments: {
-        license: licenseUrl || null,
-        insurance: insuranceUrl || null,
+        license: licenseUrl,
+        insurance: insuranceUrl,
+        rcBook: rcBookUrl,
+        pollutionCertificate: pollutionUrl,
         submittedAt: new Date(),
       },
+
+      // Defaults initialized from schema:
+      // bankAccountDetails, payoutDetails, dashboard, deliveryStatus, etc.
     });
 
-    await newUser.save();
+    await newAgent.save();
 
-    res.status(201).json({
-      message: "Agent application submitted. Pending approval.",
-      user: {
-        _id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        agentApplicationStatus: newUser.agentApplicationStatus,
+    return res.status(201).json({
+      message: "Agent application submitted. Pending admin approval.",
+      agent: {
+        _id: newAgent._id,
+        fullName: newAgent.fullName,
+        email: newAgent.email,
+        phoneNumber: newAgent.phoneNumber,
+        applicationStatus: newAgent.applicationStatus,
       },
     });
   } catch (error) {
     console.error("Agent registration error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 
 
@@ -134,9 +126,7 @@ exports.loginAgent = async (req, res) => {
     const { identifier, password } = req.body;
 
     if (!identifier || !password) {
-      return res
-        .status(400)
-        .json({ message: "Phone/email and password are required" });
+      return res.status(400).json({ message: "Phone/email and password are required" });
     }
 
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
@@ -146,65 +136,66 @@ exports.loginAgent = async (req, res) => {
       return res.status(400).json({ message: "Invalid phone/email format" });
     }
 
-    const user = await User.findOne(
-      isEmail ? { email: identifier } : { phone: identifier }
-    );
+    // Find agent by email or phoneNumber
+    const agent = await Agent.findOne(
+      isEmail ? { email: identifier } : { phoneNumber: identifier }
+    ).select("+password");
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
     }
 
-    if (user.agentApplicationStatus !== "approved" || user.userType !== "agent") {
+    if (agent.applicationStatus !== "approved") {
       return res.status(403).json({ message: "Agent not approved yet" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(password, agent.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Incorrect password" });
     }
 
     const token = jwt.sign(
-      { userId: user._id, userType: user.userType },
+      { agentId: agent._id, role: agent.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Max 1 sessions limit
+    // Optional: session handling
     const MAX_SESSIONS = 1;
-    const existingSessions = await Session.find({ userId: user._id }).sort({ createdAt: 1 });
+    const existingSessions = await Session.find({ userId: agent._id }).sort({ createdAt: 1 });
 
     if (existingSessions.length >= MAX_SESSIONS) {
-      const oldestSession = existingSessions[0];
-      await Session.findByIdAndDelete(oldestSession._id); // Kick out oldest session
+      const oldest = existingSessions[0];
+      await Session.findByIdAndDelete(oldest._id);
     }
 
-    // Optional: track device + IP info
     const userAgent = req.headers["user-agent"] || "Unknown Device";
-    const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
+    const ip = req.ip || req.connection?.remoteAddress || "Unknown IP";
 
     await Session.create({
-      userId: user._id,
+      userId: agent._id,
       token,
       userAgent,
       ip,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Login successful",
       token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        profilePicture: user.profilePicture,
-        agentApplicationDocuments: user.agentApplicationDocuments,
+      agent: {
+        _id: agent._id,
+        fullName: agent.fullName,
+        email: agent.email,
+        phoneNumber: agent.phoneNumber,
+        profilePicture: agent.profilePicture,
+        role: agent.role,
+        applicationStatus: agent.applicationStatus,
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Agent login error:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
@@ -479,66 +470,122 @@ exports.toggleAvailability = async (req, res) => {
     const { status, location } = req.body;
     const io = req.app.get("io");
 
-    // Validate availability status (UPPERCASE)
+    // ✅ Validate status
     if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
-    // Validate location format
+    // ✅ Convert location to GeoJSON (from lat/lng OR coordinates)
+    let geoLocation;
+
     if (
-      !location ||
-      location.type !== "Point" ||
-      !Array.isArray(location.coordinates) ||
-      location.coordinates.length !== 2 ||
-      typeof location.coordinates[0] !== "number" ||
-      typeof location.coordinates[1] !== "number" ||
-      isNaN(location.coordinates[0]) ||
-      isNaN(location.coordinates[1])
+      location &&
+      typeof location.lat === "number" &&
+      typeof location.lng === "number" &&
+      !isNaN(location.lat) &&
+      !isNaN(location.lng)
     ) {
+      // ✅ Handle { lat, lng }
+      geoLocation = {
+        type: "Point",
+        coordinates: [location.lng, location.lat],
+        accuracy: location.accuracy || 0,
+      };
+    } else if (
+      location &&
+      location.type === "Point" &&
+      Array.isArray(location.coordinates) &&
+      location.coordinates.length === 2 &&
+      typeof location.coordinates[0] === "number" &&
+      typeof location.coordinates[1] === "number"
+    ) {
+      // ✅ Handle GeoJSON { type, coordinates }
+      geoLocation = {
+        type: "Point",
+        coordinates: location.coordinates,
+        accuracy: location.accuracy || 0,
+      };
+    } else {
       return res.status(400).json({
-        message: "Invalid location format. Must be GeoJSON Point with numeric coordinates.",
+        message: "Invalid location. Provide either { lat, lng } or GeoJSON format.",
       });
     }
 
-    // Prepare update data
+    // ✅ Prepare update object
     const updateData = {
       'agentStatus.availabilityStatus': status,
-      location: {
-        type: "Point",
-        coordinates: location.coordinates,
-      },
+      'agentStatus.status': status === "AVAILABLE" ? "AVAILABLE" : "OFFLINE",
+      location: geoLocation,
       updatedAt: new Date(),
     };
 
-    // Ensure operational status matches availability state
-    updateData['agentStatus.status'] = (status === "AVAILABLE") ? "AVAILABLE" : "OFFLINE";
-
-    // Update agent
-    const updatedAgent = await Agent.findByIdAndUpdate(
-      agentId,
-      updateData,
-      { new: true }
-    );
+    // ✅ Update agent in database
+    const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, {
+      new: true,
+    });
 
     if (!updatedAgent) {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    // Emit Socket event to relevant clients if needed
-    if (status === "AVAILABLE") {
-      // Example: emit availability event
-      // io.emit("agentAvailable", { agentId, location });
+    // ✅ Emit socket event if agent becomes available (optional)
+    if (status === "AVAILABLE" && io) {
+      // Example:
+      // io.emit("agentAvailable", { agentId, location: geoLocation });
+    }
+
+
+      return res.status(200).json({
+      message: "Status and location updated",
+      data: {
+        id: updatedAgent._id,
+        status: updatedAgent.agentStatus,
+        location: updatedAgent.location,
+      },
+    });
+ 
+  } catch (error) {
+    console.error("Error toggling agent availability:", error);
+    return res
+      .status(500)
+      .json({ error: "Server error while toggling agent availability" });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+exports.getAgentAvailabilityStatus = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const agent = await Agent.findById(agentId, {
+      agentStatus: 1,
+      location: 1,
+    });
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
     }
 
     return res.status(200).json({
-      message: "Agent availability and location updated successfully",
-      agent: updatedAgent,
+      status: agent.agentStatus,
+      location: agent.location,
     });
-  } catch (error) {
-    console.error("Error toggling agent availability:", error);
-    res.status(500).json({ error: "Server error while toggling agent availability" });
+  } catch (err) {
+    console.error("Error fetching agent status:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
+
+
+
 exports.addAgentReview = async (req, res) => {
   const { agentId } = req.params;
   const { userId, orderId, rating, comment } = req.body;
@@ -760,3 +807,122 @@ exports.activateUnlockedPermissions = async (req, res) => {
     maxCODAmount: agent.maxCODAmount,
   });
 };
+
+
+
+
+
+
+// Add or update agent device info
+exports.addOrUpdateAgentDeviceInfo = async (req, res) => {
+  try {
+    const {
+      agent,
+      deviceId,
+      os,
+      osVersion,
+      appVersion,
+      model,
+      batteryLevel,
+      networkType,
+      timezone,
+      locationEnabled,
+      isRooted,
+    } = req.body;
+
+    // Basic validation
+    if (!agent || !deviceId) {
+      return res.status(400).json({
+        message: 'agent and deviceId are required.',
+        status: 'failure',
+      });
+    }
+
+    const updateData = {
+      os,
+      osVersion,
+      appVersion,
+      model,
+      batteryLevel,
+      networkType,
+      timezone,
+      locationEnabled,
+      isRooted,
+      updatedAt: new Date(),
+    };
+
+    const deviceInfo = await AgentDeviceInfo.findOneAndUpdate(
+      { agent, deviceId },
+      { $set: updateData },
+      { upsert: true, new: true }
+    );
+
+    return res.status(200).json({
+      message: 'Device info saved successfully.',
+      status: 'success',
+      data: deviceInfo,
+    });
+
+  } catch (error) {
+    console.error('Error saving agent device info:', error);
+    return res.status(500).json({
+      message: 'Internal Server Error',
+      status: 'failure',
+    });
+  }
+};
+
+
+exports.getAssignedOrders = async (req, res) => {
+  try {
+    const agentId = req.user._id; // from JWT middleware
+
+    const orders = await Order.find({
+      assignedAgent: agentId,
+      orderStatus: {
+        $in: [
+          "pending_agent_acceptance",
+          "assigned_to_agent",
+          "picked_up",
+          "on_the_way",
+          "in_progress",
+          "arrived"
+        ],
+      },
+    })
+      .select("orderStatus totalPrice deliveryAddress createdAt customerId restaurantId") // only needed fields
+      .sort({ createdAt: -1 })
+      .populate("restaurantId", "name address")
+      .populate("customerId", "fullName phoneNumber");
+
+    // Clean and format the response
+    const assignedOrders = orders.map(order => ({
+      id: order._id,
+      status: order.orderStatus,
+      totalPrice: order.totalPrice,
+      deliveryAddress: order.deliveryAddress,
+      createdAt: order.createdAt,
+      customer: {
+        name: order.customerId?.fullName || "",
+        phone: order.customerId?.phoneNumber || "",
+      },
+      restaurant: {
+        name: order.restaurantId?.name || "",
+        address: order.restaurantId?.address || "",
+      },
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      assignedOrders,
+    });
+  } catch (error) {
+    console.error("Error fetching assigned orders:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to fetch assigned orders",
+      error: error.message,
+    });
+  }
+};
+

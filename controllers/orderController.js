@@ -11,8 +11,8 @@ const {
   calculateOrderCost2,
   calculateOrderCostV2,
 } = require("../services/orderCostCalculator");
-
-
+const razorpay = require("../utils/razorpay")
+const crypto = require("crypto");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const { haversineDistance } = require("../utils/distanceCalculator");
 const { deliveryFeeCalculator } = require("../utils/deliveryFeeCalculator");
@@ -38,6 +38,7 @@ const {
   awardPointsToRestaurant,
 } = require("../utils/awardPoints");
 const { assignTask } = require("../services/allocationService");
+const { awardPoints } = require("../services/loyaltyPointService");
 
 exports.createOrder = async (req, res) => {
   try {
@@ -1032,6 +1033,19 @@ exports.updateOrderStatus = async (req, res) => {
           timestamp: new Date(),
         }
       );
+   
+// flutter
+       io.to(`user_${order.customerId._id.toString()}`).emit(
+        "order_status_update_flutter",
+        {
+          orderId: order._id,
+          newStatus,
+          previousStatus,
+          timestamp: new Date(),
+        }
+      );
+
+
 
       // Notify restaurant for certain statuses
       if (
@@ -1275,19 +1289,19 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       userCoords,
       restaurant._id
     );
-    console.log(isInsideServiceArea);
+    // console.log(isInsideServiceArea);
 
-    if (!isInsideServiceArea) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "DELIVERY_UNAVAILABLE", // backend error code
-          message:
-            "We currently do not deliver to your location for this restaurant.", // developer message
-          userMessage: "Delivery unavailable to your selected location.", // user-friendly frontend message
-        },
-      });
-    }
+    // if (!isInsideServiceArea) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     error: {
+    //       code: "DELIVERY_UNAVAILABLE", // backend error code
+    //       message:
+    //         "We currently do not deliver to your location for this restaurant.", // developer message
+    //       userMessage: "Delivery unavailable to your selected location.", // user-friendly frontend message
+    //     },
+    //   });
+    // }
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
@@ -1309,14 +1323,34 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
 
+
+    
+    const cityId = await geoService.findCityByCoordinates(longitude, latitude);
+    console.log(cityId)
     const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
-      userCoords
+      userCoords,
+      cityId 
     );
 
+  
     const foodTax = await feeService.getActiveTaxes("food");
 
-    // ✅ Compute billing summary using V2 utility
+
+ 
+
+
+// const breakdown = await feeService.getBillChargesAndTaxesBreakdown({
+//   appliedOn: "product",
+//   restaurantId: "68447efc5be58fed7ddcfaa3",
+//   cityId: "686cb6ba87676457586fb92b"
+// });
+//        console.log(breakdown)
+// const foodTaxes = await feeService.getActiveTaxes("product", { restaurantId: cart.restaurantId, cityId });
+// const deliveryTaxes = await feeService.getActiveTaxes("delivery", { cityId })
+//     // ✅ Compute billing summary using V2 utility
+
+
     const costSummary = calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
@@ -1337,7 +1371,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     );
 
     const summary = {
-      deliveryFee: costSummary.deliveryFee,
+      deliveryFee: deliveryFee,
       discount: costSummary.offerDiscount,
       distanceKm, // raw kilometers
       subtotal: costSummary.cartTotal,
@@ -1736,6 +1770,8 @@ exports.placeOrderV2 = async (req, res) => {
       restaurantCoords,
       userCoords
     );
+
+    const cityId = await geoService.findCityByCoordinates(longitude, latitude);
     const foodTax = await feeService.getActiveTaxes("food");
 
     const costSummary = calculateOrderCostV2({
@@ -1820,6 +1856,25 @@ exports.placeOrderV2 = async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
+
+    // ✅ If payment method is online — generate Razorpay order and return immediately
+if (paymentMethod === "online") {
+  const razorpayOrder = await razorpay.orders.create({
+    amount: Math.round(costSummary.finalAmount * 100), // Razorpay accepts amount in paisa
+    currency: "INR",
+    receipt: savedOrder._id.toString(),
+    notes: {
+      restaurantName: restaurant.name,
+      userId: userId.toString(),
+      orderId: savedOrder._id.toString(),
+    },
+  });
+
+  savedOrder.onlinePaymentDetails = {
+    razorpayOrderId: razorpayOrder.id,
+  };
+  await savedOrder.save();
+
     const io = req.app.get("io");
     const populatedOrder = await Order.findById(savedOrder._id)
       .populate("customerId", "name email phone")
@@ -1843,8 +1898,51 @@ exports.placeOrderV2 = async (req, res) => {
       "totalAmount",
     ]);
 
-    console.log(populatedOrder);
+  
+    io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+      "new_order",
+      populatedOrder
+    );
 
+  return res.status(200).json({
+    message: "Order created. Proceed to Razorpay payment.",
+    messageType: "success",
+    orderId: savedOrder._id,
+    razorpayOrderId: razorpayOrder.id,
+    amount: costSummary.finalAmount,
+    currency: "INR",
+    keyId: process.env.RAZORPAY_KEY_ID,
+  });
+}
+
+
+    
+
+    await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
+    const io = req.app.get("io");
+    const populatedOrder = await Order.findById(savedOrder._id)
+      .populate("customerId", "name email phone")
+      .lean();
+
+    const sanitizeOrderNumbers = (order, fields) => {
+      fields.forEach((key) => {
+        order[key] = Number(order[key]) || 0;
+      });
+      return order;
+    };
+
+    sanitizeOrderNumbers(populatedOrder, [
+      "subtotal",
+      "tax",
+      "discountAmount",
+      "deliveryCharge",
+      "offerDiscount",
+      "surgeCharge",
+      "tipAmount",
+      "totalAmount",
+    ]);
+
+  
     io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
       "new_order",
       populatedOrder
@@ -1937,6 +2035,89 @@ exports.placeOrderV2 = async (req, res) => {
       message: "Failed to place order",
       messageType: "failure",
       error: err.message,
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+exports.verifyPayment = async (req, res) => {
+  try {
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      orderId,
+    } = req.body;
+
+    // 🔒 1. Validate required fields
+    if (
+      !razorpay_order_id ||
+      !razorpay_payment_id ||
+      !razorpay_signature ||
+      !orderId
+    ) {
+      return res.status(400).json({
+        message: "Missing payment details",
+        messageType: "failure",
+      });
+    }
+
+    // 🧾 2. Create expected signature
+    const generatedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    // 🔁 3. Compare signatures
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({
+        message: "Invalid signature, payment verification failed",
+        messageType: "failure",
+      });
+    }
+
+    // 💾 4. Update order status
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        message: "Order not found",
+        messageType: "failure",
+      });
+    }
+
+    order.onlinePaymentDetails.razorpayPaymentId = razorpay_payment_id;
+    order.onlinePaymentDetails.razorpaySignature = razorpay_signature;
+    order.onlinePaymentDetails.razorpayOrderId = razorpay_order_id
+    order.onlinePaymentDetails.verificationStatus = "verified"
+    order.paymentStatus = "completed";
+    
+    await order.save();
+
+    // 🚚 5. Assign delivery agent after successful payment
+    const assignmentResult = await assignNearestAgentSimple(order._id);
+    if (!assignmentResult.success) {
+      console.warn("Agent assignment failed:", assignmentResult.error);
+     
+    }
+
+    return res.status(200).json({
+      message: "Payment verified and order confirmed",
+      messageType: "success",
+      orderId: order._id,
+    });
+  } catch (error) {
+    console.error("Payment verification error:", error);
+    res.status(500).json({
+      message: "Internal server error during payment verification",
+      messageType: "failure",
+      error: error.message,
     });
   }
 };

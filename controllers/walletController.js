@@ -1,7 +1,9 @@
 const User = require('../models/userModel')
 const WalletTransaction = require('../models/WalletTransaction')
 const logAccess = require('../utils/logAccess')
+const razorpay = require("../utils/razorpay");
 
+const crypto = require("crypto");
 // walletController.js
 exports.initiateWalletTopUp = async (req, res) => {
   try {
@@ -15,18 +17,19 @@ exports.initiateWalletTopUp = async (req, res) => {
 
     // In the future, integrate with Razorpay, Stripe etc.
     // For now, just return mock "payment" data
-    const mockPaymentRequest = {
-      paymentId: "fake_txn_" + Date.now(),
-      amount: amount,
+      const razorpayOrder = await razorpay.orders.create({
+      amount: amount * 100, // ₹10 => 1000 paise
       currency: "INR",
-      userId: userId,
-      status: "created",
-      message: "Mock payment initiated. Integrate Razorpay later.",
-    };
+      receipt: `wallet_topup_${userId}`,
+      payment_capture: 1,
+    })
 
-    res.status(200).json({
+      res.status(200).json({
       success: true,
-      payment: mockPaymentRequest,
+      orderId: razorpayOrder.id,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+      key: process.env.RAZORPAY_KEY_ID, // Send to frontend
     });
   } catch (error) {
     console.error("initiateWalletTopUp error:", error);
@@ -35,35 +38,55 @@ exports.initiateWalletTopUp = async (req, res) => {
     });
   }
 };
-
-
 exports.verifyAndCreditWallet = async (req, res) => {
   try {
-    const { paymentId, userId, amount } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const userId = req.user.id;
 
-    //  In future: verify paymentId with payment gateway API
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: "Missing payment details" });
+    }
+
+    // Step 1: Verify signature
+    const generatedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({ error: "Payment verification failed" });
+    }
+
+    // Step 2: (Optional) Verify order via Razorpay API if needed
+
+    // Step 3: Credit wallet
+    const amountInPaise = parseInt(req.body.amount); // from frontend
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    //  Add money to wallet
-    user.walletBalance += amount;
+    user.walletBalance += amountInPaise / 100;
     await user.save();
 
-    // Log transaction
     await WalletTransaction.create({
       user: user._id,
       type: "credit",
-      amount,
-      description: `Wallet top-up via payment ID: ${paymentId}`,
+      amount: amountInPaise / 100,
+      description: `Wallet top-up via Razorpay payment ID: ${razorpay_payment_id}`,
     });
 
-    res.status(200).json({ success: true, message: "Wallet credited" });
+    res.status(200).json({ success: true, message: "Wallet credited successfully" });
   } catch (error) {
     console.error("verifyAndCreditWallet error:", error);
-    res.status(500).json({ error: "Failed to credit wallet" });
+    res.status(500).json({ error: "Failed to verify and credit wallet" });
   }
 };
+
+
+
+
+
+
 
 exports.getWalletBalance = async (req, res) => {
   try {

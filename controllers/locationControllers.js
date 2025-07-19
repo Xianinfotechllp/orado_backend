@@ -329,6 +329,7 @@ exports.getRecommendedRestaurants = async (req, res) => {
         },
       },
       minOrderAmount: { $gte: minOrder },
+       storeType: "restaurant",
        approvalStatus:"approved",
       active: true,
     })
@@ -612,3 +613,537 @@ exports.searchRestaurants = async (req, res) => {
   }
 };
 
+exports.getNearbyGroceryStores = async (req, res) => {
+  try {
+    const { latitude, longitude, maxDistance = 15000, minOrderAmount = 0 } = req.query;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "Latitude and longitude are required.",
+      });
+    }
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const dist = parseInt(maxDistance, 10);
+    const minOrder = parseInt(minOrderAmount, 10);
+
+    if (isNaN(lat) || lat < -90 || lat > 90 || isNaN(lng) || lng < -180 || lng > 180) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "Invalid latitude or longitude values.",
+      });
+    }
+
+    if (isNaN(dist) || dist <= 0) {
+      return res.status(400).json({
+        messageType: "failure",
+        message: "maxDistance must be a positive number (meters).",
+      });
+    }
+
+    const groceryStores = await Restaurant.find({
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+          $maxDistance: maxDistance,
+        },
+      },
+      storeType: "grocery",
+      minOrderAmount: { $gte: minOrder },
+      approvalStatus: "approved",
+      active: true,
+    })
+      .sort({ rating: -1 })
+      .limit(20)
+      .select("name address minOrderAmount phone rating images location");
+
+    return res.status(200).json({
+      messageType: "success",
+      message: "Nearby grocery stores fetched successfully.",
+      count: groceryStores.length,
+      data: groceryStores,
+    });
+
+  } catch (error) {
+    console.error("Error fetching grocery stores:", error);
+    return res.status(500).json({
+      messageType: "failure",
+      message: "Server error while fetching grocery stores.",
+    });
+  }
+};
+
+
+
+exports.searchGroceryStores = async (req, res) => {
+  try {
+    const {
+      query,
+      latitude,
+      longitude,
+      radius = 5000,
+      limit = 10,
+      page = 1
+    } = req.query;
+
+    if (!query) {
+      return res.status(400).json({ message: "Search query is required" });
+    }
+
+    const skip = (page - 1) * limit;
+    const latNum = parseFloat(latitude);
+    const lonNum = parseFloat(longitude);
+
+    // 🔎 1. Products match
+    const productRestaurantIds = await Product.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 🔎 2. Categories match
+    const categoryRestaurantIds = await Category.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 🔎 3. Store name match
+    const nameMatchedStores = await Restaurant.find({
+      $or: [
+        { name: { $regex: query, $options: "i" } },
+        { merchantSearchName: { $regex: query, $options: "i" } }
+      ],
+      storeType: "grocery",
+      approvalStatus: "approved"
+    }).select("_id");
+
+    // ✅ Combine all matched IDs
+    const allMatchedIds = new Set([
+      ...productRestaurantIds.map(id => id.toString()),
+      ...categoryRestaurantIds.map(id => id.toString()),
+      ...nameMatchedStores.map(r => r._id.toString())
+    ]);
+
+    if (allMatchedIds.size === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        total: 0,
+        page: parseInt(page),
+        pages: 0,
+        data: []
+      });
+    }
+
+    const matchedObjectIds = Array.from(allMatchedIds).map(
+      id => new mongoose.Types.ObjectId(id)
+    );
+
+    // 📌 Base filter
+    const baseQuery = {
+      _id: { $in: matchedObjectIds },
+      storeType: "grocery",
+      approvalStatus: "approved",
+      active: true
+    };
+
+    const isValidLocation =
+      !isNaN(latNum) && !isNaN(lonNum) && latNum !== 0 && lonNum !== 0;
+
+    // 📍 With Geo
+    if (isValidLocation) {
+      const geoStores = await Restaurant.aggregate([
+        {
+          $geoNear: {
+            near: {
+              type: "Point",
+              coordinates: [lonNum, latNum]
+            },
+            distanceField: "distance",
+            maxDistance: parseFloat(radius),
+            query: baseQuery,
+            spherical: true
+          }
+        },
+        {
+          $project: {
+            name: 1,
+            address: 1,
+            phone: 1,
+            rating: 1,
+            location: 1,
+            distance: 1,
+            images: 1,
+            minOrderAmount: 1,
+            active: 1,
+            openingHours: 1
+          }
+        }
+      ]);
+
+      const total = geoStores.length;
+      const paginated = geoStores.slice(skip, skip + parseInt(limit));
+
+      return res.json({
+        success: true,
+        count: paginated.length,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        data: paginated
+      });
+    }
+
+    // ❌ No Geo — fallback simple query
+    const total = await Restaurant.countDocuments(baseQuery);
+
+    const fallbackStores = await Restaurant.find(baseQuery)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select("name address phone rating images location minOrderAmount openingHours");
+
+    return res.json({
+      success: true,
+      count: fallbackStores.length,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      data: fallbackStores
+    });
+
+  } catch (error) {
+    console.error("Grocery store search error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during grocery store search"
+    });
+  }
+};
+
+exports.searchStores = async (req, res) => {
+  try {
+    const {
+      query,
+      storeType = "grocery", // 👈 default to grocery
+      latitude,
+      longitude,
+      radius = 5000,
+      limit = 10,
+      page = 1
+    } = req.query;
+
+    if (!query) {
+      return res.status(400).json({ message: "Search query is required" });
+    }
+
+    const skip = (page - 1) * limit;
+    const latNum = parseFloat(latitude);
+    const lonNum = parseFloat(longitude);
+
+    // 🔎 Product matches
+    const productRestaurantIds = await Product.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 🔎 Category matches
+    const categoryRestaurantIds = await Category.find({
+      name: { $regex: query, $options: "i" },
+      active: true
+    }).distinct("restaurantId");
+
+    // 🔎 Store name matches
+    const nameMatchedStores = await Restaurant.find({
+      $or: [
+        { name: { $regex: query, $options: "i" } },
+        { merchantSearchName: { $regex: query, $options: "i" } }
+      ],
+      storeType: storeType, // ✅ dynamically filter by store type
+      approvalStatus: "approved"
+    }).select("_id");
+
+    const allMatchedIds = new Set([
+      ...productRestaurantIds.map(id => id.toString()),
+      ...categoryRestaurantIds.map(id => id.toString()),
+      ...nameMatchedStores.map(r => r._id.toString())
+    ]);
+
+    if (allMatchedIds.size === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        total: 0,
+        page: parseInt(page),
+        pages: 0,
+        data: []
+      });
+    }
+
+    const matchedObjectIds = Array.from(allMatchedIds).map(
+      id => new mongoose.Types.ObjectId(id)
+    );
+
+    const baseQuery = {
+      _id: { $in: matchedObjectIds },
+      storeType: storeType,
+      approvalStatus: "approved",
+      active: true
+    };
+
+    const isValidLocation =
+      !isNaN(latNum) && !isNaN(lonNum) && latNum !== 0 && lonNum !== 0;
+
+    if (isValidLocation) {
+      const geoStores = await Restaurant.aggregate([
+        {
+          $geoNear: {
+            near: { type: "Point", coordinates: [lonNum, latNum] },
+            distanceField: "distance",
+            maxDistance: parseFloat(radius),
+            query: baseQuery,
+            spherical: true
+          }
+        },
+        {
+          $project: {
+            name: 1,
+            address: 1,
+            phone: 1,
+            rating: 1,
+            location: 1,
+            distance: 1,
+            images: 1,
+            minOrderAmount: 1,
+            active: 1,
+            openingHours: 1
+          }
+        }
+      ]);
+
+      const total = geoStores.length;
+      const paginated = geoStores.slice(skip, skip + parseInt(limit));
+
+      return res.json({
+        success: true,
+        count: paginated.length,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        data: paginated
+      });
+    }
+
+    // Fallback
+    const total = await Restaurant.countDocuments(baseQuery);
+
+    const fallbackStores = await Restaurant.find(baseQuery)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select("name address phone rating images location minOrderAmount openingHours");
+
+    return res.json({
+      success: true,
+      count: fallbackStores.length,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      data: fallbackStores
+    });
+
+  } catch (error) {
+    console.error("Store search error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during store search"
+    });
+  }
+};
+
+
+
+
+
+exports.getNearbyMeatShops = async (req, res) => {
+  try {
+    const {
+      latitude,
+      longitude,
+      radius = 5000, // in meters
+      limit = 10,
+      page = 1
+    } = req.query;
+
+    const lat = parseFloat(latitude);
+    const lon = parseFloat(longitude);
+
+    if (isNaN(lat) || isNaN(lon)) {
+      return res.status(400).json({ message: "Valid latitude and longitude are required" });
+    }
+
+    const skip = (page - 1) * limit;
+
+    const meatShops = await Restaurant.aggregate([
+      {
+        $geoNear: {
+          near: {
+            type: "Point",
+            coordinates: [lon, lat]
+          },
+          distanceField: "distance",
+          spherical: true,
+          maxDistance: parseFloat(radius),
+          query: {
+            storeType: "meat",
+            approvalStatus: "approved",
+            active: true
+          }
+        }
+      },
+      {
+        $sort: { distance: 1 }
+      },
+      {
+        $project: {
+          name: 1,
+          address: 1,
+          location: 1,
+          images: 1,
+          distance: 1,
+          openingHours: 1,
+          minOrderAmount: 1,
+          rating: 1,
+          phone: 1
+        }
+      },
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    ]);
+
+    const total = await Restaurant.countDocuments({
+      storeType: "meat",
+      approvalStatus: "approved",
+      active: true,
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [lon, lat]
+          },
+          $maxDistance: parseFloat(radius)
+        }
+      }
+    });
+
+    return res.json({
+      success: true,
+      data: meatShops,
+      count: meatShops.length,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit)
+    });
+
+  } catch (error) {
+    console.error("Nearby meat shop search error:", error);
+    return res.status(500).json({ message: "Server error during nearby meat shop search" });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+exports.getNearbyStores = async (req, res) => {
+  try {
+    const {
+      latitude,
+      longitude,
+      radius = 5000, // meters
+      limit = 10,
+      page = 1,
+      storeType // "pharmacy", "meat", "grocery", etc.
+    } = req.query;
+
+    const lat = parseFloat(latitude);
+    const lon = parseFloat(longitude);
+
+    if (isNaN(lat) || isNaN(lon)) {
+      return res.status(400).json({ message: "Valid latitude and longitude are required" });
+    }
+
+    if (!storeType) {
+      return res.status(400).json({ message: "storeType is required" });
+    }
+
+    const skip = (page - 1) * limit;
+
+    const stores = await Restaurant.aggregate([
+      {
+        $geoNear: {
+          near: { type: "Point", coordinates: [lon, lat] },
+          distanceField: "distance",
+          spherical: true,
+          maxDistance: parseFloat(radius),
+          query: {
+            storeType,
+            approvalStatus: "approved",
+            active: true
+          }
+        }
+      },
+      { $sort: { distance: 1 } },
+      {
+        $project: {
+          name: 1,
+          address: 1,
+          location: 1,
+          images: 1,
+          distance: 1,
+          openingHours: 1,
+          minOrderAmount: 1,
+          rating: 1,
+          phone: 1
+        }
+      },
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    ]);
+
+    const total = await Restaurant.countDocuments({
+      storeType,
+      approvalStatus: "approved",
+      active: true,
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [lon, lat]
+          },
+          $maxDistance: parseFloat(radius)
+        }
+      }
+    });
+
+    return res.json({
+      success: true,
+      data: stores,
+      count: stores.length,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit)
+    });
+
+  } catch (error) {
+    console.error("Nearby store search error:", error);
+    return res.status(500).json({ message: "Server error during nearby store search" });
+  }
+};

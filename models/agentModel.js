@@ -8,6 +8,13 @@ const agentSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     profilePicture: { type: String }, // URL to the profile picture
 
+ password: {
+  type: String,
+  required: true,
+  minlength: 6,
+select: false
+},
+
     bankAccountDetails: {
       accountNumber: { type: String },
       bankName: { type: String },
@@ -18,6 +25,8 @@ const agentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+ 
 
     payoutDetails: {
       totalEarnings: { type: Number, default: 0 },
@@ -59,10 +68,10 @@ const agentSchema = new mongoose.Schema(
         default: "available",
       },
       estimatedDeliveryTime: { type: Date }, // estimated time of arrival
-      location: {
-        latitude: { type: Number },
-        longitude: { type: Number },
-      },
+      // location: {
+      //   latitude: { type: Number },
+      //   longitude: { type: Number },
+      // },
       accuracy: { type: Number }, // GPS accuracy in meters
       currentOrderCount: { type: Number, default: 0 },
     },
@@ -77,6 +86,10 @@ const agentSchema = new mongoose.Schema(
         type: [Number], // [longitude, latitude]
         default: [0, 0],
       },
+        accuracy: {
+    type: Number, // in meters
+    default: 0,
+  }
     },
 
     leaveStatus: {
@@ -120,10 +133,45 @@ const agentSchema = new mongoose.Schema(
       },
     ],
 
-    documents: {
-      license: { type: String },
-      insurance: { type: String },
-    },
+    // documents: {
+    //   license: { type: String },
+    //   insurance: { type: String },
+    // },
+
+
+
+
+
+applicationStatus: {
+  type: String,
+  enum: ["pending", "approved", "rejected"],
+  default: "pending"
+},
+
+role: {
+  type: String,
+  enum: ["agent", "admin", "super_admin"], // more roles if needed
+  default: "agent"
+},
+
+
+
+
+
+
+
+
+
+
+
+
+    agentApplicationDocuments: {
+  license: { type: String },
+  insurance: { type: String },
+  rcBook: { type: String }, // ✅ new
+  pollutionCertificate: { type: String }, // ✅ new
+  submittedAt: { type: Date },
+},
 
     feedback: {
       averageRating: { type: Number, default: 0, min: 0, max: 5 },
@@ -198,29 +246,29 @@ const agentSchema = new mongoose.Schema(
       default: "Inactive",
     },
 lastAssignedAt: { type: Date, default: null },
-  agentStatus: {
-  status: {
-    type: String,
-    enum: [
-      "OFFLINE",
-      "AVAILABLE",
-      "ORDER_ASSIGNED",
-      "ORDER_ACCEPTED",
-      "ARRIVED_AT_RESTAURANT",
-      "PICKED_UP",
-      "ON_THE_WAY",
-      "AT_CUSTOMER_LOCATION",
-      "DELIVERED",
-      "ON_BREAK",
-    ],
-    default: "OFFLINE",
+    agentStatus: {
+    status: {
+      type: String,
+      enum: [
+        "OFFLINE",
+        "AVAILABLE",
+        "ORDER_ASSIGNED",
+        "ORDER_ACCEPTED",
+        "ARRIVED_AT_RESTAURANT",
+        "PICKED_UP",
+        "ON_THE_WAY",
+        "AT_CUSTOMER_LOCATION",
+        "DELIVERED",
+        "ON_BREAK",
+      ],
+      default: "OFFLINE",
+    },
+    availabilityStatus: {
+      type: String,
+      enum: ["AVAILABLE", "UNAVAILABLE"],
+      default: "UNAVAILABLE",
+    },
   },
-  availabilityStatus: {
-    type: String,
-    enum: ["AVAILABLE", "UNAVAILABLE"],
-    default: "UNAVAILABLE",
-  },
-},
   },
   { timestamps: true }
 );

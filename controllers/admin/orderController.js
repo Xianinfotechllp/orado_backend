@@ -1,6 +1,8 @@
 const Order = require("../../models/orderModel")
 const Agent = require("../../models/agentModel")
 const Restaurant = require("../../models/restaurantModel")
+
+const mongoose = require("mongoose")
 exports.getActiveOrdersStats = async (req, res) => {
   try {
     // Get current date and date from one week ago
@@ -95,21 +97,24 @@ exports.getAdminOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const formattedOrders = orders.map(order => ({
-      orderId: order._id,
-      orderStatus: order.orderStatus,
-      restaurantName: order.restaurantId?.name || 'N/A',
-      restaurantAddress:order.restaurantId?.address || "N/A",
-      customerName: order.customerId?.name || 'Guest',
-      amount: `$ ${order.totalAmount.toFixed(2)}`,
-      address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
-      deliveryMode: order.deliveryMode,
-      paymentStatus: order.paymentStatus,
-      paymentMethod: order.paymentMethod === 'cash' ? 'Pay On Delivery' : order.paymentMethod,
-      preparationTime: `${order.preparationTime || 0} Mins`,
-      orderTime: new Date(order.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
-      scheduledDeliveryTime: new Date(order.orderTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
-    }));
+ const formattedOrders = orders.map(order => ({
+  orderId: order._id,
+  restaurantId: order.restaurantId?._id || null, // add this line
+  orderStatus: order.orderStatus,
+  restaurantName: order.restaurantId?.name || 'N/A',
+  restaurantAddress: order.restaurantId?.address || 'N/A',
+  customerName: order.customerId?.name || 'Guest',
+  customerId: order.customerId?._id || null,
+  amount: `$ ${order.totalAmount.toFixed(2)}`,
+  address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
+  deliveryMode: order.deliveryMode,
+  paymentStatus: order.paymentStatus,
+  paymentMethod: order.paymentMethod === 'cash' ? 'Pay On Delivery' : order.paymentMethod,
+  preparationTime: `${order.preparationTime || 0} Mins`,
+  orderTime: new Date(order.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
+  scheduledDeliveryTime: new Date(order.orderTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
+}));
+
 
     res.status(200).json({
       messageType: "success",
@@ -278,5 +283,59 @@ exports.getAgentOrderDispatchStatuses = async (req, res) => {
       messageType: "failure",
       message: "Failed to fetch agent dispatch statuses",
     });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+// @desc    Update order status
+// @route   PATCH /api/admin/orders/:orderId/status
+// @access  Admin only (add auth middleware if needed)
+
+exports.updateOrderStatus = async (req, res) => {
+  const { orderId } = req.params;
+  const { status } = req.body;
+
+  const allowedStatuses = [
+    'pending', 'accepted_by_restaurant', 'rejected_by_restaurant',
+    'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'on_the_way',
+    'in_progress', 'arrived', 'completed', 'delivered', 'cancelled_by_customer'
+  ];
+
+  try {
+    // Validate orderId
+    if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ message: 'Invalid order ID' });
+    }
+
+    // Validate status
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status value' });
+    }
+
+    // Find and update order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    order.orderStatus = status;
+    await order.save();
+
+    return res.status(200).json({
+      message: 'Order status updated successfully',
+      updatedStatus: order.orderStatus,
+      orderId: order._id
+    });
+  } catch (err) {
+    console.error('Error updating order status:', err);
+    return res.status(500).json({ message: 'Server error' });
   }
 };

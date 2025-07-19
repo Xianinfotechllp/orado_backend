@@ -3,7 +3,7 @@ const xlsx = require('xlsx')
 const User = require("../../models/userModel")
 const {uploadOnCloudinary} =require("../../utils/cloudinary")
 const Permission = require("../../models/restaurantPermissionModel")
-
+const Product = require("../../models/productModel")
 exports.getRestaurantStats = async (req, res) => {
     try {
         // Get total approved restaurants
@@ -573,5 +573,37 @@ exports.updateRestaurantProfile = async (req, res) => {
   } catch (error) {
     console.error("Update error:", error);
     res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+
+exports.getProductsByRestaurant = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    if (!restaurantId) {
+      return res.status(400).json({
+        success: false,
+        message: "restaurantId is required"
+      });
+    }
+
+    const products = await Product.find({ restaurantId })
+      .select('name price specialOffer') // only fetch relevant fields
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Products fetched successfully",
+      data: products
+    });
+
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
   }
 };

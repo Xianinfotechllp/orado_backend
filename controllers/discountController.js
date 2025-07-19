@@ -4,6 +4,7 @@ const Discount = require("../models/discountModel");
 exports.createRestaurantDiscount = async (req, res) => {
   try {
     const {
+      name,                       // 👈 added this
       discountType,
       restaurant,
       discountValue,
@@ -13,14 +14,23 @@ exports.createRestaurantDiscount = async (req, res) => {
       validTo
     } = req.body;
 
-    if (!discountType || !restaurant || discountValue === undefined) {
+    // Validate required fields
+    if (!name || !discountType || !restaurant || discountValue === undefined) {
       return res.status(400).json({
         success: false,
-        message: "Required fields: discountType, restaurant, discountValue"
+        message: "Required fields: name, discountType, restaurant, discountValue"
       });
     }
 
+    // Deactivate existing active restaurant discount if any
+    await Discount.updateMany(
+      { restaurant, applicationLevel: "Restaurant", isActive: true },
+      { $set: { isActive: false } }
+    );
+
+    // Create new discount
     const newDiscount = await Discount.create({
+      name,                       // 👈 include in payload
       discountType,
       applicationLevel: "Restaurant",
       restaurant,
@@ -33,7 +43,7 @@ exports.createRestaurantDiscount = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Restaurant discount created successfully",
+      message: "Previous discount deactivated. New restaurant discount created successfully.",
       data: newDiscount
     });
 
@@ -42,6 +52,7 @@ exports.createRestaurantDiscount = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to create restaurant discount" });
   }
 };
+
 
 // 📌 Create a Product-wise Discount
 exports.createProductDiscount = async (req, res) => {

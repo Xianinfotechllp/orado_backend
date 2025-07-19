@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const {registerMerchant,loginMerchant,getRestaurantsByOwner,getRestaurantApprovalStatus,changePassword} = require("../controllers/merchantController")
+const {registerMerchant,loginMerchant,getRestaurantsByOwner,getRestaurantApprovalStatus,changePassword, getOrdersByCustomer, getOrderDetails} = require("../controllers/merchantController")
 const {createCategory} = require("../controllers/categoryController")
 const {getAssignableOffers,createOfferByRestaurantOwner,getOffersForRestaurant,toggleOfferAssignment,
     updateOffer,deleteOffer
@@ -29,9 +29,9 @@ router.put("/restaurants/:restaurantId/offer/:offerId",protect,toggleOfferAssign
 
 
 
+router.get("/customer/:userId/orders-list",getOrdersByCustomer)
 
 
-
-
+router.get("/order-details/:orderId",getOrderDetails)
 
 module.exports = router;

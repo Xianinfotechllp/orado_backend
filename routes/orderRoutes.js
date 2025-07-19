@@ -28,6 +28,7 @@ const {
   placeOrderWithAddressId,
   sendOrderDelayReason,
   placeOrderV2,
+  verifyPayment,
 
   
   
@@ -102,6 +103,6 @@ router.put('/restaurant/:restaurantId/orders/:orderId/status', protect , updateR
 router.patch("/:orderId/delay-reason",sendOrderDelayReason)
 
 
-
+router.post("/payments/verify",verifyPayment)
 
 module.exports = router;
