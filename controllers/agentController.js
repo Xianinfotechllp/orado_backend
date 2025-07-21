@@ -876,11 +876,13 @@ exports.addOrUpdateAgentDeviceInfo = async (req, res) => {
 exports.getAssignedOrders = async (req, res) => {
   try {
     const agentId = req.user._id; // from JWT middleware
-
+   
     const orders = await Order.find({
       assignedAgent: agentId,
+      agentAssignmentStatus:"assigned",
       orderStatus: {
         $in: [
+          "pending",
           "pending_agent_acceptance",
           "assigned_to_agent",
           "picked_up",

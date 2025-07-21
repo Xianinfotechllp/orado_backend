@@ -142,7 +142,7 @@ io.on("connection", (socket) => {
       }
     });
 
-socket.on("agent:location", (data) => {
+    socket.on("agent:location", (data) => {
     const { agentId, lat, lng } = data;
 
     // Optionally: Save to Redis GEOSET

@@ -615,7 +615,7 @@ exports.searchRestaurants = async (req, res) => {
 
 exports.getNearbyGroceryStores = async (req, res) => {
   try {
-    const { latitude, longitude, maxDistance = 15000, minOrderAmount = 0 } = req.query;
+    const { latitude, longitude, storeType, maxDistance = 15000, minOrderAmount = 0 } = req.query;
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
@@ -653,7 +653,7 @@ exports.getNearbyGroceryStores = async (req, res) => {
           $maxDistance: maxDistance,
         },
       },
-      storeType: "grocery",
+      storeType: storeType,
       minOrderAmount: { $gte: minOrder },
       approvalStatus: "approved",
       active: true,
@@ -680,13 +680,14 @@ exports.getNearbyGroceryStores = async (req, res) => {
 
 
 
-exports.searchGroceryStores = async (req, res) => {
+exports.searchStore = async (req, res) => {
   try {
     const {
       query,
       latitude,
       longitude,
-      radius = 5000,
+      storeType,
+      radius = 1000000,
       limit = 10,
       page = 1
     } = req.query;
@@ -717,7 +718,7 @@ exports.searchGroceryStores = async (req, res) => {
         { name: { $regex: query, $options: "i" } },
         { merchantSearchName: { $regex: query, $options: "i" } }
       ],
-      storeType: "grocery",
+      storeType: storeType,
       approvalStatus: "approved"
     }).select("_id");
 
@@ -784,6 +785,7 @@ exports.searchGroceryStores = async (req, res) => {
           }
         }
       ]);
+
 
       const total = geoStores.length;
       const paginated = geoStores.slice(skip, skip + parseInt(limit));
@@ -1145,5 +1147,30 @@ exports.getNearbyStores = async (req, res) => {
   } catch (error) {
     console.error("Nearby store search error:", error);
     return res.status(500).json({ message: "Server error during nearby store search" });
+  }
+};
+
+
+
+exports.getStoreById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const restaurant = await Restaurant.findById(id)
+      .select(
+        "-kyc -kycDocuments -kycStatus -kycRejectionReason -approvalRejectionReason"
+      ) // Exclude KYC-related fields
+      .populate("categories", "name") // Optional: populate category names
+      .populate("products", "name price") // Optional: populate product names and prices
+      .lean(); // Convert Mongoose doc to plain JS object
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    res.status(200).json(restaurant);
+  } catch (error) {
+    console.error("Error fetching restaurant by ID:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

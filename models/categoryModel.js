@@ -5,8 +5,20 @@ const categoriesSchema = mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Restaurant",
   },
+
+
+  availability: {
+  type: String,
+  enum: ['always', 'time-based', 'disabled'],
+  default: 'always'
+},
+availableAfterTime: {
+  type: String,
+  default: null
+}
+,
   active: {type:Boolean,default:true},
-  autoOnOff: Boolean,
+  // autoOnOff: Boolean,
   description: String,
   images: [String],
 });
