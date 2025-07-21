@@ -12,6 +12,8 @@ const { uploadOnCloudinary } = require('../utils/cloudinary');
 const { findAndAssignNearestAgent } = require('../services/findAndAssignNearestAgent');
 const { sendPushNotification } = require('../utils/sendPushNotification');
 const AgentDeviceInfo = require('../models/AgentDeviceInfoModel');
+const Product = require("../models/productModel");
+
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -875,11 +877,11 @@ exports.addOrUpdateAgentDeviceInfo = async (req, res) => {
 
 exports.getAssignedOrders = async (req, res) => {
   try {
-    const agentId = req.user._id; // from JWT middleware
-   
+    const agentId = req.user._id; // From JWT middleware
+
     const orders = await Order.find({
       assignedAgent: agentId,
-      agentAssignmentStatus:"assigned",
+      agentAssignmentStatus: "assigned",
       orderStatus: {
         $in: [
           "pending",
@@ -888,29 +890,47 @@ exports.getAssignedOrders = async (req, res) => {
           "picked_up",
           "on_the_way",
           "in_progress",
-          "arrived"
+          "arrived",
         ],
       },
     })
-      .select("orderStatus totalPrice deliveryAddress createdAt customerId restaurantId") // only needed fields
+      .select(
+        "orderStatus totalAmount deliveryAddress createdAt deliveryLocation orderItems paymentMethod scheduledTime instructions customerId restaurantId"
+      )
       .sort({ createdAt: -1 })
-      .populate("restaurantId", "name address")
-      .populate("customerId", "fullName phoneNumber");
+      .populate("restaurantId", "name address location")
+      .populate("customerId", "name phone email");
 
-    // Clean and format the response
-    const assignedOrders = orders.map(order => ({
+    const assignedOrders = orders.map((order) => ({
       id: order._id,
       status: order.orderStatus,
-      totalPrice: order.totalPrice,
-      deliveryAddress: order.deliveryAddress,
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
       createdAt: order.createdAt,
+      scheduledTime: order.scheduledTime || null,
+      instructions: order.instructions || "",
+
+      deliveryLocation: order.deliveryLocation?.coordinates || [],
+      deliveryAddress: order.deliveryAddress,
+
+      items: order.orderItems.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        totalPrice: item.totalPrice,
+        image: item.image,
+      })),
+
       customer: {
-        name: order.customerId?.fullName || "",
-        phone: order.customerId?.phoneNumber || "",
+        name: order.customerId?.name || "",
+        phone: order.customerId?.phone || "",
+        email: order.customerId?.email || "",
       },
+
       restaurant: {
         name: order.restaurantId?.name || "",
         address: order.restaurantId?.address || "",
+        location: order.restaurantId?.location || null,
       },
     }));
 
@@ -919,7 +939,7 @@ exports.getAssignedOrders = async (req, res) => {
       assignedOrders,
     });
   } catch (error) {
-    console.error("Error fetching assigned orders:", error);
+    console.error("❌ Error fetching assigned orders:", error);
     return res.status(500).json({
       status: "error",
       message: "Failed to fetch assigned orders",
@@ -928,3 +948,100 @@ exports.getAssignedOrders = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+exports.getAssignedOrderDetails = async (req, res) => {
+  try {
+    const agentId = req.user._id; // From JWT middleware
+    const orderId = req.params.orderId;
+
+    const order = await Order.findOne({
+      _id: orderId,
+      assignedAgent: agentId,
+      agentAssignmentStatus: { $in: ['assigned', 'accepted'] },
+    })
+      .populate("customerId", "name phone email")
+      .populate("restaurantId", "name address location phone")
+      .populate("orderItems.productId"); // Get full product details
+
+    if (!order) {
+      return res.status(404).json({
+        status: "error",
+        message: "Order not found or not assigned to this agent",
+      });
+    }
+
+    const response = {
+      id: order._id,
+      status: order.orderStatus,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      totalAmount: order.totalAmount,
+      subtotal: order.subtotal,
+      tax: order.tax,
+      deliveryCharge: order.deliveryCharge,
+      tipAmount: order.tipAmount,
+      createdAt: order.createdAt,
+      scheduledTime: order.scheduledTime || null,
+      instructions: order.instructions || "",
+
+      deliveryAddress: order.deliveryAddress,
+      deliveryLocation: order.deliveryLocation?.coordinates || [],
+
+      customer: {
+        name: order.customerId?.name || "",
+        phone: order.customerId?.phone || "",
+        email: order.customerId?.email || "",
+      },
+
+      restaurant: {
+        name: order.restaurantId?.name || "",
+        address: order.restaurantId?.address || "",
+        location: order.restaurantId?.location || null,
+        phone: order.restaurantId?.phone || "",
+      },
+
+      items: order.orderItems.map((item) => {
+        const product = item.productId;
+        return {
+          name: product?.name || item.name || "",
+          quantity: item.quantity,
+          price: item.price,
+          totalPrice: item.totalPrice,
+          image: product?.images?.[0] || item.image || "",
+          description: product?.description || "",
+          unit: product?.unit || "piece",
+          foodType: product?.foodType || "",
+          preparationTime: product?.preparationTime || 0,
+          addOns: product?.addOns || [],
+          attributes: product?.attributes || [],
+        };
+      }),
+
+      offer: {
+        name: order.offerName || "",
+        discount: order.offerDiscount || 0,
+        couponCode: order.couponCode || "",
+      },
+
+      taxDetails: order.taxDetails || [],
+    };
+
+    return res.status(200).json({
+      status: "success",
+      order: response,
+    });
+
+  } catch (error) {
+    console.error("❌ Error fetching assigned order details:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};

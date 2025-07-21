@@ -66,4 +66,6 @@ router.post("/save-fcm-token", saveFcmToken);
 //get assinged routes
 
 router.get("/assigned-orders",protectAgent,getAssignedOrders);
+router.get("/assigned-orders/:orderId",protectAgent,getAssignedOrders);
+
 module.exports = router;
