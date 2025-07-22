@@ -34,20 +34,20 @@ onlinePaymentDetails: {
   orderTime: { type: Date, default: Date.now },
   deliveryTime: Date,
 
-    orderStatus: {
-      type: String,
-      default: 'pending',
-      enum: [
-        'pending', 'pending_agent_acceptance', 'accepted_by_restaurant', 'rejected_by_restaurant',
-        'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'on_the_way','in_progress',
-        'arrived', 'completed',"delivered", 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
-      ]
-    },
+  orderStatus: {
+    type: String,
+    default: 'pending',
+    enum: [
+      'pending', 'pending_agent_acceptance', 'accepted_by_restaurant', 'rejected_by_restaurant',
+      'preparing', 'ready', 'assigned_to_agent', 'picked_up', 'on_the_way','in_progress',
+      'arrived', 'completed',"delivered", 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
+    ]
+  },
 
   assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },  
   agentAssignmentStatus: {
   type: String,
-  enum: [
+enum: [
     'not_assigned',
     'assigned_waiting_acceptance',
     'accepted',
@@ -57,22 +57,6 @@ onlinePaymentDetails: {
     'awaiting_agent_assignment'                
 ],
 default: 'not_assigned'
-},
-
-
-agentDeliveryStatus: {
-  type: String,
-  enum: [
-    'not_assigned',
-    'assigned',
-    'reached_restaurant',
-    'picked_up',
-    'out_for_delivery',      // replaced 'en_route'
-    'reached_customer',
-    'delivered',
-    'cancelled'
-  ],
-  default: 'not_assigned'
 },
 
   rejectionHistory: [{
@@ -143,12 +127,6 @@ cartTotal: Number,
   type: String,
   default: ""
 },
-
-taxDetails: [{
-  name: { type: String }, // eg. 'CGST', 'SGST', 'Service Tax'
-  percentage: { type: Number },
-  amount: { type: Number }
-}],
   deliveryLocation: {
     type: {
       type: String,

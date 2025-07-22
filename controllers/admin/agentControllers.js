@@ -105,31 +105,37 @@ exports.manualAssignAgent = async (req, res) => {
     // Prepare Socket payload
     const io = req.app.get("io");
 
-    const payload = {
-      status: "success",
-      assignedOrders: [
-        {
-          id: order._id,
-          status: order.orderStatus,
-          totalPrice: order.totalPrice,
-          deliveryAddress: order.deliveryAddress,
-          deliveryLocation:order.deliveryLocation,
-          createdAt: order.createdAt,
-          paymentMethod: order.paymentMethod,
-          items: order.items || [], // Assuming it's an array of products with name, qty, price
-          customer: {
-            name: order.customerId?.name || "",
-            phone: order.customerId?.phone || "",
-            email:order.customerId?.email || ""
-          },
-          restaurant: {
-            name: order.restaurantId?.name || "",
-            address: order.restaurantId?.address || "",
-            location: order.restaurantId?.location || null,
-          },
-        },
-      ],
-    };
+   const payload = {
+  status: "success",
+  assignedOrders: [
+    {
+      id: order._id,
+      status: order.orderStatus,
+      totalPrice: order.totalPrice,
+      deliveryAddress: order.deliveryAddress,
+      deliveryLocation: {
+        lat: order.deliveryLocation?.coordinates?.[1] || 0,
+        long: order.deliveryLocation?.coordinates?.[0] || 0
+      },
+      createdAt: order.createdAt,
+      paymentMethod: order.paymentMethod,
+      items: order.items || [],
+      customer: {
+        name: order.customerId?.name || "",
+        phone: order.customerId?.phone || "",
+        email: order.customerId?.email || ""
+      },
+      restaurant: {
+        name: order.restaurantId?.name || "",
+        address: order.restaurantId?.address || "",
+        location: {
+          lat: order.restaurantId?.location?.coordinates?.[1] || 0,
+          long: order.restaurantId?.location?.coordinates?.[0] || 0
+        }
+      },
+    },
+  ],
+};
 
     io.to(`agent_${agent._id}`).emit("orderAssigned", payload);
 

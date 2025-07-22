@@ -14,6 +14,8 @@ const { sendPushNotification } = require('../utils/sendPushNotification');
 const AgentDeviceInfo = require('../models/AgentDeviceInfoModel');
 const Product = require("../models/productModel");
 
+
+
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -966,7 +968,7 @@ exports.getAssignedOrderDetails = async (req, res) => {
     })
       .populate("customerId", "name phone email")
       .populate("restaurantId", "name address location phone")
-      .populate("orderItems.productId"); // Get full product details
+      .populate("orderItems.productId");
 
     if (!order) {
       return res.status(404).json({
@@ -974,6 +976,9 @@ exports.getAssignedOrderDetails = async (req, res) => {
         message: "Order not found or not assigned to this agent",
       });
     }
+
+    const deliveryCoords = order.deliveryLocation?.coordinates || [];
+    const restaurantCoords = order.restaurantId?.location?.coordinates || [];
 
     const response = {
       id: order._id,
@@ -990,7 +995,10 @@ exports.getAssignedOrderDetails = async (req, res) => {
       instructions: order.instructions || "",
 
       deliveryAddress: order.deliveryAddress,
-      deliveryLocation: order.deliveryLocation?.coordinates || [],
+      deliveryLocation: deliveryCoords.length === 2 ? {
+        lat: deliveryCoords[1],
+        long: deliveryCoords[0],
+      } : null,
 
       customer: {
         name: order.customerId?.name || "",
@@ -1001,7 +1009,10 @@ exports.getAssignedOrderDetails = async (req, res) => {
       restaurant: {
         name: order.restaurantId?.name || "",
         address: order.restaurantId?.address || "",
-        location: order.restaurantId?.location || null,
+        location: restaurantCoords.length === 2 ? {
+          lat: restaurantCoords[1],
+          long: restaurantCoords[0],
+        } : null,
         phone: order.restaurantId?.phone || "",
       },
 

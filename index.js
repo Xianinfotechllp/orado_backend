@@ -66,8 +66,15 @@ dotenv.config();
 require("./config/dbConfig")();
 const centralSocket = require("./sockets/centralSocket");
 // Import models
+
+//serperate routes of flutter 
+const flutterRoutes = require("./src/api/flutter/index")
+
+
 const Agent = require("./models/agentModel");
 const Chat = require("./models/chatModel");
+
+
 
 // Import routes
 const userRouter = require("./routes/userRoutes");
@@ -483,6 +490,9 @@ app.use("/global-order-settings",globalOrdersettingsRoutes)
 // app.use("/taxes",taxRoutes)
 app.use("/tax-and-charge", taxAndChargeRoutes);
 app.use("/incentive",incentiveRoutes)
+
+
+app.use('/api/flutter',flutterRoutes);
 
 // Default route
 app.get("/", (req, res) => {
