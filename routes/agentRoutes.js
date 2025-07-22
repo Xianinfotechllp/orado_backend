@@ -4,7 +4,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    activateUnlockedPermissions, getAgentEarnings, getMyPermissionRequests, handleAgentResponse,
    getAgentAvailabilityStatus,
    addOrUpdateAgentDeviceInfo,
-   getAssignedOrders
+   getAssignedOrders,
+   getAssignedOrderDetails
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
@@ -66,6 +67,6 @@ router.post("/save-fcm-token", saveFcmToken);
 //get assinged routes
 
 router.get("/assigned-orders",protectAgent,getAssignedOrders);
-router.get("/assigned-orders/:orderId",protectAgent,getAssignedOrders);
+router.get("/assigned-orders/:orderId",protectAgent,getAssignedOrderDetails);
 
 module.exports = router;

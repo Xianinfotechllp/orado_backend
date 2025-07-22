@@ -876,7 +876,6 @@ exports.addOrUpdateAgentDeviceInfo = async (req, res) => {
   }
 };
 
-
 exports.getAssignedOrders = async (req, res) => {
   try {
     const agentId = req.user._id; // From JWT middleware
@@ -903,38 +902,52 @@ exports.getAssignedOrders = async (req, res) => {
       .populate("restaurantId", "name address location")
       .populate("customerId", "name phone email");
 
-    const assignedOrders = orders.map((order) => ({
-      id: order._id,
-      status: order.orderStatus,
-      totalAmount: order.totalAmount,
-      paymentMethod: order.paymentMethod,
-      createdAt: order.createdAt,
-      scheduledTime: order.scheduledTime || null,
-      instructions: order.instructions || "",
+    const assignedOrders = orders.map((order) => {
+   const deliveryCoords =
+  order.deliveryLocation?.coordinates?.length === 2
+    ? { lon: order.deliveryLocation.coordinates[0], lat: order.deliveryLocation.coordinates[1] }
+    : null;
 
-      deliveryLocation: order.deliveryLocation?.coordinates || [],
-      deliveryAddress: order.deliveryAddress,
+      const restaurantCoords = order.restaurantId?.location?.coordinates?.length === 2
+        ? {
+            lon: order.restaurantId.location.coordinates[0],
+            lat: order.restaurantId.location.coordinates[1],
+          }
+        : null;
 
-      items: order.orderItems.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-        totalPrice: item.totalPrice,
-        image: item.image,
-      })),
+      return {
+        id: order._id,
+        status: order.orderStatus,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        createdAt: order.createdAt,
+        scheduledTime: order.scheduledTime || null,
+        instructions: order.instructions || "",
 
-      customer: {
-        name: order.customerId?.name || "",
-        phone: order.customerId?.phone || "",
-        email: order.customerId?.email || "",
-      },
+        deliveryLocation: deliveryCoords,
+        deliveryAddress: order.deliveryAddress,
 
-      restaurant: {
-        name: order.restaurantId?.name || "",
-        address: order.restaurantId?.address || "",
-        location: order.restaurantId?.location || null,
-      },
-    }));
+        items: order.orderItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          totalPrice: item.totalPrice,
+          image: item.image,
+        })),
+
+        customer: {
+          name: order.customerId?.name || "",
+          phone: order.customerId?.phone || "",
+          email: order.customerId?.email || "",
+        },
+
+        restaurant: {
+          name: order.restaurantId?.name || "",
+          address: order.restaurantId?.address || "",
+          location: restaurantCoords,
+        },
+      };
+    });
 
     return res.status(200).json({
       status: "success",
@@ -958,13 +971,13 @@ exports.getAssignedOrders = async (req, res) => {
 
 exports.getAssignedOrderDetails = async (req, res) => {
   try {
-    const agentId = req.user._id; // From JWT middleware
+    const agentId = req.user._id;
     const orderId = req.params.orderId;
 
     const order = await Order.findOne({
       _id: orderId,
       assignedAgent: agentId,
-      agentAssignmentStatus: { $in: ['assigned', 'accepted'] },
+    
     })
       .populate("customerId", "name phone email")
       .populate("restaurantId", "name address location phone")
