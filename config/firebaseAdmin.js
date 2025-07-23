@@ -1,9 +1,9 @@
-// var admin = require("firebase-admin");
+var admin = require("firebase-admin");
 
 
-// var serviceAccount = require('./orado-1eb0c-firebase-adminsdk-fbsvc-700cb01560.json');
+var serviceAccount = require('./oradosaleapp-firebase-adminsdk-fbsvc-68b0dcdc98.json');
 
-// admin.initializeApp({
-//   credential: admin.credential.cert(serviceAccount)
-// });
-// module.exports = admin;
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+module.exports = admin;

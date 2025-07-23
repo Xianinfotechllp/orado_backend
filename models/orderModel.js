@@ -161,6 +161,29 @@ cartTotal: Number,
 
 
 
+chargesBreakdown: {
+  packingCharges: [
+    {
+      name: { type: String },
+      amount: { type: Number, default: 0 },
+      description: { type: String, default: 'Packing Charge' }
+    }
+  ],
+  totalPackingCharge: { type: Number, default: 0 },
+
+  additionalCharges: [
+    {
+      name: String,
+      type: { type: String, enum: ['Fixed', 'Percentage'] },
+      rate: String, // e.g., "5%" or ""
+      amount: Number
+    }
+  ],
+  totalAdditionalCharges: { type: Number, default: 0 }
+}
+,
+
+
 
 
 

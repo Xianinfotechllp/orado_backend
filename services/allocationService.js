@@ -139,7 +139,7 @@ const assignOneByOne = async (orderId) => {
   }));
 
   order.agentCandidates = candidates;
-  order.agentAssignmentStatus = "awaiting_response";
+  order.agentAssignmentStatus = "awaiting_agent_acceptance";
   order.allocationMethod = 'one_by_one';
   await order.save();
 

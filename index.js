@@ -115,7 +115,7 @@ const globalOrdersettingsRoutes = require("./routes/globalOrderSettingsRoutes")
 // const taxRoutes = require("./routes/taxRoutes");
 const taxAndChargeRoutes = require("./routes/taxAndChargeRoutes");
 const incentiveRoutes = require('./routes/incentiveRoutes');
-
+const offerAndDiscountRoutes = require("./routes/offerAndDisocuntRoutes")
 // const orderSettingsRoutes = require("./routes/orderSettingsRoutes");
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
@@ -490,6 +490,8 @@ app.use("/global-order-settings",globalOrdersettingsRoutes)
 // app.use("/taxes",taxRoutes)
 app.use("/tax-and-charge", taxAndChargeRoutes);
 app.use("/incentive",incentiveRoutes)
+app.use("/offer-and-discount",offerAndDiscountRoutes)   
+
 
 
 app.use('/api/flutter',flutterRoutes);

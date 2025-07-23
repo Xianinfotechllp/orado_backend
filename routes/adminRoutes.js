@@ -217,5 +217,29 @@ router.get("/manager/:managerId",getManagerById)
 router.put("/manager/:managerId",updateManager)
 router.delete("/manager/:managerId",deleteManager)
 
+const admin = require('../config/firebaseAdmin');
+const fcmToken = 'YOUR_DEVICE_FCM_TOKEN_HERE';
+router.get('/send-test-notification', async (req, res) => {
+  const message = {
+    token: fcmToken,
+    notification: {
+      title: 'new order',
+      body: 'you got a new order',
+    },
+    data: {
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    },
+  };
+
+  try {
+    const response = await admin.messaging().send(message);
+    console.log('✅ Notification sent:', response);
+    res.json({ success: true, message: 'Notification sent', response });
+  } catch (error) {
+    console.error('❌ Error sending notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;
 

@@ -91,11 +91,12 @@ const agentSchema = new mongoose.Schema(
     },
 
     fcmTokens: [
-      {
-        token: { type: String },
-        updatedAt: { type: Date, default: Date.now },
-      },
-    ],
+  {
+    token: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now },
+  },
+],
+
 
     leaveStatus: {
       leaveApplied: { type: Boolean, default: false },

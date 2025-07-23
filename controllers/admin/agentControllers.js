@@ -191,17 +191,29 @@ exports.manualAssignAgent = async (req, res) => {
 exports.saveFcmToken = async (req, res) => {
   try {
     const { agentId, fcmToken } = req.body;
+    console.log("Saving FCM token for agent:", agentId, "Token:", fcmToken);
 
     if (!agentId || !fcmToken) {
       return res.status(400).json({ message: "Missing agentId or fcmToken" });
     }
 
-    // Update only if token is not already stored
-    await Agent.findByIdAndUpdate(agentId, {
-      $addToSet: {
-        fcmTokens: { token: fcmToken, updatedAt: new Date() },
-      },
-    });
+    const agent = await Agent.findById(agentId);
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
+
+    if (existingToken) {
+      // Update existing token timestamp
+      existingToken.updatedAt = new Date();
+    } else {
+      // Add new token
+      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
+    }
+
+    await agent.save();
 
     res.status(200).json({ message: "FCM token saved successfully" });
   } catch (err) {

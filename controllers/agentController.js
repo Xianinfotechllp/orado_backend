@@ -938,7 +938,8 @@ exports.getAssignedOrders = async (req, res) => {
 exports.agentAcceptOrRejectOrder = async (req, res) => {
   try {
     const agentId = req.user._id;
-    const { orderId, action, reason } = req.body;
+    const { action, reason } = req.body;
+    const {orderId} = req.params;
 
     if (!['accept', 'reject'].includes(action)) {
       return res.status(400).json({

@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const Offer = require("../models/offerModel");
 const Order = require("../models/orderModel");
+const TaxAndCharge = require("../models/taxAndChargeModel")
+ 
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
 const Cart = require("../models/cartModel");
 const User = require("../models/userModel");
@@ -8,7 +10,6 @@ const Product = require("../models/productModel");
 const Permission = require("../models/restaurantPermissionModel");
 const {
   calculateOrderCost,
-  calculateOrderCost2,
   calculateOrderCostV2,
 } = require("../services/orderCostCalculator");
 const razorpay = require("../utils/razorpay")
@@ -1260,7 +1261,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       couponCode,
       cartId,
       userId,
-      tipAmount = 0,
+      tipAmount = 0
     } = req.body;
 
     if (!cartId || !userId) {
@@ -1268,12 +1269,8 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     }
 
     const cart = await Cart.findOne({ _id: cartId, user: userId });
-    if (!cart) {
-      return res.status(404).json({ error: "Cart not found for this user" });
-    }
-
-    if (!cart.products || cart.products.length === 0) {
-      return res.status(400).json({ error: "Cart is empty" });
+    if (!cart || !cart.products?.length) {
+      return res.status(404).json({ error: "Cart not found or empty" });
     }
 
     const restaurant = await Restaurant.findById(cart.restaurantId);
@@ -1282,88 +1279,54 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     }
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
-
     const restaurantCoords = restaurant.location.coordinates;
 
+    // Optional: check service area
     const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
       userCoords,
       restaurant._id
     );
-    // console.log(isInsideServiceArea);
 
-    // if (!isInsideServiceArea) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     error: {
-    //       code: "DELIVERY_UNAVAILABLE", // backend error code
-    //       message:
-    //         "We currently do not deliver to your location for this restaurant.", // developer message
-    //       userMessage: "Delivery unavailable to your selected location.", // user-friendly frontend message
-    //     },
-    //   });
-    // }
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
-    // ✅ Fetch active offers for the restaurant
+
+    // ✅ Get valid offers for the restaurant
     const offers = await Offer.find({
-      applicableRestaurants: restaurant._id, // this can also be an array match
+      applicableRestaurants: restaurant._id,
       isActive: true,
       validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() },
+      validTill: { $gte: new Date() }
     }).lean();
 
-    const surgeObj = await getApplicableSurgeFee(
-      userCoords,
-      preSurgeOrderAmount
-    );
-
-    // Compute isSurge and surgeFeeAmount based on result
+    const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
 
-
-    
     const cityId = await geoService.findCityByCoordinates(longitude, latitude);
-    console.log(cityId)
+
     const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
       userCoords,
-      cityId 
+      cityId
     );
 
-  
-    const foodTax = await feeService.getActiveTaxes("food");
-
-
- 
-
-
-// const breakdown = await feeService.getBillChargesAndTaxesBreakdown({
-//   appliedOn: "product",
-//   restaurantId: "68447efc5be58fed7ddcfaa3",
-//   cityId: "686cb6ba87676457586fb92b"
-// });
-//        console.log(breakdown)
-// const foodTaxes = await feeService.getActiveTaxes("product", { restaurantId: cart.restaurantId, cityId });
-// const deliveryTaxes = await feeService.getActiveTaxes("delivery", { cityId })
-//     // ✅ Compute billing summary using V2 utility
-
-
-    const costSummary = calculateOrderCostV2({
+    // ✅ Calculate cost breakdown using V2 method
+    const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
       couponCode,
-      restaurantCoords,
-      deliveryFee: deliveryFee,
-      userCoords,
+      deliveryFee,
       offers,
       revenueShare: { type: "percentage", value: 20 },
-      taxes: foodTax,
       isSurge,
       surgeFeeAmount,
+      merchantId: restaurant._id
     });
+
+    console.log ("Cost Summary:", costSummary);
+
     const distanceKm = turf.distance(
       turf.point(userCoords),
       turf.point(restaurantCoords),
@@ -1371,29 +1334,41 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     );
 
     const summary = {
-      deliveryFee: deliveryFee,
-      discount: costSummary.offerDiscount,
-      distanceKm, // raw kilometers
+      deliveryFee,
+      discount: costSummary.offerDiscount + costSummary.couponDiscount,
+      distanceKm,
       subtotal: costSummary.cartTotal,
+      tipAmount: costSummary.tipAmount,
       tax: costSummary.totalTaxAmount,
       totalTaxAmount: costSummary.totalTaxAmount,
       taxes: costSummary.taxBreakdown,
+
+      // ✅ Added fields
+      packingCharges: costSummary.merchantPackingCharges,
+      totalPackingCharge: costSummary.totalMerchantPackingCharge,
+
+      additionalCharges: costSummary.additionalCharges,
+      totalAdditionalCharges: costSummary.totalAdditionalCharges,
+
       surgeFee: costSummary.surgeFee,
       total: costSummary.finalAmount,
+
       offersApplied: costSummary.offersApplied,
-      isSurge: isSurge,
-      surgeReason: surgeObj ? surgeObj.reason : null,
+      isSurge,
+      surgeReason: surgeObj?.reason || null
     };
 
     return res.status(200).json({
       message: "Bill summary calculated successfully",
-      data: summary,
+      data: summary
     });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    console.error("Error in getOrderPriceSummaryv2:", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 
 exports.reassignExpiredOrders = async () => {
   try {
@@ -1840,7 +1815,7 @@ exports.placeOrderV2 = async (req, res) => {
       subtotal: costSummary.cartTotal, // ✅ from V2
       cartTotal: costSummary.cartTotal,
       tax: costSummary.totalTaxAmount, // ✅ from V2
-      discountAmount: costSummary.offerDiscount + costSummary.couponDiscount, // ✅ clean combined discount
+      discountAmount:  0, // ✅ clean combined discount
       deliveryCharge: costSummary.deliveryFee, // ✅ from V2
       offerId: costSummary.appliedOffer?._id || null,
       offerName: costSummary.appliedOffer?.title || null,
@@ -1918,7 +1893,7 @@ if (paymentMethod === "online") {
 
     
 
-    await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
+    // await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
     const io = req.app.get("io");
     const populatedOrder = await Order.findById(savedOrder._id)
       .populate("customerId", "name email phone")
@@ -2121,3 +2096,8 @@ exports.verifyPayment = async (req, res) => {
     });
   }
 };
+
+
+
+
+
