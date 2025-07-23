@@ -16,6 +16,7 @@ const Product = require("../models/productModel");
 const formatOrderResponse = require('../utils/formatOrderResponse');
 const {fr} = require("../utils/formatOrder");
 const  formatOrder  = require('../utils/formatOrder');
+const { notifyNextPendingAgent } = require('../services/allocationService');
 
 
 exports.registerAgent = async (req, res) => {
@@ -893,13 +894,14 @@ exports.getAssignedOrders = async (req, res) => {
           },
         },
         {
-          assignedAgent: agentId, // Auto-assigned
+          assignedAgent: agentId,
         },
       ],
       orderStatus: {
         $in: [
           'pending',
           'pending_agent_acceptance',
+          "accepted_by_restaurant",
           'assigned_to_agent',
           'picked_up',
           'on_the_way',
@@ -915,74 +917,12 @@ exports.getAssignedOrders = async (req, res) => {
       .populate('restaurantId', 'name address location')
       .populate('customerId', 'name phone email');
 
-    const filteredOrders = orders.map((order) => {
-      const deliveryCoords =
-        order.deliveryLocation?.coordinates?.length === 2
-          ? {
-              lon: order.deliveryLocation.coordinates[0],
-              lat: order.deliveryLocation.coordinates[1],
-            }
-          : null;
-
-      const restaurantCoords =
-        order.restaurantId?.location?.coordinates?.length === 2
-          ? {
-              lon: order.restaurantId.location.coordinates[0],
-              lat: order.restaurantId.location.coordinates[1],
-            }
-          : null;
-
-      const isAutoAssigned =
-        order.assignedAgent?.toString() === agentId.toString();
-
-      const candidateEntry = order.agentCandidates?.find((c) =>
-        c.agent.toString() === agentId.toString()
-      );
-
-      const isManualPending =
-        candidateEntry && candidateEntry.status === 'pending';
-
-      const isManualAccepted =
-        candidateEntry && candidateEntry.status === 'accepted';
-
-      return {
-        id: order._id,
-        status: order.orderStatus,
-        totalAmount: order.totalAmount,
-        paymentMethod: order.paymentMethod,
-        createdAt: order.createdAt,
-        scheduledTime: order.scheduledTime || null,
-        instructions: order.instructions || '',
-        deliveryLocation: deliveryCoords,
-        deliveryAddress: order.deliveryAddress, // 🔓 always visible
-        items: order.orderItems.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          totalPrice: item.totalPrice,
-          image: item.image,
-        })),
-        customer: {
-          name: order.customerId?.name || '',
-          phone: order.customerId?.phone || '',
-          email: order.customerId?.email || '',
-        },
-        restaurant: {
-          name: order.restaurantId?.name || '',
-          address: order.restaurantId?.address || '',
-          location: restaurantCoords,
-        },
-
-        // 👇 Decision flags for frontend UI
-        isAutoAssigned,
-        showAcceptReject: !isAutoAssigned && isManualPending,
-        showOrderFlow: isAutoAssigned || isManualAccepted,
-      };
-    });
+    // 👇 Clean and DRY
+    const formattedOrders = orders.map(order => formatOrder(order, agentId));
 
     return res.status(200).json({
       status: 'success',
-      assignedOrders: filteredOrders,
+      assignedOrders: formattedOrders,
     });
   } catch (error) {
     console.error('❌ Error fetching assigned orders:', error);
@@ -993,7 +933,6 @@ exports.getAssignedOrders = async (req, res) => {
     });
   }
 };
-
 
 
 exports.agentAcceptOrRejectOrder = async (req, res) => {
@@ -1017,38 +956,30 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       });
     }
 
-    // Check if the agent is in the candidate list
+    // ✅ Enforce one-by-one flow
+    const nextPending = order.agentCandidates.find(c => c.status === 'pending');
+    if (!nextPending || nextPending.agent.toString() !== agentId.toString()) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You are not the active candidate for this order',
+      });
+    }
+
     const candidateIndex = order.agentCandidates.findIndex(c =>
       c.agent.toString() === agentId.toString()
     );
 
-    if (candidateIndex === -1) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'You are not a candidate for this order',
-      });
-    }
-
-    const currentStatus = order.agentCandidates[candidateIndex].status;
-
-    if (currentStatus !== 'pending') {
-      return res.status(400).json({
-        status: 'error',
-        message: `You have already responded to this order as "${currentStatus}"`,
-      });
-    }
-
-    // ✅ Agent accepts the order
     if (action === 'accept') {
       order.agentCandidates[candidateIndex].status = 'accepted';
+      order.agentCandidates[candidateIndex].respondedAt = new Date();
       order.assignedAgent = agentId;
       order.agentAssignmentStatus = 'accepted_by_agent';
       order.agentAcceptedAt = new Date();
     }
 
-    // ❌ Agent rejects the order
     if (action === 'reject') {
       order.agentCandidates[candidateIndex].status = 'rejected';
+      order.agentCandidates[candidateIndex].respondedAt = new Date();
       order.rejectionHistory.push({
         agentId,
         rejectedAt: new Date(),
@@ -1058,12 +989,28 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
     }
 
     await order.save();
-     const formatOrder = formatOrder(order, agentId);
+
+    // 🔁 If rejected, trigger next candidate allocation here if needed
+   if (action === 'reject') {
+  order.agentCandidates[candidateIndex].status = 'rejected';
+  order.agentCandidates[candidateIndex].respondedAt = new Date();
+
+  order.rejectionHistory.push({
+    agentId,
+    rejectedAt: new Date(),
+    reason: reason || 'Not specified',
+  });
+  order.agentAssignmentStatus = 'rejected_by_agent';
+
+  await order.save();
+
+  // 🔁 Notify next agent (waiting ➝ pending)
+  await notifyNextPendingAgent(order);
+}
 
     return res.status(200).json({
       status: 'success',
       message: `Order ${action}ed successfully`,
-       order:""
     });
 
   } catch (error) {
@@ -1074,6 +1021,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
     });
   }
 };
+
 
 
 

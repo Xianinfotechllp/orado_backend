@@ -1373,7 +1373,7 @@ exports.placeOrderV2 = async (req, res) => {
       couponCode,
       isSurge: costSummary.isSurge,
       surgeReason: costSummary.surgeReason,
-      agentAssignmentStatus: "not_assigned",
+      agentAssignmentStatus: "unassigned",
       instructions: instructions,
     });
 

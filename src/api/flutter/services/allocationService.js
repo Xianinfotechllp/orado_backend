@@ -72,7 +72,7 @@ const assignNearestAvailable = async (orderId, config) => {
 
   if (!availableAgents.length) {
     console.log("❌ No available agents nearby.");
-    return { status: "not_assigned", reason: "No agents available nearby" };
+    return { status: "unassigned", reason: "No agents available nearby" };
   }
 
   // Prioritize by rating if enabled
@@ -117,7 +117,7 @@ const assignOneByOne = async (orderId) => {
 
   if (!agent) {
     console.log("❌ No available agents.");
-    return { status: "not_assigned", reason: "No agents available" };
+    return { status: "unassigned", reason: "No agents available" };
   }
 
   // Assign and update order
@@ -161,7 +161,7 @@ const assignRoundRobin = async (orderId, config) => {
 
   if (!availableAgents.length) {
     console.log("❌ No available agents in radius.");
-    return { status: "not_assigned", reason: "No agents available in range" };
+    return { status: "unassigned", reason: "No agents available in range" };
   }
 
   // Filter agents who haven't hit max tasks
@@ -188,7 +188,7 @@ const assignRoundRobin = async (orderId, config) => {
 
   if (!eligibleAgents.length) {
     console.log("❌ No eligible agents below max task limit.");
-    return { status: "not_assigned", reason: "All agents at max capacity" };
+    return { status: "unassigned", reason: "All agents at max capacity" };
   }
 
   // Prioritize by rating if enabled

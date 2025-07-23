@@ -1851,7 +1851,7 @@ exports.placeOrderV2 = async (req, res) => {
       couponCode,
       isSurge: costSummary.isSurge,
       surgeReason: costSummary.surgeReason,
-      agentAssignmentStatus: "not_assigned",
+      agentAssignmentStatus: "unassigned",
       instructions: instructions,
     });
 
@@ -2025,8 +2025,8 @@ if (paymentMethod === "online") {
       totalAmount: currentOrder.totalAmount,
       billSummary,
       orderStatus: currentOrder.orderStatus, // Original status (not changed to assigned_to_agent)
-      agentAssignmentStatus: currentOrder.agentAssignmentStatus,
-      assignedAgent: currentOrder.assignedAgent,
+     
+      // assignedAgent: currentOrder.assignedAgent
       messageType: "success",
     });
   } catch (err) {

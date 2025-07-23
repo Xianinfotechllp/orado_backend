@@ -14,15 +14,13 @@ const agentCandidateSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'accepted', 'rejected',"timed_out"],
-    default: 'pending',
+    enum: ['waiting', 'pending', 'accepted', 'rejected', 'timed_out'],
+    default: 'waiting', // All will be waiting initially
   },
-  assignedAt: {
-    type: Date,
-    default: Date.now,
-  },
-    respondedAt: Date
+  assignedAt: Date,     // Only set when moved to 'pending'
+  respondedAt: Date,
 });
+
 
 
 
@@ -76,7 +74,11 @@ onlinePaymentDetails: {
         'arrived', 'completed',"delivered", 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
       ]
     },
-
+allocationMethod: {
+  type: String,
+  enum: ['manual', 'one_by_one', 'nearest', 'fifo', 'broadcast'],
+  default: 'one_by_one', // or whatever you want as default
+},
   assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' }, 
 
    agentCandidates: [agentCandidateSchema],

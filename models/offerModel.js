@@ -13,7 +13,7 @@ const offerSchema = new mongoose.Schema({
 
   type: {
     type: String,
-    enum: ['flat', 'percentage'],
+    enum: ['flat', 'percentage', 'combo', 'bogo'], // Added combo and bogo
     required: true,
   },
 
@@ -82,6 +82,21 @@ const offerSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+  },
+
+  // Combo offer: list of products and combo price
+  comboProducts: [
+    {
+      products: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+      comboPrice: { type: Number }
+    }
+  ],
+  // BOGO offer: buy one get one details
+  bogoDetails: {
+    buyProduct: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    getProduct: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    buyQty: { type: Number, default: 1 },
+    getQty: { type: Number, default: 1 }
   },
 });
 
