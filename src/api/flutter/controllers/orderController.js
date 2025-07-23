@@ -1802,15 +1802,12 @@ exports.getActiveOrder = async (req, res) => {
 
     const activeOrderStatuses = [
       "pending",
-      "pending_agent_acceptance",
       "accepted_by_restaurant",
       "preparing",
       "ready",
-      "assigned_to_agent",
       "picked_up",
       "on_the_way",
-      "in_progress",
-      "arrived"
+      "delivered"
     ];
 
     const activeOrder = await Order.findOne({
@@ -1863,3 +1860,9 @@ exports.getActiveOrder = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+
+
+
+

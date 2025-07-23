@@ -1,5 +1,38 @@
 const mongoose = require('mongoose');
 const mongoosePaginate = require("mongoose-paginate-v2");
+
+
+
+
+
+
+const agentCandidateSchema = new mongoose.Schema({
+  agent: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Agent',
+    required: true,
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'rejected',"timed_out"],
+    default: 'pending',
+  },
+  assignedAt: {
+    type: Date,
+    default: Date.now,
+  },
+    respondedAt: Date
+});
+
+
+
+
+
+
+
+
+
+
 const orderSchema = mongoose.Schema({
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant' },
@@ -44,36 +77,52 @@ onlinePaymentDetails: {
       ]
     },
 
-  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },  
-  agentAssignmentStatus: {
+  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' }, 
+
+   agentCandidates: [agentCandidateSchema],
+agentAssignedAt: { type: Date },
+
+agentAssignmentStatus: {
   type: String,
   enum: [
-    'not_assigned',
-    'assigned_waiting_acceptance',
-    'accepted',
-    'assigned',
-    'rejected',
-    'reassigned'  ,
-    'awaiting_agent_assignment'                
-],
-default: 'not_assigned'
+    "unassigned",
+    "awaiting_agent_acceptance",
+    "auto_accepted",
+    "accepted_by_agent",
+    "rejected_by_agent",
+    "manually_assigned_by_admin",
+    "reassigned_to_another"
+  ],
+  default: "unassigned"
 },
 
 
+agentAssignmentTimestamp: {
+  type: Date
+},
 agentDeliveryStatus: {
   type: String,
   enum: [
-    'not_assigned',
-    'assigned',
-    'reached_restaurant',
-    'picked_up',
-    'out_for_delivery',      // replaced 'en_route'
-    'reached_customer',
-    'delivered',
-    'cancelled'
+    'awaiting_start',              // ⏳ Agent assigned but not started yet (NEW)
+    'start_journey_to_restaurant', // 🧭 Agent should start heading to the restaurant
+    'reached_restaurant',          // 🏁 Agent reached restaurant
+    'picked_up',                   // 📦 Order picked
+    'out_for_delivery',            // 🚚 On the way to customer
+    'reached_customer',            // 📍 Reached customer location
+    'delivered',                   // ✅ Completed
+    'cancelled'                    // ❌ Cancelled
   ],
-  default: 'not_assigned'
+  default: 'awaiting_start'
 },
+ agentDeliveryTimestamps: {
+  start_journey_to_restaurant: Date,
+  reached_restaurant: Date,
+  picked_up: Date,
+  out_for_delivery: Date,
+  reached_customer: Date,
+  delivered: Date,
+},
+
 
   rejectionHistory: [{
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },
