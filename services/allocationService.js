@@ -2,7 +2,7 @@
   const Agent = require("../models/agentModel");
   const Order = require("../models/orderModel");
   const Restaurant = require("../models/restaurantModel");
-
+   const sendNotificationToAgent = require('../utils/sendNotificationToAgent')
   /**
    * Assign an agent to an order based on the current allocation method
    */
@@ -119,7 +119,7 @@ const assignOneByOne = async (orderId) => {
     location: {
       $near: {
         $geometry: restaurant.location,
-        $maxDistance: 5000,
+        $maxDistance: 50000,
       },
     },
   }).limit(10);
@@ -144,8 +144,20 @@ const assignOneByOne = async (orderId) => {
   await order.save();
 
   const firstAgent = nearbyAgents[0];
-  // await notifyAgent(firstAgent, order);
+  // await notifyAgent(firstAgent, order); 
+  console.log('notify ange first ',firstAgent._id)
 
+ await sendNotificationToAgent({
+  agentId: firstAgent._id,
+  title: "New Delivery Task",
+  body: "You have a new delivery assignment. Please accept or decline.",
+  data: {
+    type: "ORDER_ASSIGNMENT",
+    orderId: order._id.toString(),
+    customerName: order.customerName || "Customer",
+    address: order.deliveryAddress?.formatted || "",
+  },
+});
   console.log(`📨 First agent (${firstAgent.fullName}) notified for order ${orderId}`);
   return {
     status: "first_agent_notified",
@@ -242,7 +254,8 @@ const assignOneByOne = async (orderId) => {
 
 
 
-  exports.notifyNextPendingAgent = async (order) => {
+
+exports.notifyNextPendingAgent = async (order) => {
   const nextWaiting = order.agentCandidates.find(c => c.status === 'waiting');
   if (!nextWaiting) {
     console.log("❌ No more agents left to notify.");
@@ -260,7 +273,23 @@ const assignOneByOne = async (orderId) => {
     return { status: 'agent_not_found' };
   }
 
-  // await notifyAgent(nextAgent, order);
-  console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${order._id}`);
-  return { status: 'next_agent_notified', agentId: nextAgent._id };
+  // 🔔 Send notification to next pending agent
+  try {
+    await sendNotificationToAgent({
+      agentId: nextAgent._id,
+      title: "📦 New Delivery Task",
+      body: `You have a new delivery request.`,
+      data: {
+        orderId: order._id.toString(),
+        type: "order_allocation"
+      }
+    });
+
+    console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${order._id}`);
+    return { status: 'next_agent_notified', agentId: nextAgent._id };
+
+  } catch (err) {
+    console.error("🚨 Error sending notification to agent:", err.message);
+    return { status: 'notification_failed', error: err.message };
+  }
 };

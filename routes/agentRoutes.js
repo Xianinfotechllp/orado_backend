@@ -9,7 +9,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    agentAcceptOrRejectOrder,
    updateAgentDeliveryStatus,
    getAgentNotifications,deleteAgentNotification,
-   markAgentNotificationAsRead
+   markAgentNotificationAsRead,
+   getAgentHomeData
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
@@ -85,5 +86,7 @@ router.get('/agent-notifications/:agentId',getAgentNotifications);
 router.delete('/agent-notifications/:notificationId',deleteAgentNotification);
 router.put('/mark-as-read/:notificationId',markAgentNotificationAsRead);
 
+//home data
+router.get('/home-data', protectAgent, getAgentHomeData)
 
 module.exports = router;
