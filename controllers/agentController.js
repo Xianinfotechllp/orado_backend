@@ -980,6 +980,8 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
     const order = await Order.findById(orderId);
 
+    console.log(order)
+
     if (!order) {
       return res.status(404).json({
         status: "error",
@@ -1008,6 +1010,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       order.assignedAgent = agentId;
       order.agentAssignmentStatus = "accepted_by_agent";
       order.agentAcceptedAt = new Date();
+       await order.save();
     }
 
     // 🔁 If rejected, trigger next candidate allocation here if needed

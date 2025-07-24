@@ -6,49 +6,78 @@ exports.createOffer = async (req, res) => {
     const {
       title,
       description,
-      type,
+      type, // 'flat', 'percentage', 'combo', 'bogo'
       discountValue,
       maxDiscount,
       minOrderValue,
       applicableRestaurants,
       applicableProducts,
-      applicableLevel,
+      applicableLevel, // 'product' or 'order'
       validFrom,
       validTill,
       isActive,
-      createdBy,
+      createdBy, // 'admin' or 'restaurant'
       createdByRestaurant,
       usageLimitPerUser,
       totalUsageLimit,
       comboProducts,
-      bogoDetails,
+      comboPrice,
+      bogoDetails, // { buyProduct, getProduct, buyQty, getQty }
+      priority
     } = req.body;
 
-    // Basic validation
-    if (!title || !type || !discountValue || !minOrderValue || !validFrom || !validTill || !createdBy || !applicableLevel) {
-      return res.status(400).json({ error: 'Missing required fields.' });
+    // === Validate Basic Required Fields ===
+    if (!title || !type || !validFrom || !validTill) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Conditional validation
-    if (type === 'percentage' && !maxDiscount) {
-      return res.status(400).json({ error: 'maxDiscount is required for percentage offer.' });
+    // === Validate Offer Dates ===
+    if (new Date(validFrom) >= new Date(validTill)) {
+      return res.status(400).json({ error: "validFrom must be before validTill." });
     }
 
-    if (type === 'combo' && (!comboProducts || comboProducts.length === 0)) {
-      return res.status(400).json({ error: 'comboProducts required for combo offer.' });
+    // === Validate Discount Value ===
+    if (["flat", "percentage"].includes(type) && !discountValue) {
+      return res.status(400).json({ error: "discountValue is required for flat or percentage offer." });
     }
 
-    if (type === 'bogo' && (!bogoDetails || !bogoDetails.buyProduct || !bogoDetails.getProduct)) {
-      return res.status(400).json({ error: 'bogoDetails required for BOGO offer.' });
+    // === Type-Specific Validations ===
+    switch (type) {
+      case "percentage":
+        if (!maxDiscount) {
+          return res.status(400).json({ error: "maxDiscount is required for percentage offer." });
+        }
+        break;
+
+      case "combo":
+        if (!comboProducts || comboProducts.length < 2) {
+          return res.status(400).json({ error: "At least 2 comboProducts are required for combo offer." });
+        }
+        if (!comboPrice) {
+          return res.status(400).json({ error: "comboPrice is required for combo offer." });
+        }
+        break;
+
+      case "bogo":
+        if (
+          !bogoDetails ||
+          !bogoDetails.buyProduct ||
+          !bogoDetails.getProduct ||
+          !bogoDetails.buyQty ||
+          !bogoDetails.getQty
+        ) {
+          return res.status(400).json({ error: "Complete bogoDetails are required for BOGO offer." });
+        }
+        break;
     }
 
-    // Create new offer
-    const newOffer = new Offer({
+    // === Prepare Offer Payload ===
+    const offerData = {
       title,
       description,
       type,
-      discountValue,
-      maxDiscount,
+      discountValue: ["flat", "percentage"].includes(type) ? discountValue : undefined,
+      maxDiscount: type === "percentage" ? maxDiscount : undefined,
       minOrderValue,
       applicableRestaurants,
       applicableProducts,
@@ -57,22 +86,33 @@ exports.createOffer = async (req, res) => {
       validTill,
       isActive,
       createdBy,
-      createdByRestaurant: createdBy === 'restaurant' ? createdByRestaurant : null,
+      createdByRestaurant: createdBy === "restaurant" ? createdByRestaurant : null,
       usageLimitPerUser,
       totalUsageLimit,
-      comboProducts: type === 'combo' ? comboProducts : [],
-      bogoDetails: type === 'bogo' ? bogoDetails : undefined,
-    });
+      priority: priority || 10,
+      createdAt: new Date(),
+    };
 
+    if (type === "combo") {
+      offerData.comboProducts = comboProducts;
+      offerData.comboPrice = comboPrice;
+    }
+
+    if (type === "bogo") {
+      offerData.bogoDetails = bogoDetails;
+    }
+
+    // === Save Offer ===
+    const newOffer = new Offer(offerData);
     await newOffer.save();
 
     return res.status(201).json({
-      message: 'Offer created successfully',
+      message: "Offer created successfully",
       offer: newOffer,
     });
   } catch (err) {
-    console.error('Error creating offer:', err);
-    return res.status(500).json({ error: 'Server error while creating offer' });
+    console.error("Error creating offer:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
