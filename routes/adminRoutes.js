@@ -219,7 +219,7 @@ router.put("/manager/:managerId",updateManager)
 router.delete("/manager/:managerId",deleteManager)
 
 const admin = require('../config/firebaseAdmin');
-const fcmToken = 'fluX5yjjQ-2QZlZ3xAXiGq:APA91bHNiuTRDZcaWXuUVtM7Nq5_YZlYzSEyexKtXCXFa8HUar8LZBY7YwWDm6plq_dXXrLTg6egQ3togtoBfUvUAjywpq_DXCfRzQawX3h5Y6RbD2cSA8g';
+const fcmToken = 'c9f62RNhS8O3MREtBPpDze:APA91bFaz9yZDrjDYMCV_KyXVZbCMTgBgAA_7U5VyEod-i_F7eC-gliDCjxRualK23bn42IqJhvqYeeuNsVfo2vvBfJVs2j70pJlCFAHvQqOvGGfC3TyYzw';
 router.get('/send-test-notification', async (req, res) => {
   const message = {
     token: fcmToken,

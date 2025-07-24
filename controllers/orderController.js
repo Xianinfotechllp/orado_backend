@@ -1264,15 +1264,18 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       tipAmount = 0
     } = req.body;
 
+    // Validate input
     if (!cartId || !userId) {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
 
+    // Fetch Cart
     const cart = await Cart.findOne({ _id: cartId, user: userId });
     if (!cart || !cart.products?.length) {
       return res.status(404).json({ error: "Cart not found or empty" });
     }
 
+    // Fetch Restaurant
     const restaurant = await Restaurant.findById(cart.restaurantId);
     if (!restaurant) {
       return res.status(404).json({ error: "Restaurant not found" });
@@ -1281,18 +1284,19 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
 
-    // Optional: check service area
+    // Optional: Check if user is within restaurant's service area
     const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
       userCoords,
       restaurant._id
     );
 
+    // Step 1: Calculate base cart total (pre-offer, pre-surge)
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
 
-    // ✅ Get valid offers for the restaurant
+    // Step 2: Get active and valid offers for the restaurant
     const offers = await Offer.find({
       applicableRestaurants: restaurant._id,
       isActive: true,
@@ -1300,19 +1304,22 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       validTill: { $gte: new Date() }
     }).lean();
 
+    // Step 3: Calculate surge fee based on location and order value
     const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
 
+    // Step 4: Get cityId using geo coordinates
     const cityId = await geoService.findCityByCoordinates(longitude, latitude);
 
+    // Step 5: Calculate delivery fee based on distance and city settings
     const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
       userCoords,
       cityId
     );
 
-    // ✅ Calculate cost breakdown using V2 method
+    // Step 6: Get final cost breakdown from cost calculation engine
     const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
@@ -1325,39 +1332,57 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       merchantId: restaurant._id
     });
 
-    console.log ("Cost Summary:", costSummary);
+    console.log(costSummary)
 
+
+
+    // Step 7: Calculate distance between restaurant and customer
     const distanceKm = turf.distance(
       turf.point(userCoords),
       turf.point(restaurantCoords),
       { units: "kilometers" }
     );
 
-    const summary = {
-      deliveryFee,
-      discount: costSummary.offerDiscount + costSummary.couponDiscount,
-      distanceKm,
-      subtotal: costSummary.cartTotal,
-      tipAmount: costSummary.tipAmount,
-      tax: costSummary.totalTaxAmount,
-      totalTaxAmount: costSummary.totalTaxAmount,
-      taxes: costSummary.taxBreakdown,
+    // Step 8: Construct summary object
+   // Step 8: Construct summary object
+const summary = {
+  subtotal: costSummary.cartTotal,
 
-      // ✅ Added fields
-      packingCharges: costSummary.merchantPackingCharges,
-      totalPackingCharge: costSummary.totalMerchantPackingCharge,
+  // Discounts
+  discount: costSummary.totalDiscount,
+  offerDiscount: costSummary.offerDiscount,
+  couponDiscount: costSummary.couponDiscount,
+  comboDiscount: costSummary.comboDiscount,
+  offersApplied: costSummary.offersApplied,
+  combosApplied: costSummary.combosApplied,
 
-      additionalCharges: costSummary.additionalCharges,
-      totalAdditionalCharges: costSummary.totalAdditionalCharges,
+  // Delivery + Surge + Tip
+  deliveryFee,
+  surgeFee: costSummary.surgeFee,
+  isSurge,
+  surgeReason: costSummary.surgeReason || surgeObj?.reason || null,
+  tipAmount: costSummary.tipAmount,
 
-      surgeFee: costSummary.surgeFee,
-      total: costSummary.finalAmount,
+  // Packing and Addons
+  packingCharges: costSummary.packingCharges,
+  totalPackingCharge: costSummary.totalPackingCharge,
+  additionalCharges: costSummary.additionalCharges,
+  totalAdditionalCharges: costSummary.totalAdditionalCharges,
 
-      offersApplied: costSummary.offersApplied,
-      isSurge,
-      surgeReason: surgeObj?.reason || null
-    };
+  // Tax
+  taxes: costSummary.taxBreakdown,
+  tax: costSummary.totalTaxAmount,
+  totalTaxAmount: costSummary.totalTaxAmount,
 
+  // Distance Info
+  distanceKm,
+
+  // Final Amount
+  total: costSummary.finalAmount
+};
+
+
+    // Final response
     return res.status(200).json({
       message: "Bill summary calculated successfully",
       data: summary
@@ -1368,6 +1393,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 
 
 exports.reassignExpiredOrders = async () => {

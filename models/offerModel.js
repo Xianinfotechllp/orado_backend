@@ -22,6 +22,14 @@ const offerSchema = new mongoose.Schema({
     required: true,
   },
 
+  discountValue: {
+  type: Number,
+  required: function () {
+    return this.type === "flat" || this.type === "percentage";
+  },
+},
+
+
   maxDiscount: {
     type: Number, // applicable if type is 'percentage'
   },

@@ -451,32 +451,82 @@ exports.calculateOrderCostV2 = async ({
   merchantId
 }) => {
   let cartTotal = 0;
-  cartProducts.forEach(item => {
-    cartTotal += item.price * item.quantity;
-  });
+  let appliedCombos = [];
 
-  // ✅ Apply Offers
-  let offerDiscount = 0;
-  let appliedOffer = null;
-  if (offers.length) {
-    offers.forEach(offer => {
-      let discount = 0;
-      if (offer.type === "flat") {
-        discount = offer.discountValue;
-      } else if (offer.type === "percentage") {
-        discount = (cartTotal * offer.discountValue) / 100;
-        if (offer.maxDiscount) {
-          discount = Math.min(discount, offer.maxDiscount);
+  // Clone cartProducts to modify quantities during combo processing
+  let cartCopy = JSON.parse(JSON.stringify(cartProducts));
+
+  // ✅ Handle Combo Offers from Offer Schema
+  let comboDiscount = 0;
+  const comboOffers = offers.filter(o => o.type === "combo" && o.comboProducts?.length);
+
+  comboOffers.forEach(offer => {
+    offer.comboProducts.forEach(combo => {
+      let matchCount = Infinity;
+
+      combo.products.forEach(comboItem => {
+        const cartItem = cartCopy.find(ci => ci.productId.toString() === comboItem.product.toString());
+        if (!cartItem || cartItem.quantity < comboItem.quantity) {
+          matchCount = 0;
+        } else {
+          matchCount = Math.min(matchCount, Math.floor(cartItem.quantity / comboItem.quantity));
         }
-      }
-      if (discount > offerDiscount) {
-        offerDiscount = discount;
-        appliedOffer = offer;
+      });
+
+      if (matchCount > 0) {
+        // Calculate actual price of the combo items
+        let actualPrice = 0;
+        combo.products.forEach(ci => {
+          const cartItem = cartCopy.find(item => item.productId.toString() === ci.product.toString());
+          actualPrice += cartItem.price * ci.quantity * matchCount;
+          cartItem.quantity -= ci.quantity * matchCount;
+        });
+
+        const comboPriceTotal = combo.comboPrice * matchCount;
+        comboDiscount += actualPrice - comboPriceTotal;
+        cartTotal += comboPriceTotal;
+
+        appliedCombos.push({
+          title: combo.name || offer.title,
+          times: matchCount,
+          saved: actualPrice - comboPriceTotal
+        });
       }
     });
-  }
+  });
 
-  // ✅ Apply Coupon
+  // ✅ Add remaining products (not part of combos)
+  cartCopy.forEach(item => {
+    if (item.quantity > 0) {
+      cartTotal += item.price * item.quantity;
+    }
+  });
+
+  // ✅ Apply Regular Offers (flat, percentage)
+  let offerDiscount = 0;
+  let appliedOffer = null;
+
+  const regularOffers = offers.filter(o => o.type === "flat" || o.type === "percentage");
+  regularOffers.forEach(offer => {
+    if (cartTotal < offer.minOrderValue) return;
+
+    let discount = 0;
+    if (offer.type === "flat") {
+      discount = offer.discountValue;
+    } else if (offer.type === "percentage") {
+      discount = (cartTotal * offer.discountValue) / 100;
+      if (offer.maxDiscount) {
+        discount = Math.min(discount, offer.maxDiscount);
+      }
+    }
+
+    if (discount > offerDiscount) {
+      offerDiscount = discount;
+      appliedOffer = offer;
+    }
+  });
+
+  // ✅ Apply Coupon (you can make this dynamic in DB later)
   let couponDiscount = 0;
   if (couponCode) {
     if (couponCode === "WELCOME50") {
@@ -486,10 +536,10 @@ exports.calculateOrderCostV2 = async ({
     }
   }
 
-  // ✅ Taxable amount after offer
+  // ✅ Calculate Taxable Amount
   const taxableAmount = cartTotal - offerDiscount;
 
-  // ✅ Get Tax, Packing, and Additional Charges Breakdown
+  // ✅ Charges Breakdown (taxes, packing, add-ons)
   const {
     totalTaxAmount,
     taxBreakdown,
@@ -506,7 +556,7 @@ exports.calculateOrderCostV2 = async ({
   // ✅ Surge Fee
   const surgeFee = isSurge ? surgeFeeAmount : 0;
 
-  // ✅ Final before revenue share
+  // ✅ Final Amount Before Revenue Share
   const finalAmountBeforeRevenueShare =
     taxableAmount +
     deliveryFee +
@@ -517,7 +567,7 @@ exports.calculateOrderCostV2 = async ({
     surgeFee -
     couponDiscount;
 
-  // ✅ Revenue Share Calculation
+  // ✅ Revenue Share Amount
   let revenueShareAmount = 0;
   if (revenueShare.type === 'percentage') {
     revenueShareAmount = (finalAmountBeforeRevenueShare * revenueShare.value) / 100;
@@ -525,14 +575,17 @@ exports.calculateOrderCostV2 = async ({
     revenueShareAmount = revenueShare.value;
   }
 
-  // ✅ Final Return Object
+  // ✅ Final Response
   return {
     cartTotal,
     deliveryFee,
     tipAmount,
+    comboDiscount,
     offerDiscount,
     couponDiscount,
+    totalDiscount: comboDiscount + offerDiscount + couponDiscount,
     offersApplied: appliedOffer ? [appliedOffer.title] : [],
+    combosApplied: appliedCombos,
     taxableAmount,
     taxBreakdown,
     totalTaxAmount,
@@ -548,3 +601,4 @@ exports.calculateOrderCostV2 = async ({
     appliedOffer
   };
 };
+
