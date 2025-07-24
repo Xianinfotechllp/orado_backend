@@ -1154,3 +1154,34 @@ exports.getAgentNotifications = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+
+exports.deleteAgentNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+
+    if (!notificationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Notification ID is required',
+      });
+    }
+
+    const deleted = await AgentNotification.findByIdAndDelete(notificationId);
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Notification deleted successfully',
+    });
+  } catch (error) {
+    console.error('❌ Error deleting notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
