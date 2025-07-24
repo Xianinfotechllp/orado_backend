@@ -83,7 +83,7 @@ router.put(
 
 router.get('/agent-notifications/:agentId',getAgentNotifications);
 router.delete('/agent-notifications/:notificationId',deleteAgentNotification);
-router.delete('/mark-as-read/:notificationId',markAgentNotificationAsRead);
+router.put('/mark-as-read/:notificationId',markAgentNotificationAsRead);
 
 
 module.exports = router;
