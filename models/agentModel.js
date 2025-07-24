@@ -8,12 +8,12 @@ const agentSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     profilePicture: { type: String }, // URL to the profile picture
 
- password: {
-  type: String,
-  required: true,
-  minlength: 6,
-select: false
-},
+    password: {
+      type: String,
+      required: true,
+      minlength: 6,
+      select: false,
+    },
 
     bankAccountDetails: {
       accountNumber: { type: String },
@@ -25,8 +25,6 @@ select: false
       type: Boolean,
       default: false,
     },
-
- 
 
     payoutDetails: {
       totalEarnings: { type: Number, default: 0 },
@@ -51,30 +49,30 @@ select: false
       lastAwardedDate: { type: Date },
     },
 
-    deliveryStatus: {
-      currentOrderId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }], // current order(s)
-      status: {
-        type: String,
-        enum: [
-          "assigned_to_agent",
-          "picked_up",
-          "in_progress",
-          "completed",
-          "cancelled_by_customer",
-          "pending_agent_acceptance",
-          "arrived",
-          "available",
-        ],
-        default: "available",
-      },
-      estimatedDeliveryTime: { type: Date }, // estimated time of arrival
-      // location: {
-      //   latitude: { type: Number },
-      //   longitude: { type: Number },
-      // },
-      accuracy: { type: Number }, // GPS accuracy in meters
-      currentOrderCount: { type: Number, default: 0 },
-    },
+    // deliveryStatus: {
+    //   currentOrderId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }], // current order(s)
+    //   status: {
+    //     type: String,
+    //     enum: [
+    //       "assigned_to_agent",
+    //       "picked_up",
+    //       "in_progress",
+    //       "completed",
+    //       "cancelled_by_customer",
+    //       "pending_agent_acceptance",
+    //       "arrived",
+    //       "available",
+    //     ],
+    //     default: "available",
+    //   },
+    //   estimatedDeliveryTime: { type: Date }, // estimated time of arrival
+    //   // location: {
+    //   //   latitude: { type: Number },
+    //   //   longitude: { type: Number },
+    //   // },
+    //   accuracy: { type: Number }, // GPS accuracy in meters
+    //   currentOrderCount: { type: Number, default: 0 },
+    // },
 
     location: {
       type: {
@@ -86,11 +84,19 @@ select: false
         type: [Number], // [longitude, latitude]
         default: [0, 0],
       },
-        accuracy: {
-    type: Number, // in meters
-    default: 0,
-  }
-    },
+      accuracy: {
+        type: Number, // in meters
+        default: 0,
+      },
+  },
+
+    fcmTokens: [
+  {
+    token: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now },
+  },
+],
+
 
     leaveStatus: {
       leaveApplied: { type: Boolean, default: false },
@@ -138,40 +144,25 @@ select: false
     //   insurance: { type: String },
     // },
 
+    applicationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
 
-
-
-
-applicationStatus: {
-  type: String,
-  enum: ["pending", "approved", "rejected"],
-  default: "pending"
-},
-
-role: {
-  type: String,
-  enum: ["agent", "admin", "super_admin"], // more roles if needed
-  default: "agent"
-},
-
-
-
-
-
-
-
-
-
-
-
+    role: {
+      type: String,
+      enum: ["agent", "admin", "super_admin"], // more roles if needed
+      default: "agent",
+    },
 
     agentApplicationDocuments: {
-  license: { type: String },
-  insurance: { type: String },
-  rcBook: { type: String }, // ✅ new
-  pollutionCertificate: { type: String }, // ✅ new
-  submittedAt: { type: Date },
-},
+      license: { type: String },
+      insurance: { type: String },
+      rcBook: { type: String }, // ✅ new
+      pollutionCertificate: { type: String }, // ✅ new
+      submittedAt: { type: Date },
+    },
 
     feedback: {
       averageRating: { type: Number, default: 0, min: 0, max: 5 },
@@ -254,35 +245,104 @@ role: {
       letter: { type: String }, // Can be a message, or URL if file
     },
 
-    activityStatus: {
-      type: String,
-      enum: ["Free", "Busy", "Inactive"],
-      default: "Inactive",
-    },
-lastAssignedAt: { type: Date, default: null },
-    agentStatus: {
+//  agentDeliveryStatus: {
+//     type: String,
+//     enum: [
+//       'start_journey_to_restaurant', // 🧭 Agent should start heading to the restaurant
+//       'reached_restaurant',          // 🏁 Agent reached restaurant, can pick up
+//       'picked_up',                   // 📦 Order picked
+//       'out_for_delivery',            // 🚚 En route to customer
+//       'reached_customer',            // 📍 Agent at customer location
+//       'delivered',                   // ✅ Completed
+//       'cancelled'                    // ❌ Cancelled by system/admin/user
+//     ],
+//     default: 'start_journey_to_restaurant'
+//   },
+
+//     // activityStatus: {
+//     //   type: String,
+//     //   enum: ["Free", "Busy", "Inactive"],
+//     //   default: "Inactive",
+//     // },
+
+//     agentAssignmentStatus: {
+//       type: String,
+//       enum: [
+//         "unassigned", // No agent has been assigned yet
+//         "awaiting_agent_acceptance", // Agent assigned and waiting to accept/reject
+//         "auto_accepted", // Agent auto-assigned (no permission to reject)
+//         "accepted_by_agent", // Agent accepted the assignment manually
+//         "rejected_by_agent", // Agent rejected the assignment
+//         "manually_assigned_by_admin", // Admin manually assigned agent (treated as accepted)
+//         "reassigned_to_another", // Reassigned to a different agent
+//       ],
+//     },
+lastManualAssignmentAt: { type: Date, default: null },
+
+lastAssignmentType: {
+  type: String,
+  enum: ["manual", "auto"],
+  default: null,
+},
+
+
+    
+agentAssignmentStatusHistory: [
+  {
     status: {
       type: String,
       enum: [
-        "OFFLINE",
-        "AVAILABLE",
-        "ORDER_ASSIGNED",
-        "ORDER_ACCEPTED",
-        "ARRIVED_AT_RESTAURANT",
-        "PICKED_UP",
-        "ON_THE_WAY",
-        "AT_CUSTOMER_LOCATION",
-        "DELIVERED",
-        "ON_BREAK",
+        "unassigned",
+        "awaiting_agent_acceptance",
+        "auto_accepted",
+        "accepted_by_agent",
+        "rejected_by_agent",
+        "manually_assigned_by_admin",
+        "reassigned_to_another"
       ],
-      default: "OFFLINE",
     },
-    availabilityStatus: {
-      type: String,
-      enum: ["AVAILABLE", "UNAVAILABLE"],
-      default: "UNAVAILABLE",
+    changedAt: {
+      type: Date,
+      default: Date.now,
     },
-  },
+  }
+],
+
+
+    agentDeliveryTimestamps: {
+  start_journey_to_restaurant: Date,
+  reached_restaurant: Date,
+  picked_up: Date,
+  out_for_delivery: Date,
+  reached_customer: Date,
+  delivered: Date,
+},
+
+    lastAssignedAt: { type: Date, default: null },
+
+    agentStatus: {
+        status: {
+          type: String,
+          enum: [
+            "OFFLINE",
+            "AVAILABLE",
+            "ORDER_ASSIGNED",
+            "ORDER_ACCEPTED",
+            "ARRIVED_AT_RESTAURANT",
+            "PICKED_UP",
+            "ON_THE_WAY",
+            "AT_CUSTOMER_LOCATION",
+            "DELIVERED",
+            "ON_BREAK",
+          ],
+          default: "OFFLINE",
+        },
+        availabilityStatus: {
+          type: String,
+          enum: ["AVAILABLE", "UNAVAILABLE"],
+          default: "UNAVAILABLE",
+        },
+      },
   },
   { timestamps: true }
 );

@@ -4,6 +4,11 @@ const socketIo = require("socket.io");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const redisClient = require("./config/redisClient");
+
+
+
+
 
 const app = express();
 const server = http.createServer(app);
@@ -61,8 +66,15 @@ dotenv.config();
 require("./config/dbConfig")();
 const centralSocket = require("./sockets/centralSocket");
 // Import models
+
+//serperate routes of flutter 
+const flutterRoutes = require("./src/api/flutter/index")
+
+
 const Agent = require("./models/agentModel");
 const Chat = require("./models/chatModel");
+
+
 
 // Import routes
 const userRouter = require("./routes/userRoutes");
@@ -103,7 +115,7 @@ const globalOrdersettingsRoutes = require("./routes/globalOrderSettingsRoutes")
 // const taxRoutes = require("./routes/taxRoutes");
 const taxAndChargeRoutes = require("./routes/taxAndChargeRoutes");
 const incentiveRoutes = require('./routes/incentiveRoutes');
-
+const offerAndDiscountRoutes = require("./routes/offerAndDisocuntRoutes")
 // const orderSettingsRoutes = require("./routes/orderSettingsRoutes");
 // Socket.io Connection Handler
 io.on("connection", (socket) => {
@@ -136,6 +148,27 @@ io.on("connection", (socket) => {
           console.log(`Socket ${socket.id} joined room: user_${userId}`);
       }
     });
+
+    socket.on("agent:location", (data) => {
+    const { agentId, lat, lng } = data;
+
+    // Optionally: Save to Redis GEOSET
+    redis.geoadd("agent_locations", lng, lat, agentId);
+
+    // Broadcast to admin dashboards or dispatchers
+    socket.broadcast.emit("admin:updateLocation", {
+      agentId,
+      lat,
+      lng,
+    });
+
+    // Update agent lastSeen for availability timeout logic
+    redis.set(`agent_last_seen:${agentId}`, Date.now(), "EX", 60);
+  });
+
+
+
+
 
   // Agent live status + location
   socket.on(
@@ -457,6 +490,11 @@ app.use("/global-order-settings",globalOrdersettingsRoutes)
 // app.use("/taxes",taxRoutes)
 app.use("/tax-and-charge", taxAndChargeRoutes);
 app.use("/incentive",incentiveRoutes)
+app.use("/offer-and-discount",offerAndDiscountRoutes)   
+
+
+
+app.use('/api/flutter',flutterRoutes);
 
 // Default route
 app.get("/", (req, res) => {

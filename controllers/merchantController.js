@@ -695,6 +695,7 @@ exports.getOrderDetails = async (req, res) => {
       preparationTime: order.preparationTime,
       instructions: order.instructions,
       scheduledTime: order.scheduledTime,
+      deliveryCharge: order.deliveryCharge,
 
       customer: {
         _id: order.customerId._id,

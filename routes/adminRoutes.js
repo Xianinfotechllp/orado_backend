@@ -11,6 +11,11 @@ const {
   updateCategory,
   deleteCategory,
 getApprovedRestaurants ,
+
+
+
+
+
    getAdminProfileById, updateAdminProfile, updateAdminPassword, getOrdersByCustomerAdmin,
 
   
@@ -35,7 +40,7 @@ const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require(".
 const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
 const {sendNotification} = require('../controllers/admin/notificationControllers');
 const { getAllCustomers, getSingleCustomerDetails, getOrdersByCustomerForAdmin } = require("../controllers/admin/customerControllers");
-const { getAllAgents, manualAssignAgent } = require("../controllers/admin/agentControllers");
+const { getAllAgents, manualAssignAgent ,sendNotificationToAgent} = require("../controllers/admin/agentControllers");
 const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
 const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
 const { createManager, getAllManagers, getManagerById, updateManager, deleteManager } = require("../controllers/admin/managerController");
@@ -178,7 +183,6 @@ router.get("/restaurants/dropdown-list",getAllRestaurantsDropdown)
 //get restuat list for table in admin 
 router.get("/restaurants/table-list",getAllRestaurants)
 router.get('/restaurants/details/:id',getRestaurantById)
-
 //get restuat lsit forn map 
 
 router.get("/restaurants/location-map",getAllRestaurantsForMap)
@@ -192,9 +196,10 @@ router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)
 
 
 router.get("/agent/list",getAllAgents)
-
-router.post("/agent/manual-assign",manualAssignAgent)
+router.post("/agent/send-notification",sendNotificationToAgent)
 // alowcation controller for agent 
+router.post("/agent/manual-assign",manualAssignAgent)
+
 
 
 router.put("/allocation-settings", updateAllocationSettings);
@@ -223,6 +228,30 @@ router.delete("/manager/:managerId",deleteManager)
 // give warning to agent
 router.post("/agent/:agentId/give-warning", protect, checkRole('admin'), giveWarning);
 router.post("/agent/:agentId/terminate", protect, checkRole('admin'), terminateAgent);
+
+const admin = require('../config/firebaseAdmin');
+const fcmToken = 'fluX5yjjQ-2QZlZ3xAXiGq:APA91bHNiuTRDZcaWXuUVtM7Nq5_YZlYzSEyexKtXCXFa8HUar8LZBY7YwWDm6plq_dXXrLTg6egQ3togtoBfUvUAjywpq_DXCfRzQawX3h5Y6RbD2cSA8g';
+router.get('/send-test-notification', async (req, res) => {
+  const message = {
+    token: fcmToken,
+    notification: {
+      title: ' New order received from McDonalds 3 items. Total amount 250 rupees. Please open the app for full details',
+      body: 'you got a new order',
+    },
+    data: {
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    },
+  };
+
+  try {
+    const response = await admin.messaging().send(message);
+    console.log('✅ Notification sent:', response);
+    res.json({ success: true, message: 'Notification sent', response });
+  } catch (error) {
+    console.error('❌ Error sending notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 module.exports = router;
 

@@ -1,5 +1,36 @@
 const mongoose = require('mongoose');
 const mongoosePaginate = require("mongoose-paginate-v2");
+
+
+
+
+
+
+const agentCandidateSchema = new mongoose.Schema({
+  agent: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Agent',
+    required: true,
+  },
+  status: {
+    type: String,
+    enum: ['waiting', 'pending', 'accepted', 'rejected', 'timed_out'],
+    default: 'waiting', // All will be waiting initially
+  },
+  assignedAt: Date,     // Only set when moved to 'pending'
+  respondedAt: Date,
+});
+
+
+
+
+
+
+
+
+
+
+
 const orderSchema = mongoose.Schema({
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant' },
@@ -43,21 +74,57 @@ onlinePaymentDetails: {
         'arrived', 'completed',"delivered", 'cancelled_by_customer', "awaiting_agent_assignment", "rejected_by_agent"
       ]
     },
-
-  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },  
-  agentAssignmentStatus: {
+allocationMethod: {
   type: String,
-enum: [
-    'not_assigned',
-    'assigned_waiting_acceptance',
-    'accepted',
-    'assigned',
-    'rejected',
-    'reassigned'  ,
-    'awaiting_agent_assignment'                
-],
-default: 'not_assigned'
+  enum: ['manual', 'one_by_one', 'nearest', 'fifo', 'broadcast'],
+  default: 'one_by_one', // or whatever you want as default
 },
+  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' }, 
+
+   agentCandidates: [agentCandidateSchema],
+agentAssignedAt: { type: Date },
+
+agentAssignmentStatus: {
+  type: String,
+  enum: [
+    "unassigned",
+    "awaiting_agent_acceptance",
+    "auto_accepted",
+    "accepted_by_agent",
+    "rejected_by_agent",
+    "manually_assigned_by_admin",
+    "reassigned_to_another"
+  ],
+  default: "unassigned"
+},
+
+
+agentAssignmentTimestamp: {
+  type: Date
+},
+agentDeliveryStatus: {
+  type: String,
+  enum: [
+    'awaiting_start',              // ⏳ Agent assigned but not started yet (NEW)
+    'start_journey_to_restaurant', // 🧭 Agent should start heading to the restaurant
+    'reached_restaurant',          // 🏁 Agent reached restaurant
+    'picked_up',                   // 📦 Order picked
+    'out_for_delivery',            // 🚚 On the way to customer
+    'reached_customer',            // 📍 Reached customer location
+    'delivered',                   // ✅ Completed
+    'cancelled'                    // ❌ Cancelled
+  ],
+  default: 'awaiting_start'
+},
+ agentDeliveryTimestamps: {
+  start_journey_to_restaurant: Date,
+  reached_restaurant: Date,
+  picked_up: Date,
+  out_for_delivery: Date,
+  reached_customer: Date,
+  delivered: Date,
+},
+
 
   rejectionHistory: [{
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },
@@ -92,6 +159,29 @@ offerDiscount: {
 
 cartTotal: Number,
 
+
+
+chargesBreakdown: {
+  packingCharges: [
+    {
+      name: { type: String },
+      amount: { type: Number, default: 0 },
+      description: { type: String, default: 'Packing Charge' }
+    }
+  ],
+  totalPackingCharge: { type: Number, default: 0 },
+
+  additionalCharges: [
+    {
+      name: String,
+      type: { type: String, enum: ['Fixed', 'Percentage'] },
+      rate: String, // e.g., "5%" or ""
+      amount: Number
+    }
+  ],
+  totalAdditionalCharges: { type: Number, default: 0 }
+}
+,
 
 
 

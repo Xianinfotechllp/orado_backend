@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const offerSchema = new mongoose.Schema({
   title: {
@@ -8,12 +8,12 @@ const offerSchema = new mongoose.Schema({
 
   description: {
     type: String,
-    default: '',
+    default: "",
   },
 
   type: {
     type: String,
-    enum: ['flat', 'percentage'],
+    enum: ["flat", "percentage", "combo", "bogo"], // Added combo and bogo
     required: true,
   },
 
@@ -34,7 +34,7 @@ const offerSchema = new mongoose.Schema({
   applicableRestaurants: [
     {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Restaurant',
+      ref: "Restaurant",
     },
   ],
 
@@ -55,13 +55,13 @@ const offerSchema = new mongoose.Schema({
 
   createdBy: {
     type: String,
-    enum: ['admin', 'restaurant'],
+    enum: ["admin", "restaurant"],
     required: true,
   },
 
   createdByRestaurant: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Restaurant',
+    ref: "Restaurant",
     default: null, // if createdBy is 'restaurant'
   },
 
@@ -83,6 +83,37 @@ const offerSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  applicableProducts: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+    },
+  ],
+  applicableLevel: {
+    type: String,
+    enum: ["Restaurant", "Product"],
+    required: true,
+  },
+  // Combo offer: list of products and combo price
+  comboProducts: [
+    {
+      name: String,
+      products: [
+        {
+          product: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+          quantity: { type: Number, default: 1 },
+        },
+      ],
+      comboPrice: Number,
+    },
+  ],
+  // BOGO offer: buy one get one details
+  bogoDetails: {
+    buyProduct: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+    getProduct: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+    buyQty: { type: Number, default: 1 },
+    getQty: { type: Number, default: 1 },
+  },
 });
 
-module.exports = mongoose.model('Offer', offerSchema);
+module.exports = mongoose.model("Offer", offerSchema);
