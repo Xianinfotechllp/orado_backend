@@ -24,7 +24,7 @@ const { fr } = require("../utils/formatOrder");
 const formatOrder = require("../utils/formatOrder");
 const { notifyNextPendingAgent } = require("../services/allocationService");
 const AgentNotification = require("../models/AgentNotificationModel");
-
+const AgentSelfie = require("../models/AgentSelfieModel");
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -1301,6 +1301,82 @@ exports.getAgentHomeData = async (req, res) => {
       message: "Failed to fetch agent home data",
       error: err.message
     });
+  }
+};
+
+
+
+
+
+exports.uploadSelfie = async (req, res) => {
+  try {
+    const agentId = req.user._id;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const existing = await AgentSelfie.findOne({
+      agentId,
+      takenAt: { $gte: startOfDay }
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: 'Selfie already submitted for today.' });
+    }
+
+    const uploadResult = await uploadOnCloudinary(file.path, 'agent_selfies');
+
+    if (!uploadResult?.secure_url) {
+      return res.status(500).json({ message: 'Failed to upload selfie.' });
+    }
+
+    const selfie = await AgentSelfie.create({
+      agentId,
+      imageUrl: uploadResult.secure_url
+    });
+
+    return res.json({ message: 'Selfie submitted successfully.', selfie });
+
+  } catch (err) {
+    console.error("Upload Selfie Error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+
+exports.getSelfieStatus = async (req, res) => {
+  try {
+    const agentId = req.user._id;
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const selfie = await AgentSelfie.findOne({
+      agentId,
+      takenAt: { $gte: startOfDay },
+    });
+
+    if (selfie) {
+      return res.json({
+        selfieRequired: false,
+        message: 'Selfie already submitted for today',
+        selfie,
+      });
+    } else {
+      return res.json({
+        selfieRequired: true,
+        message: 'Selfie is required for today',
+      });
+    }
+  } catch (error) {
+    console.error('Get selfie status error:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 

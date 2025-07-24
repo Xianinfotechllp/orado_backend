@@ -13,7 +13,9 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    updateAgentDeliveryStatus,
    getAgentNotifications,deleteAgentNotification,
    markAgentNotificationAsRead,
-   getAgentHomeData
+   getAgentHomeData,
+   getSelfieStatus,
+   uploadSelfie
 
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
@@ -99,5 +101,8 @@ router.put('/mark-as-read/:notificationId',markAgentNotificationAsRead);
 //home data
 router.get('/home-data', protectAgent, getAgentHomeData)
 
+//agent selfie 
 
+router.post('/upload-selfie', protectAgent, upload.single('selfie'), uploadSelfie)
+router.get('/selfie/status', protectAgent,getSelfieStatus)
 module.exports = router;
