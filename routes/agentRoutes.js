@@ -4,6 +4,9 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    activateUnlockedPermissions, getAgentEarnings, getMyPermissionRequests, handleAgentResponse,
    getAgentAvailabilityStatus,
    addOrUpdateAgentDeviceInfo,
+
+ agentWarnings, agentTerminationInfo
+
    getAssignedOrders,
    getAssignedOrderDetails,
    agentAcceptOrRejectOrder,
@@ -11,6 +14,7 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    getAgentNotifications,deleteAgentNotification,
    markAgentNotificationAsRead,
    getAgentHomeData
+
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
@@ -72,6 +76,12 @@ router.post("/save-fcm-token", saveFcmToken);
 //get assinged routes
 
 router.get("/assigned-orders",protectAgent,getAssignedOrders);
+
+
+// warnings and termination
+router.get("/warnings", protect, agentWarnings);
+router.get("/termination-info", protect, agentTerminationInfo);
+
 router.get("/assigned-orders/:orderId",protectAgent,getAssignedOrderDetails);
 
 router.put("/agent-order-response/:orderId", protectAgent,agentAcceptOrRejectOrder);
@@ -88,5 +98,6 @@ router.put('/mark-as-read/:notificationId',markAgentNotificationAsRead);
 
 //home data
 router.get('/home-data', protectAgent, getAgentHomeData)
+
 
 module.exports = router;
