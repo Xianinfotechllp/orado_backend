@@ -4,7 +4,7 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    activateUnlockedPermissions, getAgentEarnings, getMyPermissionRequests, handleAgentResponse,
    getAgentAvailabilityStatus,
    addOrUpdateAgentDeviceInfo,
-   getAssignedOrders
+   getAssignedOrders, agentWarnings, agentTerminationInfo
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
@@ -65,4 +65,9 @@ router.post('/device-info', addOrUpdateAgentDeviceInfo);
 //get assinged routes
 
 router.get("/assigned-orders",protectAgent,getAssignedOrders);
+
+// warnings and termination
+router.get("/warnings", protect, agentWarnings);
+router.get("/termination-info", protect, agentTerminationInfo);
+
 module.exports = router;

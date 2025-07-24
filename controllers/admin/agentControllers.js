@@ -150,4 +150,51 @@ exports.manualAssignAgent = async (req, res) => {
 };
 
 
+exports.giveWarning = async (req, res) => {
+  const adminId = req.user._id;
+  const { agentId } = req.params;
+  const { reason } = req.body;
+
+  if (!reason) return res.status(400).json({ message: "Reason is required" });
+
+  const agent = await Agent.findById(agentId);
+  if (!agent) return res.status(404).json({ message: "Agent not found." });
+
+  agent.warnings.push({ reason, issuedBy: adminId });
+  await agent.save();
+
+  return res.json({ message: "Warning issued.", agent });
+};
+
+
+exports.terminateAgent = async (req, res) => {
+  const adminId = req.user._id;
+  const { agentId } = req.params;
+  const { reason, letter } = req.body;
+
+  const agent = await Agent.findById(agentId);
+  if (!agent) return res.status(404).json({ message: "Agent not found." });
+
+  // Set termination
+  agent.termination = {
+    terminated: true,
+    terminatedAt: new Date(),
+    issuedBy: adminId,
+    reason,
+    letter,
+  };
+  await agent.save();
+
+  // Change user's role to "customer"
+  await User.findByIdAndUpdate(agent.userId, {
+    userType: "customer",
+    isAgent: false,
+    agentApplicationStatus: "rejected"
+  });
+
+  return res.json({ message: "Agent terminated.", agent });
+};
+
+
+
 
