@@ -965,6 +965,30 @@ exports.getAssignedOrders = async (req, res) => {
   }
 };
 
+
+// GET /agent/warnings   
+exports.agentWarnings = async (req, res) => {
+  const userId = req.user._id;
+  const agent = await Agent.findOne({ userId });
+  if (!agent) return res.status(404).json({ message: "Agent not found." });
+
+  return res.json({ warnings: agent.warnings || [] });
+};
+
+
+// GET /agent/termination
+exports.agentTerminationInfo = async (req, res) => {
+  const userId = req.user._id;
+  const agent = await Agent.findOne({ userId });
+  if (!agent) return res.status(404).json({ message: "Agent not found." });
+
+  if (!agent.termination?.terminated)
+    return res.status(404).json({ message: "No termination found." });
+
+  return res.json({ termination: agent.termination });
+};
+
+
 exports.agentAcceptOrRejectOrder = async (req, res) => {
   try {
     const agentId = req.user._id;
@@ -1279,3 +1303,4 @@ exports.getAgentHomeData = async (req, res) => {
     });
   }
 };
+

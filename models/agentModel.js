@@ -230,6 +230,21 @@ const agentSchema = new mongoose.Schema(
         notes: { type: String },
       },
     ],
+    warnings: [
+      {
+        reason: { type: String, required: true },
+        issuedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        issuedAt: { type: Date, default: Date.now }
+      }
+    ],
+    termination: {
+      terminated: { type: Boolean, default: false },
+      terminatedAt: { type: Date },
+      issuedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      reason: { type: String },
+      letter: { type: String }, // Can be a message, or URL if file
+    },
+
 //  agentDeliveryStatus: {
 //     type: String,
 //     enum: [
@@ -269,6 +284,7 @@ lastAssignmentType: {
   enum: ["manual", "auto"],
   default: null,
 },
+
 
     
 agentAssignmentStatusHistory: [
