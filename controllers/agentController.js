@@ -1185,3 +1185,47 @@ exports.deleteAgentNotification = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+
+exports.markAgentNotificationAsRead = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+
+    if (!notificationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Notification ID is required',
+      });
+    }
+
+    const notification = await AgentNotification.findById(notificationId);
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found',
+      });
+    }
+
+    if (notification.read) {
+      return res.status(200).json({
+        success: true,
+        message: 'Notification already marked as read',
+      });
+    }
+
+    notification.read = true;
+    notification.readAt = new Date();
+    await notification.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Notification marked as read',
+      data: notification,
+    });
+  } catch (error) {
+    console.error('❌ Error marking notification as read:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+

@@ -177,7 +177,6 @@ router.get("/restaurants/dropdown-list",getAllRestaurantsDropdown)
 //get restuat list for table in admin 
 router.get("/restaurants/table-list",getAllRestaurants)
 router.get('/restaurants/details/:id',getRestaurantById)
-router.post('/send-notification-to-agent',sendNotificationToAgent)
 //get restuat lsit forn map 
 
 router.get("/restaurants/location-map",getAllRestaurantsForMap)
