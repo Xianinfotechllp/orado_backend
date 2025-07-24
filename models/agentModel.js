@@ -88,7 +88,7 @@ const agentSchema = new mongoose.Schema(
         type: Number, // in meters
         default: 0,
       },
-    },
+  },
 
     fcmTokens: [
   {

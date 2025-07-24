@@ -7,7 +7,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    getAssignedOrders,
    getAssignedOrderDetails,
    agentAcceptOrRejectOrder,
-   updateAgentDeliveryStatus
+   updateAgentDeliveryStatus,
+   getAgentNotifications
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
@@ -77,4 +78,7 @@ router.put(
   protectAgent,
   updateAgentDeliveryStatus
 );
+
+
+router.get('/agent-notifications/:agentId',getAgentNotifications);
 module.exports = router;

@@ -1,5 +1,9 @@
 const Agent = require("../../models/agentModel");
 const Order = require("../../models/orderModel")
+
+
+const AgentNotification = require('../../models/AgentNotificationModel');
+const admin = require('../../config/firebaseAdmin'); 
 exports.getAllAgents = async (req, res) => {
   try {
     const agents = await Agent.find().select(
@@ -219,6 +223,55 @@ exports.saveFcmToken = async (req, res) => {
   } catch (err) {
     console.error("Error saving FCM token:", err);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+
+
+exports.sendNotificationToAgent = async (req, res) => {
+  try {
+    const { agentId, title, body, data = {} } = req.body;
+
+    const agent = await Agent.findById(agentId);
+    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No FCM tokens found for this agent',
+      });
+    }
+
+    const messages = agent.fcmTokens.map(tokenObj => ({
+      token: tokenObj.token,
+      notification: { title, body },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    }));
+
+    const responses = await Promise.allSettled(
+      messages.map(msg => admin.messaging().send(msg))
+    );
+
+    await AgentNotification.create({
+      agentId,
+      title,
+      body,
+      data,
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification sent and saved',
+      results: responses,
+    });
+  } catch (error) {
+    console.error('❌ Error sending agent notification:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 

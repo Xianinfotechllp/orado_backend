@@ -17,7 +17,7 @@ const formatOrderResponse = require('../utils/formatOrderResponse');
 const {fr} = require("../utils/formatOrder");
 const  formatOrder  = require('../utils/formatOrder');
 const { notifyNextPendingAgent } = require('../services/allocationService');
-
+const AgentNotification =  require('../models/AgentNotificationModel');
 
 exports.registerAgent = async (req, res) => {
   try {
@@ -1122,5 +1122,35 @@ console.log("Request Agent:", agentId.toString());
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+
+
+
+
+exports.getAgentNotifications = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    if (!agentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'agentId is required',
+      });
+    }
+
+    const notifications = await AgentNotification.find({ agentId })
+      .sort({ sentAt: -1 }); // latest first
+
+    res.json({
+      success: true,
+      message: 'Notifications fetched successfully',
+      data: notifications,
+    });
+  } catch (error) {
+    console.error('❌ Error fetching agent notifications:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
