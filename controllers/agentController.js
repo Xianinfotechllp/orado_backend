@@ -1336,10 +1336,24 @@ exports.applyLeave = async (req, res) => {
 exports.getLeaveStatus = async (req, res) => {
   try {
     const agentId = req.user._id;
-    const agent = await Agent.findById(agentId, "leaves");
-    res.status(200).json(agent.leaves);
+
+    const agent = await Agent.findById(agentId).select("leaves");
+
+    if (!agent)
+      return res.status(404).json({ message: "Agent not found" });
+
+    const sortedLeaves = (agent.leaves || []).sort((a, b) => new Date(b.leaveStartDate) - new Date(a.leaveStartDate));
+
+    res.status(200).json({
+      message: "Leave status retrieved successfully",
+      total: sortedLeaves.length,
+      leaves: sortedLeaves,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
 
 
 
@@ -1452,6 +1466,5 @@ exports.agentLogout = async (req, res) => {
   } catch (error) {
     console.error("Error during agent logout:", error);
     return res.status(500).json({ message: "Internal server error" });
-
   }
 };

@@ -102,7 +102,19 @@ const agentSchema = new mongoose.Schema(
   {
     leaveStartDate: { type: Date, required: true },
     leaveEndDate: { type: Date, required: true },
-    leaveType: { type: String, enum: ["Sick", "Personal", "Vacation"], required: true },
+leaveType: {
+  type: String,
+  enum: [
+    "Sick",          // For health-related issues
+    "Personal",      // For personal matters
+    "Vacation",      // Planned time off
+    "Emergency",     // Unexpected urgent leave
+    "Family",        // Family-related occasions
+    "Festival",      // Religious/cultural holidays
+    "Unplanned"      // For unspecified short leaves
+  ],
+  required: true
+},
     status: { type: String, enum: ["Pending", "Approved", "Rejected"], default: "Pending" },
     appliedAt: { type: Date, default: Date.now },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
