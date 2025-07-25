@@ -16,6 +16,7 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    getAgentHomeData,
    getSelfieStatus,
    uploadSelfie
+   
 
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
@@ -81,8 +82,8 @@ router.get("/assigned-orders",protectAgent,getAssignedOrders);
 
 
 // warnings and termination
-router.get("/warnings", protect, agentWarnings);
-router.get("/termination-info", protect, agentTerminationInfo);
+router.get("/warnings", protectAgent, agentWarnings);
+router.get("/termination-info", protectAgent, agentTerminationInfo);
 
 router.get("/assigned-orders/:orderId",protectAgent,getAssignedOrderDetails);
 

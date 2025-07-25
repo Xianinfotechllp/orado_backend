@@ -456,7 +456,7 @@ exports.calculateOrderCostV2 = async ({
   // Clone cartProducts to modify quantities during combo processing
   let cartCopy = JSON.parse(JSON.stringify(cartProducts));
 
-  // ✅ Handle Combo Offers from Offer Schema
+  // ✅ Handle Combo Offers
   let comboDiscount = 0;
   const comboOffers = offers.filter(o => o.type === "combo" && o.comboProducts?.length);
 
@@ -502,14 +502,25 @@ exports.calculateOrderCostV2 = async ({
     }
   });
 
-  // ✅ Apply Regular Offers (flat, percentage)
+  // ✅ Apply Flat / Percentage Offers (with product-level support)
   let offerDiscount = 0;
   let appliedOffer = null;
 
   const regularOffers = offers.filter(o => o.type === "flat" || o.type === "percentage");
+
   regularOffers.forEach(offer => {
+    // ✅ Skip if offer is product-level and doesn't match any cart product
+    if (offer.applicableLevel === "Product") {
+      const matched = cartProducts.some(cp =>
+        offer.applicableProducts?.some(p => p.toString() === cp.productId.toString())
+      );
+      if (!matched) return;
+    }
+
+    // ✅ Check minimum order value
     if (cartTotal < offer.minOrderValue) return;
 
+    // ✅ Calculate offer discount
     let discount = 0;
     if (offer.type === "flat") {
       discount = offer.discountValue;
@@ -520,13 +531,14 @@ exports.calculateOrderCostV2 = async ({
       }
     }
 
+    // ✅ Apply if better than current
     if (discount > offerDiscount) {
       offerDiscount = discount;
       appliedOffer = offer;
     }
   });
 
-  // ✅ Apply Coupon (you can make this dynamic in DB later)
+  // ✅ Apply Coupon Code Logic (optional logic - can be moved to DB later)
   let couponDiscount = 0;
   if (couponCode) {
     if (couponCode === "WELCOME50") {
@@ -536,10 +548,10 @@ exports.calculateOrderCostV2 = async ({
     }
   }
 
-  // ✅ Calculate Taxable Amount
+  // ✅ Calculate taxable amount
   const taxableAmount = cartTotal - offerDiscount;
 
-  // ✅ Charges Breakdown (taxes, packing, add-ons)
+  // ✅ Charges Breakdown (packing, add-ons, taxes, etc.)
   const {
     totalTaxAmount,
     taxBreakdown,
@@ -567,7 +579,7 @@ exports.calculateOrderCostV2 = async ({
     surgeFee -
     couponDiscount;
 
-  // ✅ Revenue Share Amount
+  // ✅ Revenue Share
   let revenueShareAmount = 0;
   if (revenueShare.type === 'percentage') {
     revenueShareAmount = (finalAmountBeforeRevenueShare * revenueShare.value) / 100;
@@ -601,4 +613,5 @@ exports.calculateOrderCostV2 = async ({
     appliedOffer
   };
 };
+
 

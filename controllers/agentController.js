@@ -1269,17 +1269,11 @@ exports.getAgentHomeData = async (req, res) => {
   try {
     // Mock data (this would normally come from DB queries)
     const mockData = {
-
-     
-
       currentTask: {
         orderId: "ORD12978",
-        restaurantName: "gokul hotel",
+        restaurantName: "Gokul Hotel",
         customerName: "Amarnadhs",
-  
         agentDeliveryStatus: "awaiting_start", // pickup_pending, on_route, delivered
-       
-        
       },
 
       dailySummary: {
@@ -1288,6 +1282,12 @@ exports.getAgentHomeData = async (req, res) => {
         distanceTravelledKm: 12.4,
         rating: 4.6,
         notificationCount: 3,
+      },
+
+      orderSummary: {
+        totalOrders: 12,
+        newOrders: 3,
+        rejectedOrders: 2,
       }
     };
 
@@ -1303,6 +1303,7 @@ exports.getAgentHomeData = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -1379,4 +1380,3 @@ exports.getSelfieStatus = async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 };
-
