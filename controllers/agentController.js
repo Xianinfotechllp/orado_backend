@@ -138,7 +138,7 @@ exports.registerAgent = async (req, res) => {
 
 exports.loginAgent = async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const { identifier, password, fcmToken } = req.body;
 
     if (!identifier || !password) {
       return res
@@ -153,7 +153,6 @@ exports.loginAgent = async (req, res) => {
       return res.status(400).json({ message: "Invalid phone/email format" });
     }
 
-    // Find agent by email or phoneNumber
     const agent = await Agent.findOne(
       isEmail ? { email: identifier } : { phoneNumber: identifier }
     ).select("+password");
@@ -171,17 +170,20 @@ exports.loginAgent = async (req, res) => {
       return res.status(401).json({ message: "Incorrect password" });
     }
 
+    // ✅ Store FCM token if provided and not already saved
+    if (fcmToken && !agent.fcmTokens.some(t => t.token === fcmToken)) {
+      agent.fcmTokens.push({ token: fcmToken });
+      await agent.save();
+    }
+
     const token = jwt.sign(
       { agentId: agent._id, role: agent.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Optional: session handling
     const MAX_SESSIONS = 1;
-    const existingSessions = await Session.find({ userId: agent._id }).sort({
-      createdAt: 1,
-    });
+    const existingSessions = await Session.find({ userId: agent._id }).sort({ createdAt: 1 });
 
     if (existingSessions.length >= MAX_SESSIONS) {
       const oldest = existingSessions[0];
@@ -214,11 +216,10 @@ exports.loginAgent = async (req, res) => {
     });
   } catch (error) {
     console.error("Agent login error:", error);
-    return res
-      .status(500)
-      .json({ message: "Server error", error: error.message });
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 // Logout user by deleting session
 
@@ -968,8 +969,8 @@ exports.getAssignedOrders = async (req, res) => {
 
 // GET /agent/warnings   
 exports.agentWarnings = async (req, res) => {
-  const userId = req.user._id;
-  const agent = await Agent.findOne({ userId });
+  const agentId = req.user._id;
+  const agent = await Agent.findById(agentId)
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   return res.json({ warnings: agent.warnings || [] });
@@ -978,8 +979,8 @@ exports.agentWarnings = async (req, res) => {
 
 // GET /agent/termination
 exports.agentTerminationInfo = async (req, res) => {
-  const userId = req.user._id;
-  const agent = await Agent.findOne({ userId });
+  const agentId = req.user._id;
+  const agent = await Agent.findOne(agentId)
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   if (!agent.termination?.terminated)
@@ -1378,5 +1379,36 @@ exports.getSelfieStatus = async (req, res) => {
   } catch (error) {
     console.error('Get selfie status error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+
+exports.agentLogout = async (req, res) => {
+  try {
+    const { agentId, fcmToken } = req.body;
+
+    if (!agentId || !fcmToken) {
+      return res.status(400).json({ message: "Missing agentId or fcmToken" });
+    }
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const originalLength = agent.fcmTokens.length;
+    agent.fcmTokens = agent.fcmTokens.filter(t => t.token !== fcmToken);
+
+    if (agent.fcmTokens.length === originalLength) {
+      return res.status(404).json({ message: "FCM token not found for this agent" });
+    }
+
+    await agent.save();
+
+    res.status(200).json({ message: "Logged out and FCM token removed successfully" });
+  } catch (err) {
+    console.error("Error during agent logout:", err);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

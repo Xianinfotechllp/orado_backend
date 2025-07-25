@@ -248,22 +248,25 @@ exports.saveFcmToken = async (req, res) => {
       return res.status(400).json({ message: "Missing agentId or fcmToken" });
     }
 
-    const agent = await Agent.findById(agentId);
+    // 1. Remove token from all other agents (optional, to enforce one-token-per-device)
+    await Agent.updateMany(
+      { _id: { $ne: agentId } },
+      { $pull: { fcmTokens: { token: fcmToken } } }
+    );
 
+    // 2. Load current agent
+    const agent = await Agent.findById(agentId);
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
+    // 3. Remove duplicate tokens within the same agent
+    agent.fcmTokens = agent.fcmTokens.filter(t => t.token !== fcmToken);
 
-    if (existingToken) {
-      // Update existing token timestamp
-      existingToken.updatedAt = new Date();
-    } else {
-      // Add new token
-      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
-    }
+    // 4. Add fresh token
+    agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
 
+    // 5. Save agent
     await agent.save();
 
     res.status(200).json({ message: "FCM token saved successfully" });
@@ -272,7 +275,6 @@ exports.saveFcmToken = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 
 
