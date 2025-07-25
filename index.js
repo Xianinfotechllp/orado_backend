@@ -4,7 +4,7 @@ const socketIo = require("socket.io");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const redisClient = require("./config/redisClient");
+const redis = require("./config/redisClient");
 
 
 
