@@ -1386,10 +1386,11 @@ exports.getSelfieStatus = async (req, res) => {
 
 exports.agentLogout = async (req, res) => {
   try {
-    const { agentId, fcmToken } = req.body;
+    const agentId = req.user._id; // Comes from protectAgent middleware
+    const { fcmToken } = req.body;
 
-    if (!agentId || !fcmToken) {
-      return res.status(400).json({ message: "Missing agentId or fcmToken" });
+    if (!fcmToken) {
+      return res.status(400).json({ message: "Missing FCM token" });
     }
 
     const agent = await Agent.findById(agentId);
@@ -1397,18 +1398,23 @@ exports.agentLogout = async (req, res) => {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    const originalLength = agent.fcmTokens.length;
-    agent.fcmTokens = agent.fcmTokens.filter(t => t.token !== fcmToken);
+    const initialTokenCount = agent.fcmTokens.length;
 
-    if (agent.fcmTokens.length === originalLength) {
-      return res.status(404).json({ message: "FCM token not found for this agent" });
+    agent.fcmTokens = agent.fcmTokens.filter(
+      (t) => t.token !== fcmToken
+    );
+
+    const tokenRemoved = agent.fcmTokens.length !== initialTokenCount;
+
+    if (!tokenRemoved) {
+      return res.status(404).json({ message: "FCM token not found" });
     }
 
     await agent.save();
 
-    res.status(200).json({ message: "Logged out and FCM token removed successfully" });
-  } catch (err) {
-    console.error("Error during agent logout:", err);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(200).json({ message: "Logout successful. FCM token removed." });
+  } catch (error) {
+    console.error("Error during agent logout:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };

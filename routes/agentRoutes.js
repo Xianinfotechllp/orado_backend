@@ -15,7 +15,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    markAgentNotificationAsRead,
    getAgentHomeData,
    getSelfieStatus,
-   uploadSelfie
+   uploadSelfie,
+   agentLogout
    
 
 } = require("../controllers/agentController")
@@ -39,7 +40,7 @@ router.post(
 router.post("/login",loginAgent)
 router.post("/forgot-password", protect, checkRole('agent'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('agent'), resetPassword)
-router.post("/logout", protect, checkRole('agent'), logoutAgent)
+router.post("/logout", protectAgent, agentLogout)
 
 // add/update bank details
 router.put("/bank-details", protect, checkRole('agent'), updateAgentBankDetails);
