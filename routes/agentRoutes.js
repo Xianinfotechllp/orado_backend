@@ -5,7 +5,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    getAgentAvailabilityStatus,
    addOrUpdateAgentDeviceInfo,
 
- agentWarnings, agentTerminationInfo,
+ agentWarnings, agentTerminationInfo, applyLeave, getLeaveStatus,
+
 
    getAssignedOrders,
    getAssignedOrderDetails,
@@ -105,6 +106,13 @@ router.get('/home-data', protectAgent, getAgentHomeData)
 
 //agent selfie 
 
+
+// Agent leave management
+router.post('/leave/apply', protect, applyLeave);
+router.get('/leave/status', protect, getLeaveStatus);
+
+
 router.post('/upload-selfie', protectAgent, upload.single('selfie'), uploadSelfie)
 router.get('/selfie/status', protectAgent,getSelfieStatus)
+
 module.exports = router;
