@@ -18,7 +18,7 @@ getApprovedRestaurants ,
 const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
-const {terminateAgent, giveWarning} = require("../controllers/admin/agentControllers")
+const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave} = require("../controllers/admin/agentControllers")
 
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -223,6 +223,10 @@ router.delete("/manager/:managerId",deleteManager)
 // give warning to agent
 router.post("/agent/:agentId/give-warning", protect, checkRole('admin'), giveWarning);
 router.post("/agent/:agentId/terminate", protect, checkRole('admin'), terminateAgent);
+
+// Agent leave management
+router.get('/leaves', protect, checkRole('admin'), getAllLeaveRequests);
+router.post('/leaves/:agentId/:leaveId/decision', protect, checkRole('admin'), processLeave);
 
 module.exports = router;
 

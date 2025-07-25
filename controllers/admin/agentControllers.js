@@ -196,5 +196,55 @@ exports.terminateAgent = async (req, res) => {
 };
 
 
+// Get pending leave requests
+
+exports.getAllLeaveRequests = async (req, res) => {
+  try {
+    const statusFilter = req.query.status || "Pending";
+
+    const agents = await Agent.aggregate([
+      { $unwind: "$leaves" },
+      { $match: { "leaves.status": statusFilter } },
+      {
+        $project: {
+          _id: 1,
+          fullName: 1,
+          leaves: 1,
+        },
+      },
+    ]);
+    res.status(200).json(agents);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
 
 
+// Approve or reject leave request
+
+exports.processLeave = async (req, res) => {
+  try {
+    const { agentId, leaveId } = req.params;
+    const { decision, rejectionReason } = req.body; 
+    const adminId = req.user._id; 
+
+    if (!["Approved", "Rejected"].includes(decision))
+      return res.status(400).json({ message: "Invalid decision" });
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const leave = agent.leaves.id(leaveId);
+    if (!leave) return res.status(404).json({ message: "Leave request not found" });
+
+    leave.status = decision;
+    leave.reviewedBy = adminId;
+    leave.reviewedAt = new Date();
+    if (decision === "Rejected") leave.rejectionReason = rejectionReason;
+
+    await agent.save();
+    res.status(200).json({ message: `Leave has been ${decision}` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
