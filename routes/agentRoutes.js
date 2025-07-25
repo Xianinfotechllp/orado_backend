@@ -5,7 +5,7 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    getAgentAvailabilityStatus,
    addOrUpdateAgentDeviceInfo,
 
- agentWarnings, agentTerminationInfo, applyLeave, getLeaveStatus
+ agentWarnings, agentTerminationInfo, applyLeave, getLeaveStatus,
 
    getAssignedOrders,
    getAssignedOrderDetails,
