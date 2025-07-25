@@ -1308,27 +1308,44 @@ exports.getAgentHomeData = async (req, res) => {
 exports.applyLeave = async (req, res) => {
   try {
     const agentId = req.user._id; 
-    const { leaveStartDate, leaveEndDate, leaveType } = req.body;
+    const { leaveStartDate, leaveEndDate, leaveType, reason } = req.body;
 
+    // Basic validations
     if (!leaveStartDate || !leaveEndDate || !leaveType)
-      return res.status(400).json({ message: "Missing fields" });
+      return res.status(400).json({ message: "Missing required fields" });
 
+    if (new Date(leaveStartDate) > new Date(leaveEndDate))
+      return res.status(400).json({ message: "Start date cannot be after end date" });
 
     const agent = await Agent.findById(agentId);
+
+    // Optional: Check for overlapping leaves
+    const hasOverlap = agent.leaves.some(leave =>
+      (new Date(leave.leaveStartDate) <= new Date(leaveEndDate)) &&
+      (new Date(leave.leaveEndDate) >= new Date(leaveStartDate))
+    );
+
+    if (hasOverlap) {
+      return res.status(409).json({ message: "Leave request overlaps with existing leave" });
+    }
+
     agent.leaves.push({
       leaveStartDate,
       leaveEndDate,
       leaveType,
+      reason: reason || "", // optional field
       status: "Pending",
+      appliedAt: new Date()
     });
 
     await agent.save();
 
-    res.status(200).json({ message: "Leave request submitted" });
+    res.status(200).json({ message: "Leave request submitted successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
 
 
 // check leave status
