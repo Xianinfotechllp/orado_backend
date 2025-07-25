@@ -1304,6 +1304,42 @@ exports.getAgentHomeData = async (req, res) => {
     });
   }
 };
+// Apply for leave\
+exports.applyLeave = async (req, res) => {
+  try {
+    const agentId = req.user._id; 
+    const { leaveStartDate, leaveEndDate, leaveType } = req.body;
+
+    if (!leaveStartDate || !leaveEndDate || !leaveType)
+      return res.status(400).json({ message: "Missing fields" });
+
+
+    const agent = await Agent.findById(agentId);
+    agent.leaves.push({
+      leaveStartDate,
+      leaveEndDate,
+      leaveType,
+      status: "Pending",
+    });
+
+    await agent.save();
+
+    res.status(200).json({ message: "Leave request submitted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+// check leave status
+
+exports.getLeaveStatus = async (req, res) => {
+  try {
+    const agentId = req.user._id;
+    const agent = await Agent.findById(agentId, "leaves");
+    res.status(200).json(agent.leaves);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
 
 
 
@@ -1416,5 +1452,6 @@ exports.agentLogout = async (req, res) => {
   } catch (error) {
     console.error("Error during agent logout:", error);
     return res.status(500).json({ message: "Internal server error" });
+
   }
 };

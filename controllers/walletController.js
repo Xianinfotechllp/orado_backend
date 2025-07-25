@@ -82,9 +82,40 @@ exports.verifyAndCreditWallet = async (req, res) => {
   }
 };
 
+exports.getUserWalletTransactions = async (req, res) => {
+  try {
+    const userId = req.user._id;
 
+    let page = parseInt(req.query.page) || 1;
+    let limit = parseInt(req.query.limit) || 10;
+    if (page < 1) page = 1;
+    if (limit < 1) limit = 10;
 
+    const total = await WalletTransaction.countDocuments({ user: userId });
 
+    const skip = (page - 1) * limit;
+
+    // Fetch paginated transactions
+    const transactions = await WalletTransaction.find({ user: userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.status(200).json({
+      success: true,
+      transactions,
+      total,            
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      hasNextPage: (page * limit) < total,
+      hasPrevPage: page > 1
+    });
+  } catch (error) {
+    console.error("Error fetching user's wallet transactions:", error);
+    res.status(500).json({ error: "Failed to fetch wallet transactions." });
+  }
+};
 
 
 
