@@ -591,11 +591,11 @@ function startMockData() {
 socket.connect();
 
 // If not connected after 1 second, start mock data anyway
-setTimeout(() => {
-  if (!socket.connected) {
-    startMockData();
-  }
-}, 1000);
+// setTimeout(() => {
+//   if (!socket.connected) {
+//     startMockData();
+//   }
+// }, 1000);
 
 
 

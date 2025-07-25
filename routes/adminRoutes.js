@@ -230,7 +230,7 @@ router.post("/agent/:agentId/give-warning", protect, checkRole('admin'), giveWar
 router.post("/agent/:agentId/terminate", protect, checkRole('admin'), terminateAgent);
 
 const admin = require('../config/firebaseAdmin');
-const fcmToken ='fMBdJGXbRh2iIUuamsSG0Z:APA91bF9xKmS8AlJP6xIT2ehkgbo6m83VjJQHaz9Bmim71BmnxwqWXesgWk8fwek1rrbf6ztR2lDfPMeBK8znqtewF6PY58Px0PiHVGQWCaHLzHuVAzIFmA';
+const fcmToken ='dVpTk5gbTIuTXk4U8GrnKu:APA91bEZK0D-63_irRzutzdbc9o70Lntm-vUZV8wYqkhaRm4f3xPtwH-tpyUsB2ls76voVLAD7qtlUrPBPuPX0FEx_T1MAvrhz7JqjicUu_27vPo2kPaZ9o';
 router.get('/send-test-notification', async (req, res) => {
   const message = {
     token: fcmToken,
