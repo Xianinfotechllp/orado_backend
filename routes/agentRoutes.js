@@ -7,13 +7,18 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
 
  agentWarnings, agentTerminationInfo, applyLeave, getLeaveStatus,
 
+
    getAssignedOrders,
    getAssignedOrderDetails,
    agentAcceptOrRejectOrder,
    updateAgentDeliveryStatus,
    getAgentNotifications,deleteAgentNotification,
    markAgentNotificationAsRead,
-   getAgentHomeData
+   getAgentHomeData,
+   getSelfieStatus,
+   uploadSelfie,
+   agentLogout
+   
 
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
@@ -36,7 +41,7 @@ router.post(
 router.post("/login",loginAgent)
 router.post("/forgot-password", protect, checkRole('agent'), forgotPassword)
 router.post("/reset-password/:token", protect, checkRole('agent'), resetPassword)
-router.post("/logout", protect, checkRole('agent'), logoutAgent)
+router.post("/logout", protectAgent, agentLogout)
 
 // add/update bank details
 router.put("/bank-details", protect, checkRole('agent'), updateAgentBankDetails);
@@ -79,8 +84,8 @@ router.get("/assigned-orders",protectAgent,getAssignedOrders);
 
 
 // warnings and termination
-router.get("/warnings", protect, agentWarnings);
-router.get("/termination-info", protect, agentTerminationInfo);
+router.get("/warnings", protectAgent, agentWarnings);
+router.get("/termination-info", protectAgent, agentTerminationInfo);
 
 router.get("/assigned-orders/:orderId",protectAgent,getAssignedOrderDetails);
 
@@ -99,9 +104,15 @@ router.put('/mark-as-read/:notificationId',markAgentNotificationAsRead);
 //home data
 router.get('/home-data', protectAgent, getAgentHomeData)
 
+//agent selfie 
+
 
 // Agent leave management
 router.post('/leave/apply', protect, applyLeave);
 router.get('/leave/status', protect, getLeaveStatus);
+
+
+router.post('/upload-selfie', protectAgent, upload.single('selfie'), uploadSelfie)
+router.get('/selfie/status', protectAgent,getSelfieStatus)
 
 module.exports = router;

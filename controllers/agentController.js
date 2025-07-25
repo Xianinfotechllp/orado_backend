@@ -24,7 +24,7 @@ const { fr } = require("../utils/formatOrder");
 const formatOrder = require("../utils/formatOrder");
 const { notifyNextPendingAgent } = require("../services/allocationService");
 const AgentNotification = require("../models/AgentNotificationModel");
-
+const AgentSelfie = require("../models/AgentSelfieModel");
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -138,7 +138,7 @@ exports.registerAgent = async (req, res) => {
 
 exports.loginAgent = async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const { identifier, password, fcmToken } = req.body;
 
     if (!identifier || !password) {
       return res
@@ -153,7 +153,6 @@ exports.loginAgent = async (req, res) => {
       return res.status(400).json({ message: "Invalid phone/email format" });
     }
 
-    // Find agent by email or phoneNumber
     const agent = await Agent.findOne(
       isEmail ? { email: identifier } : { phoneNumber: identifier }
     ).select("+password");
@@ -171,17 +170,20 @@ exports.loginAgent = async (req, res) => {
       return res.status(401).json({ message: "Incorrect password" });
     }
 
+    // ✅ Store FCM token if provided and not already saved
+    if (fcmToken && !agent.fcmTokens.some(t => t.token === fcmToken)) {
+      agent.fcmTokens.push({ token: fcmToken });
+      await agent.save();
+    }
+
     const token = jwt.sign(
       { agentId: agent._id, role: agent.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Optional: session handling
     const MAX_SESSIONS = 1;
-    const existingSessions = await Session.find({ userId: agent._id }).sort({
-      createdAt: 1,
-    });
+    const existingSessions = await Session.find({ userId: agent._id }).sort({ createdAt: 1 });
 
     if (existingSessions.length >= MAX_SESSIONS) {
       const oldest = existingSessions[0];
@@ -214,11 +216,10 @@ exports.loginAgent = async (req, res) => {
     });
   } catch (error) {
     console.error("Agent login error:", error);
-    return res
-      .status(500)
-      .json({ message: "Server error", error: error.message });
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 // Logout user by deleting session
 
@@ -968,8 +969,8 @@ exports.getAssignedOrders = async (req, res) => {
 
 // GET /agent/warnings   
 exports.agentWarnings = async (req, res) => {
-  const userId = req.user._id;
-  const agent = await Agent.findOne({ userId });
+  const agentId = req.user._id;
+  const agent = await Agent.findById(agentId)
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   return res.json({ warnings: agent.warnings || [] });
@@ -978,8 +979,8 @@ exports.agentWarnings = async (req, res) => {
 
 // GET /agent/termination
 exports.agentTerminationInfo = async (req, res) => {
-  const userId = req.user._id;
-  const agent = await Agent.findOne({ userId });
+  const agentId = req.user._id;
+  const agent = await Agent.findOne(agentId)
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   if (!agent.termination?.terminated)
@@ -989,7 +990,6 @@ exports.agentTerminationInfo = async (req, res) => {
 };
 
 
-=======
 exports.agentAcceptOrRejectOrder = async (req, res) => {
   try {
     const agentId = req.user._id;
@@ -1270,17 +1270,11 @@ exports.getAgentHomeData = async (req, res) => {
   try {
     // Mock data (this would normally come from DB queries)
     const mockData = {
-
-     
-
       currentTask: {
         orderId: "ORD12978",
-        restaurantName: "gokul hotel",
+        restaurantName: "Gokul Hotel",
         customerName: "Amarnadhs",
-  
         agentDeliveryStatus: "awaiting_start", // pickup_pending, on_route, delivered
-       
-        
       },
 
       dailySummary: {
@@ -1289,6 +1283,12 @@ exports.getAgentHomeData = async (req, res) => {
         distanceTravelledKm: 12.4,
         rating: 4.6,
         notificationCount: 3,
+      },
+
+      orderSummary: {
+        totalOrders: 12,
+        newOrders: 3,
+        rejectedOrders: 2,
       }
     };
 
@@ -1330,6 +1330,7 @@ exports.applyLeave = async (req, res) => {
   }
 };
 
+
 // check leave status
 
 exports.getLeaveStatus = async (req, res) => {
@@ -1339,5 +1340,118 @@ exports.getLeaveStatus = async (req, res) => {
     res.status(200).json(agent.leaves);
   } catch (err) {
     res.status(500).json({ message: err.message });
+
+
+
+
+
+
+exports.uploadSelfie = async (req, res) => {
+  try {
+    const agentId = req.user._id;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const existing = await AgentSelfie.findOne({
+      agentId,
+      takenAt: { $gte: startOfDay }
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: 'Selfie already submitted for today.' });
+    }
+
+    const uploadResult = await uploadOnCloudinary(file.path, 'agent_selfies');
+
+    if (!uploadResult?.secure_url) {
+      return res.status(500).json({ message: 'Failed to upload selfie.' });
+    }
+
+    const selfie = await AgentSelfie.create({
+      agentId,
+      imageUrl: uploadResult.secure_url
+    });
+
+    return res.json({ message: 'Selfie submitted successfully.', selfie });
+
+  } catch (err) {
+    console.error("Upload Selfie Error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+
+exports.getSelfieStatus = async (req, res) => {
+  try {
+    const agentId = req.user._id;
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const selfie = await AgentSelfie.findOne({
+      agentId,
+      takenAt: { $gte: startOfDay },
+    });
+
+    if (selfie) {
+      return res.json({
+        selfieRequired: false,
+        message: 'Selfie already submitted for today',
+        selfie,
+      });
+    } else {
+      return res.json({
+        selfieRequired: true,
+        message: 'Selfie is required for today',
+      });
+    }
+  } catch (error) {
+    console.error('Get selfie status error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+
+exports.agentLogout = async (req, res) => {
+  try {
+    const agentId = req.user._id; // Comes from protectAgent middleware
+    const { fcmToken } = req.body;
+
+    if (!fcmToken) {
+      return res.status(400).json({ message: "Missing FCM token" });
+    }
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const initialTokenCount = agent.fcmTokens.length;
+
+    agent.fcmTokens = agent.fcmTokens.filter(
+      (t) => t.token !== fcmToken
+    );
+
+    const tokenRemoved = agent.fcmTokens.length !== initialTokenCount;
+
+    if (!tokenRemoved) {
+      return res.status(404).json({ message: "FCM token not found" });
+    }
+
+    await agent.save();
+
+    return res.status(200).json({ message: "Logout successful. FCM token removed." });
+  } catch (error) {
+    console.error("Error during agent logout:", error);
+    return res.status(500).json({ message: "Internal server error" });
+
   }
 };
