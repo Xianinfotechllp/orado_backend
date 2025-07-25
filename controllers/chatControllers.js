@@ -703,6 +703,7 @@ exports.sendAgentToAdminMessage = async (req, res) => {
 exports.getRestaurantCustomerChats = async (req, res) => {
   try {
     const restaurantId = req.user._id;
+    console.log("restarant id----", restaurantId)
     const chats = await Chat.find({
       participants: {
         $elemMatch: { id: restaurantId, modelType: 'restaurant' }
@@ -711,10 +712,10 @@ exports.getRestaurantCustomerChats = async (req, res) => {
     })
       .populate('participants.id', 'name email phone')
       .sort({ updatedAt: -1 });
-
+    console.log("chats--------", chats)
     res.status(200).json({
       success: true,
-      data: chats
+      data: chats 
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

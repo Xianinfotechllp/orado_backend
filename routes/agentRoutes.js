@@ -4,11 +4,22 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    activateUnlockedPermissions, getAgentEarnings, getMyPermissionRequests, handleAgentResponse,
    getAgentAvailabilityStatus,
    addOrUpdateAgentDeviceInfo,
-   getAssignedOrders, agentWarnings, agentTerminationInfo, applyLeave, getLeaveStatus
+
+ agentWarnings, agentTerminationInfo, applyLeave, getLeaveStatus
+
+   getAssignedOrders,
+   getAssignedOrderDetails,
+   agentAcceptOrRejectOrder,
+   updateAgentDeliveryStatus,
+   getAgentNotifications,deleteAgentNotification,
+   markAgentNotificationAsRead,
+   getAgentHomeData
+
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
-const {forgotPassword, resetPassword} = require('../controllers/userControllers')
+const {forgotPassword, resetPassword} = require('../controllers/userControllers');
+const { saveFcmToken } = require('../controllers/admin/agentControllers');
 
 
 router.post(
@@ -61,14 +72,33 @@ router.post('/activate-unlocked-perks', protect, checkRole('agent'), activateUnl
 router.get("/agent-earnings/:agentId", protectAgent, checkRole('agent'), getAgentEarnings)
 router.post('/device-info', addOrUpdateAgentDeviceInfo);
 
-    
+router.post("/save-fcm-token", saveFcmToken);
 //get assinged routes
 
 router.get("/assigned-orders",protectAgent,getAssignedOrders);
 
+
 // warnings and termination
 router.get("/warnings", protect, agentWarnings);
 router.get("/termination-info", protect, agentTerminationInfo);
+
+router.get("/assigned-orders/:orderId",protectAgent,getAssignedOrderDetails);
+
+router.put("/agent-order-response/:orderId", protectAgent,agentAcceptOrRejectOrder);
+router.put(
+  "/agent-delivery-status/:orderId",
+  protectAgent,
+  updateAgentDeliveryStatus
+);
+
+
+router.get('/agent-notifications/:agentId',getAgentNotifications);
+router.delete('/agent-notifications/:notificationId',deleteAgentNotification);
+router.put('/mark-as-read/:notificationId',markAgentNotificationAsRead);
+
+//home data
+router.get('/home-data', protectAgent, getAgentHomeData)
+
 
 // Agent leave management
 router.post('/leave/apply', protect, applyLeave);

@@ -41,10 +41,18 @@ preparationTime: {
 },
 
 
-availableAfterTime: {
+availability: {
   type: String,
-  default: null  // e.g., '17:00' = 5 PM
+  enum: ['always', 'time-based', 'out-of-stock'],
+  default: 'always'
 },
+availableAfterTime: {
+  type: String, // e.g. '17:00'
+  default: null
+}
+
+
+,
   foodType: {
     type: String,
     enum: ['veg', 'non-veg'],
@@ -80,6 +88,23 @@ availableAfterTime: {
     type: String,
     default: 'piece'
   },
+minimumOrderQuantity: {
+  type: Number,
+  default: 1
+},
+maximumOrderQuantity: {
+  type: Number,
+  default: 100
+},
+costPrice: {
+  type: Number,
+  default: 0
+},
+
+  enableInventory: {
+  type: Boolean,
+  default: false, // Disabled by default
+},
   stock: {
     type: Number,
     default: 0

@@ -1,5 +1,9 @@
 const Agent = require("../../models/agentModel");
 const Order = require("../../models/orderModel")
+
+
+const AgentNotification = require('../../models/AgentNotificationModel');
+const admin = require('../../config/firebaseAdmin'); 
 exports.getAllAgents = async (req, res) => {
   try {
     const agents = await Agent.find().select(
@@ -61,7 +65,7 @@ exports.manualAssignAgent = async (req, res) => {
   try {
     const { orderId, agentId } = req.body;
 
-    // Fetch order with customer & restaurant info
+    // 1. Fetch the order
     const order = await Order.findById(orderId)
       .populate({
         path: 'customerId',
@@ -76,33 +80,60 @@ exports.manualAssignAgent = async (req, res) => {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    // Ensure order is valid for assignment
     if (["completed", "delivered", "cancelled_by_customer"].includes(order.orderStatus)) {
       return res.status(400).json({ message: "Order already completed or invalid for assignment." });
     }
 
+    // 2. Fetch agent
     const agent = await Agent.findById(agentId);
     if (!agent) {
       return res.status(404).json({ message: "Agent not found." });
     }
 
-    if (agent.agentStatus.status !== "AVAILABLE") {
-      return res.status(400).json({ message: "Agent is not currently available for new orders." });
+    // ✅ We allow admin to assign even if agent is not "AVAILABLE", but can warn
+    if (agent.agentStatus?.status !== "AVAILABLE") {
+      console.warn("Warning: Assigning to an agent who is not marked AVAILABLE.");
     }
 
-    // Assign order
+    // 3. Update order
     order.assignedAgent = agentId;
-    order.agentAssignmentStatus = "assigned";
+    order.agentAssignmentStatus = "manually_assigned_by_admin";
+    order.agentAssignmentTimestamp = new Date();
     await order.save();
 
-    // Update agent info
-    agent.deliveryStatus.currentOrderId.push(order._id);
-    agent.deliveryStatus.currentOrderCount += 1;
+    // 4. Update agent deliveryStatus
+    if (!agent.deliveryStatus) {
+      agent.deliveryStatus = {
+        currentOrderId: [],
+        currentOrderCount: 0,
+        status: "ORDER_ASSIGNED"
+      };
+    }
+
+    if (!agent.deliveryStatus.currentOrderId.includes(order._id)) {
+      agent.deliveryStatus.currentOrderId.push(order._id);
+      agent.deliveryStatus.currentOrderCount += 1;
+    }
+
     agent.agentStatus.status = "ORDER_ASSIGNED";
     agent.lastAssignedAt = new Date();
+    agent.lastManualAssignmentAt = new Date();
+    agent.lastAssignmentType = "manual";
+
+    // 5. Update agent assignment history
+    if (!Array.isArray(agent.agentAssignmentStatusHistory)) {
+      agent.agentAssignmentStatusHistory = [];
+    }
+
+    agent.agentAssignmentStatus = "manually_assigned_by_admin";
+    agent.agentAssignmentStatusHistory.push({
+      status: "manually_assigned_by_admin",
+      changedAt: new Date(),
+    });
+
     await agent.save();
 
-    // Prepare Socket payload
+    // 6. Emit via Socket.IO
     const io = req.app.get("io");
 
     const payload = {
@@ -113,35 +144,42 @@ exports.manualAssignAgent = async (req, res) => {
           status: order.orderStatus,
           totalPrice: order.totalPrice,
           deliveryAddress: order.deliveryAddress,
-          deliveryLocation:order.deliveryLocation,
+          deliveryLocation: {
+            lat: order.deliveryLocation?.coordinates?.[1] || 0,
+            long: order.deliveryLocation?.coordinates?.[0] || 0,
+          },
           createdAt: order.createdAt,
           paymentMethod: order.paymentMethod,
-          items: order.items || [], // Assuming it's an array of products with name, qty, price
+          items: order.items || [],
           customer: {
             name: order.customerId?.name || "",
             phone: order.customerId?.phone || "",
-            email:order.customerId?.email || ""
+            email: order.customerId?.email || "",
           },
           restaurant: {
             name: order.restaurantId?.name || "",
             address: order.restaurantId?.address || "",
-            location: order.restaurantId?.location || null,
+            location: {
+              lat: order.restaurantId?.location?.coordinates?.[1] || 0,
+              long: order.restaurantId?.location?.coordinates?.[0] || 0,
+            },
           },
         },
       ],
     };
 
     io.to(`agent_${agent._id}`).emit("orderAssigned", payload);
+    console.log("📦 Order assigned and emitted to agent:", agent._id);
 
-    console.log("Socket sent to", `agent_${agent._id}`, payload);
-
+    // 7. Response
     res.status(200).json({
-      message: "Agent assigned successfully.",
+      message: "Agent manually assigned successfully.",
       order,
       agent,
     });
+
   } catch (error) {
-    console.error("Manual assignment error:", error);
+    console.error("❌ Manual assignment error:", error);
     res.status(500).json({
       message: "Internal server error.",
       error: error.message,
@@ -195,6 +233,358 @@ exports.terminateAgent = async (req, res) => {
   return res.json({ message: "Agent terminated.", agent });
 };
 
+
+
+
+
+
+
+exports.saveFcmToken = async (req, res) => {
+  try {
+    const { agentId, fcmToken } = req.body;
+    console.log("Saving FCM token for agent:", agentId, "Token:", fcmToken);
+
+    if (!agentId || !fcmToken) {
+      return res.status(400).json({ message: "Missing agentId or fcmToken" });
+    }
+
+    const agent = await Agent.findById(agentId);
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
+
+    if (existingToken) {
+      // Update existing token timestamp
+      existingToken.updatedAt = new Date();
+    } else {
+      // Add new token
+      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
+    }
+
+    await agent.save();
+
+    res.status(200).json({ message: "FCM token saved successfully" });
+  } catch (err) {
+    console.error("Error saving FCM token:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+
+
+exports.sendNotificationToAgent = async (req, res) => {
+  try {
+    const { agentId, title, body, data = {} } = req.body;
+
+    const agent = await Agent.findById(agentId);
+    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No FCM tokens found for this agent',
+      });
+    }
+
+    const messages = agent.fcmTokens.map(tokenObj => ({
+      token: tokenObj.token,
+      notification: { title, body },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    }));
+
+    const responses = await Promise.allSettled(
+      messages.map(msg => admin.messaging().send(msg))
+    );
+
+    await AgentNotification.create({
+      agentId,
+      title,
+      body,
+      data,
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification sent and saved',
+      results: responses,
+    });
+  } catch (error) {
+    console.error('❌ Error sending agent notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+
+
+
+
+exports.saveFcmToken = async (req, res) => {
+  try {
+    const { agentId, fcmToken } = req.body;
+    console.log("Saving FCM token for agent:", agentId, "Token:", fcmToken);
+
+    if (!agentId || !fcmToken) {
+      return res.status(400).json({ message: "Missing agentId or fcmToken" });
+    }
+
+    const agent = await Agent.findById(agentId);
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
+
+    if (existingToken) {
+      // Update existing token timestamp
+      existingToken.updatedAt = new Date();
+    } else {
+      // Add new token
+      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
+    }
+
+    await agent.save();
+
+    res.status(200).json({ message: "FCM token saved successfully" });
+  } catch (err) {
+    console.error("Error saving FCM token:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+
+
+exports.sendNotificationToAgent = async (req, res) => {
+  try {
+    const { agentId, title, body, data = {} } = req.body;
+
+    const agent = await Agent.findById(agentId);
+    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No FCM tokens found for this agent',
+      });
+    }
+
+    const messages = agent.fcmTokens.map(tokenObj => ({
+      token: tokenObj.token,
+      notification: { title, body },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    }));
+
+    const responses = await Promise.allSettled(
+      messages.map(msg => admin.messaging().send(msg))
+    );
+
+    await AgentNotification.create({
+      agentId,
+      title,
+      body,
+      data,
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification sent and saved',
+      results: responses,
+    });
+  } catch (error) {
+    console.error('❌ Error sending agent notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+
+
+
+
+exports.saveFcmToken = async (req, res) => {
+  try {
+    const { agentId, fcmToken } = req.body;
+    console.log("Saving FCM token for agent:", agentId, "Token:", fcmToken);
+
+    if (!agentId || !fcmToken) {
+      return res.status(400).json({ message: "Missing agentId or fcmToken" });
+    }
+
+    const agent = await Agent.findById(agentId);
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
+
+    if (existingToken) {
+      // Update existing token timestamp
+      existingToken.updatedAt = new Date();
+    } else {
+      // Add new token
+      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
+    }
+
+    await agent.save();
+
+    res.status(200).json({ message: "FCM token saved successfully" });
+  } catch (err) {
+    console.error("Error saving FCM token:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+
+
+exports.sendNotificationToAgent = async (req, res) => {
+  try {
+    const { agentId, title, body, data = {} } = req.body;
+
+    const agent = await Agent.findById(agentId);
+    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No FCM tokens found for this agent',
+      });
+    }
+
+    const messages = agent.fcmTokens.map(tokenObj => ({
+      token: tokenObj.token,
+      notification: { title, body },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    }));
+
+    const responses = await Promise.allSettled(
+      messages.map(msg => admin.messaging().send(msg))
+    );
+
+    await AgentNotification.create({
+      agentId,
+      title,
+      body,
+      data,
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification sent and saved',
+      results: responses,
+    });
+  } catch (error) {
+    console.error('❌ Error sending agent notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+
+
+
+
+exports.saveFcmToken = async (req, res) => {
+  try {
+    const { agentId, fcmToken } = req.body;
+    console.log("Saving FCM token for agent:", agentId, "Token:", fcmToken);
+
+    if (!agentId || !fcmToken) {
+      return res.status(400).json({ message: "Missing agentId or fcmToken" });
+    }
+
+    const agent = await Agent.findById(agentId);
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
+
+    if (existingToken) {
+      // Update existing token timestamp
+      existingToken.updatedAt = new Date();
+    } else {
+      // Add new token
+      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
+    }
+
+    await agent.save();
+
+    res.status(200).json({ message: "FCM token saved successfully" });
+  } catch (err) {
+    console.error("Error saving FCM token:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+
+
+exports.sendNotificationToAgent = async (req, res) => {
+  try {
+    const { agentId, title, body, data = {} } = req.body;
+
+    const agent = await Agent.findById(agentId);
+    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No FCM tokens found for this agent',
+      });
+    }
+
+    const messages = agent.fcmTokens.map(tokenObj => ({
+      token: tokenObj.token,
+      notification: { title, body },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    }));
+
+    const responses = await Promise.allSettled(
+      messages.map(msg => admin.messaging().send(msg))
+    );
+
+    await AgentNotification.create({
+      agentId,
+      title,
+      body,
+      data,
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification sent and saved',
+      results: responses,
+    });
+  } catch (error) {
+    console.error('❌ Error sending agent notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 
 // Get pending leave requests
 

@@ -1149,3 +1149,28 @@ exports.getNearbyStores = async (req, res) => {
     return res.status(500).json({ message: "Server error during nearby store search" });
   }
 };
+
+
+
+exports.getStoreById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const restaurant = await Restaurant.findById(id)
+      .select(
+        "-kyc -kycDocuments -kycStatus -kycRejectionReason -approvalRejectionReason"
+      ) // Exclude KYC-related fields
+      .populate("categories", "name") // Optional: populate category names
+      .populate("products", "name price") // Optional: populate product names and prices
+      .lean(); // Convert Mongoose doc to plain JS object
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    res.status(200).json(restaurant);
+  } catch (error) {
+    console.error("Error fetching restaurant by ID:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

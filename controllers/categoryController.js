@@ -81,13 +81,7 @@ exports.createCategory = async (req, res) => {
 
       // Validate image types and upload
     
-      for (const file of req.files) {
 
-        const uploadResult = await uploadOnCloudinary(file.path, 'category_images');
-        if (uploadResult) {
-          images.push(uploadResult.secure_url);
-        }
-      }
     }
 
     // Create and save the category

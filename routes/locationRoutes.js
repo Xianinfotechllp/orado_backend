@@ -7,6 +7,10 @@ router.get("/nearby-restaurants/category/:categoryName",getRestaurantsByLocation
 router.get("/nearby-restaurants/recommended", getRecommendedRestaurants);
 router.get("/nearby-products",getNearbyProducts)
 router.get("/nearby/restaurants/search",searchRestaurants)
+
+router.get("/nearby-grocery",getNearbyGroceryStores)
+    
+
 router.get("/nearby-stores",getNearbyGroceryStores)
 router.get("/search-nearby-stores",searchStore)
 

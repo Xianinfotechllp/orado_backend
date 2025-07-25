@@ -258,7 +258,7 @@ exports.getAgentOrderDispatchStatuses = async (req, res) => {
     const formattedOrders = orders.map(order => ({
       orderId: order._id,
       orderTime: order.createdAt,
-      orderStatus: order.orderStatus,
+    orderStatus: order.orderStatus,
       agentAssignmentStatus: order.agentAssignmentStatus || "Unassigned",
       assignedAgent: order.assignedAgent ? order.assignedAgent.fullName : "Unassigned",
       agentPhone: order.assignedAgent ? order.assignedAgent.phoneNumber : "-",
