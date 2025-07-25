@@ -989,7 +989,6 @@ exports.agentTerminationInfo = async (req, res) => {
 };
 
 
-=======
 exports.agentAcceptOrRejectOrder = async (req, res) => {
   try {
     const agentId = req.user._id;
