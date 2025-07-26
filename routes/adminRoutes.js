@@ -255,7 +255,7 @@ router.get('/send-test-notification', async (req, res) => {
 
 // Agent leave management
 router.get('/leaves', protect, checkRole('admin'), getAllLeaveRequests);
-router.post('/leaves/:agentId/:leaveId/decision', protect, checkRole('admin'), processLeave);
+router.post('/agent/:agentId/leaves/:leaveId/decision', protect, checkRole('admin'), processLeave);
 
 module.exports = router;
 

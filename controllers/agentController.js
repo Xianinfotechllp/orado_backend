@@ -1485,3 +1485,60 @@ exports.agentLogout = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+exports.getAgentBasicDetails= async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const agent = await Agent.findById(agentId).select(
+      `
+        fullName phoneNumber email profilePicture
+        dashboard totalDeliveries totalCollections totalEarnings tips surge incentives
+        points totalPoints lastAwardedDate
+        bankDetailsProvided payoutDetails
+        qrCode role agentStatus attendance feedback.applicationStatus
+        agentApplicationDocuments
+        permissions codTracking
+      `
+    );
+
+    if (!agent) {
+      return res.status(404).json({ success: false, message: 'Agent not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        fullName: agent.fullName,
+        phoneNumber: agent.phoneNumber,
+        email: agent.email,
+        profilePicture: agent.profilePicture,
+        dashboard: agent.dashboard || {},
+        points: agent.points || {},
+        bankDetailsProvided: agent.bankDetailsProvided,
+        payoutDetails: agent.payoutDetails || {},
+        qrCode: agent.qrCode || null,
+        role: agent.role,
+        agentStatus: agent.agentStatus || {},
+        attendance: {
+          daysWorked: agent.attendance?.daysWorked || 0,
+          daysOff: agent.attendance?.daysOff || 0,
+        },
+        feedback: {
+          averageRating: agent.feedback?.averageRating || 0,
+          totalReviews: agent.feedback?.totalReviews || 0,
+        },
+        applicationStatus: agent.applicationStatus,
+        documents: agent.agentApplicationDocuments || {},
+        permissions: agent.permissions || {},
+        codTracking: agent.codTracking || {},
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching agent profile:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+

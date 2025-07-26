@@ -105,7 +105,7 @@ exports.getAdminOrders = async (req, res) => {
   restaurantAddress: order.restaurantId?.address || 'N/A',
   customerName: order.customerId?.name || 'Guest',
   customerId: order.customerId?._id || null,
-  amount: `$ ${order.totalAmount.toFixed(2)}`,
+  amount: `$ ${order.totalAmount?.toFixed(2)}`,
   address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
   deliveryMode: order.deliveryMode,
   paymentStatus: order.paymentStatus,

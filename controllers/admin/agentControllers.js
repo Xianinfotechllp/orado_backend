@@ -571,8 +571,24 @@ exports.processLeave = async (req, res) => {
     if (decision === "Rejected") leave.rejectionReason = rejectionReason;
 
     await agent.save();
+
+    // ✅ Send notification
+    await sendNotificationToAgent({
+      agentId: agent._id,
+      title: decision === "Approved" ? "✅ Leave Approved" : "❌ Leave Rejected",
+      body: decision === "Approved"
+        ? `Your leave request (${new Date(leave.leaveStartDate).toLocaleDateString()} - ${new Date(leave.leaveEndDate).toLocaleDateString()}) has been approved.`
+        : `Your leave request has been rejected.${rejectionReason ? " Reason: " + rejectionReason : ""}`,
+      data: {
+        type: "leave_update",
+        leaveId: leave._id.toString(),
+        status: decision
+      }
+    });
+
     res.status(200).json({ message: `Leave has been ${decision}` });
   } catch (err) {
+    console.error("Error processing leave:", err);
     res.status(500).json({ message: err.message });
   }
 };
