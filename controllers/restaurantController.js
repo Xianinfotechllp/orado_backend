@@ -297,7 +297,7 @@ exports.createRestaurant = async (req, res) => {
 exports.getRestaurantsByMerchantId = async (req, res) => {
   try {
     // 1️⃣ Validate merchant ID
-    const merchantId = req.params.merchantId;
+    const merchantId = req.user._id;
     if (!merchantId || !mongoose.Types.ObjectId.isValid(merchantId)) {
       return res.status(400).json({
         success: false,
@@ -315,6 +315,7 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
         code: "MERCHANT_NOT_FOUND",
       });
     }
+    console.log("Merchant found:", merchant.name);
 
     // 3️⃣ Get all restaurants for this merchant
     const restaurants = await Restaurant.find({ ownerId: merchantId })
@@ -338,6 +339,7 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
         openingHours: restaurant.openingHours,
         images:restaurant.images
     }));
+    console.log("Formatted restaurants:", formattedRestaurants.length);
 
     return res.status(200).json({
       success: true,

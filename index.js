@@ -64,6 +64,7 @@ app.use((req, res, next) => {
 // Load environment variables and DB config
 dotenv.config();
 require("./config/dbConfig")();
+
 const centralSocket = require("./sockets/centralSocket");
 // Import models
 
