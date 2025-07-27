@@ -1373,6 +1373,11 @@ exports.getLeaveStatus = async (req, res) => {
 
 
 
+const Agent = require('../models/Agent');
+const AgentSelfie = require('../models/AgentSelfie');
+const { uploadOnCloudinary } = require('../utils/cloudinary');
+const { sendNotificationToAdmins } = require('../utils/sendNotificationToAdmins');
+
 exports.uploadSelfie = async (req, res) => {
   try {
     const agentId = req.user._id;
@@ -1382,6 +1387,7 @@ exports.uploadSelfie = async (req, res) => {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
+    // Prevent multiple uploads per day
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -1394,15 +1400,31 @@ exports.uploadSelfie = async (req, res) => {
       return res.status(400).json({ message: 'Selfie already submitted for today.' });
     }
 
+    // Upload to Cloudinary
     const uploadResult = await uploadOnCloudinary(file.path, 'agent_selfies');
 
     if (!uploadResult?.secure_url) {
       return res.status(500).json({ message: 'Failed to upload selfie.' });
     }
 
+    // Find agent for notification message
+    const agent = await Agent.findById(agentId).select('fullName phoneNumber');
+
+    // Send notification to all admins
+    await sendNotificationToAdmins({
+      title: "Agent Selfie Submitted",
+      body: `Agent ${agent.fullName || agent.phoneNumber} submitted today's selfie.`,
+      data: {
+        agentId: agent._id.toString(),
+        type: "AGENT_SELFIE_SUBMITTED",
+      },
+    });
+
+    // Store selfie in DB
     const selfie = await AgentSelfie.create({
       agentId,
-      imageUrl: uploadResult.secure_url
+      imageUrl: uploadResult.secure_url,
+      takenAt: new Date(),
     });
 
     return res.json({ message: 'Selfie submitted successfully.', selfie });
