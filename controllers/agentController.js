@@ -1373,10 +1373,6 @@ exports.getLeaveStatus = async (req, res) => {
 
 
 
-const Agent = require('../models/Agent');
-const AgentSelfie = require('../models/AgentSelfie');
-const { uploadOnCloudinary } = require('../utils/cloudinary');
-const { sendNotificationToAdmins } = require('../utils/sendNotificationToAdmins');
 
 exports.uploadSelfie = async (req, res) => {
   try {
