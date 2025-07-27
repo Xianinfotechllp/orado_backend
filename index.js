@@ -4,7 +4,7 @@ const socketIo = require("socket.io");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const redisClient = require("./config/redisClient");
+const redis = require("./config/redisClient");
 
 
 
@@ -152,7 +152,7 @@ io.on("connection", (socket) => {
 
     socket.on("agent:location", (data) => {
     const { agentId, lat, lng } = data;
-
+    console.log(`Agent ${agentId} location update:`, data);
     // Optionally: Save to Redis GEOSET
     redis.geoadd("agent_locations", lng, lat, agentId);
 
@@ -501,6 +501,109 @@ app.use('/api/flutter',flutterRoutes);
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // test-socket-mock.js
+const ios = require('socket.io-client');
+
+// Create a mock server URL (won't actually connect if backend isn't running)
+const MOCK_SERVER_URL = 'https://orado-backend.onrender.com'; // Replace with your actual URL if needed
+
+// Connect to socket (will show connection errors if server isn't running)
+const socket = ios.connect(MOCK_SERVER_URL, {
+  reconnection: false, // Don't keep trying to reconnect
+  autoConnect: false // We'll manually connect
+});
+const agentStates = new Map();
+// Mock data generator
+function generateMockLocation(agentId) {
+  // If agent not yet in state, initialize at Kochi center with random direction
+  if (!agentStates.has(agentId)) {
+    agentStates.set(agentId, {
+      lat: 9.9312,
+      lng: 76.2673,
+      dirLat: Math.random() * 0.0002 - 0.0001, // ~20m step
+      dirLng: Math.random() * 0.0002 - 0.0001
+    });
+  }
+
+  const state = agentStates.get(agentId);
+
+  // Update location by small steps
+  state.lat += state.dirLat;
+  state.lng += state.dirLng;
+
+  // Occasionally change direction to simulate turning
+  if (Math.random() < 0.05) {
+    state.dirLat = Math.random() * 0.0002 - 0.0001;
+    state.dirLng = Math.random() * 0.0002 - 0.0001;
+  }
+
+  // Return updated location
+  return {
+    agentId,
+    lat: parseFloat(state.lat.toFixed(6)),
+    lng: parseFloat(state.lng.toFixed(6))
+  };
+}
+
+// Handle connection events
+socket.on('connect', () => {
+  console.log('Connected to server - sending mock data');
+});
+
+socket.on('connect_error', (err) => {
+  console.log('Connection error (expected if server not running):', err.message);
+  console.log('Starting mock data generation anyway...');
+  startMockData();
+});
+
+// Start sending mock data
+function startMockData() {
+  // Send mock data every 2 seconds
+  setInterval(() => {
+    const agentId = `6882213b64dfe00f9ad5a8d6`; // Agents 1-5
+    const data = generateMockLocation(agentId);
+    
+    if (socket.connected) {
+      socket.emit('agent:location', data);
+      console.log('Sent mock location to server:', data);
+    } else {
+      console.log('Mock location (server not connected):', data);
+    }
+  }, 2000);
+}
+
+// Try to connect (will fail if server isn't running)
+socket.connect();
+
+// If not connected after 1 second, start mock data anyway
+setTimeout(() => {
+  if (!socket.connected) {
+    startMockData();
+  }
+}, 1000);
+
+
+
+
+
+
+
 
 app.post("/socket-test", (req, res) => {
   const testData = {

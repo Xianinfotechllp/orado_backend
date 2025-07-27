@@ -1,6 +1,6 @@
 const Agent = require("../../models/agentModel");
 const Order = require("../../models/orderModel")
-
+const User = require("../../models/userModel");
 
 const AgentNotification = require('../../models/AgentNotificationModel');
 const admin = require('../../config/firebaseAdmin'); 
@@ -248,22 +248,25 @@ exports.saveFcmToken = async (req, res) => {
       return res.status(400).json({ message: "Missing agentId or fcmToken" });
     }
 
-    const agent = await Agent.findById(agentId);
+    // 1. Remove token from all other agents (optional, to enforce one-token-per-device)
+    await Agent.updateMany(
+      { _id: { $ne: agentId } },
+      { $pull: { fcmTokens: { token: fcmToken } } }
+    );
 
+    // 2. Load current agent
+    const agent = await Agent.findById(agentId);
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
+    // 3. Remove duplicate tokens within the same agent
+    agent.fcmTokens = agent.fcmTokens.filter(t => t.token !== fcmToken);
 
-    if (existingToken) {
-      // Update existing token timestamp
-      existingToken.updatedAt = new Date();
-    } else {
-      // Add new token
-      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
-    }
+    // 4. Add fresh token
+    agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
 
+    // 5. Save agent
     await agent.save();
 
     res.status(200).json({ message: "FCM token saved successfully" });
@@ -272,6 +275,62 @@ exports.saveFcmToken = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+
+
+
+
+exports.sendNotificationToAgent = async (req, res) => {
+  try {
+    const { agentId, title, body, data = {} } = req.body;
+
+    const agent = await Agent.findById(agentId);
+    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No FCM tokens found for this agent',
+      });
+    }
+
+    const messages = agent.fcmTokens.map(tokenObj => ({
+      token: tokenObj.token,
+      notification: { title, body },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        ...data,
+      },
+    }));
+
+    const responses = await Promise.allSettled(
+      messages.map(msg => admin.messaging().send(msg))
+    );
+
+    await AgentNotification.create({
+      agentId,
+      title,
+      body,
+      data,
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification sent and saved',
+      results: responses,
+    });
+  } catch (error) {
+    console.error('❌ Error sending agent notification:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+
+
+
+
+
+
 
 
 
@@ -327,127 +386,6 @@ exports.sendNotificationToAgent = async (req, res) => {
 
 
 
-exports.saveFcmToken = async (req, res) => {
-  try {
-    const { agentId, fcmToken } = req.body;
-    console.log("Saving FCM token for agent:", agentId, "Token:", fcmToken);
-
-    if (!agentId || !fcmToken) {
-      return res.status(400).json({ message: "Missing agentId or fcmToken" });
-    }
-
-    const agent = await Agent.findById(agentId);
-
-    if (!agent) {
-      return res.status(404).json({ message: "Agent not found" });
-    }
-
-    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
-
-    if (existingToken) {
-      // Update existing token timestamp
-      existingToken.updatedAt = new Date();
-    } else {
-      // Add new token
-      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
-    }
-
-    await agent.save();
-
-    res.status(200).json({ message: "FCM token saved successfully" });
-  } catch (err) {
-    console.error("Error saving FCM token:", err);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-
-
-
-
-
-
-exports.sendNotificationToAgent = async (req, res) => {
-  try {
-    const { agentId, title, body, data = {} } = req.body;
-
-    const agent = await Agent.findById(agentId);
-    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No FCM tokens found for this agent',
-      });
-    }
-
-    const messages = agent.fcmTokens.map(tokenObj => ({
-      token: tokenObj.token,
-      notification: { title, body },
-      data: {
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        ...data,
-      },
-    }));
-
-    const responses = await Promise.allSettled(
-      messages.map(msg => admin.messaging().send(msg))
-    );
-
-    await AgentNotification.create({
-      agentId,
-      title,
-      body,
-      data,
-    });
-
-    res.json({
-      success: true,
-      message: 'Notification sent and saved',
-      results: responses,
-    });
-  } catch (error) {
-    console.error('❌ Error sending agent notification:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-
-
-
-
-
-exports.saveFcmToken = async (req, res) => {
-  try {
-    const { agentId, fcmToken } = req.body;
-    console.log("Saving FCM token for agent:", agentId, "Token:", fcmToken);
-
-    if (!agentId || !fcmToken) {
-      return res.status(400).json({ message: "Missing agentId or fcmToken" });
-    }
-
-    const agent = await Agent.findById(agentId);
-
-    if (!agent) {
-      return res.status(404).json({ message: "Agent not found" });
-    }
-
-    const existingToken = agent.fcmTokens.find(t => t.token === fcmToken);
-
-    if (existingToken) {
-      // Update existing token timestamp
-      existingToken.updatedAt = new Date();
-    } else {
-      // Add new token
-      agent.fcmTokens.push({ token: fcmToken, updatedAt: new Date() });
-    }
-
-    await agent.save();
-
-    res.status(200).json({ message: "FCM token saved successfully" });
-  } catch (err) {
-    console.error("Error saving FCM token:", err);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
 
 
 
@@ -638,3 +576,10 @@ exports.processLeave = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+
+
+
+
+
+
