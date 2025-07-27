@@ -11,7 +11,7 @@ const {
   updateCategory,
   deleteCategory,
 getApprovedRestaurants ,
-
+saveFcmToken,
 
 
 
@@ -230,16 +230,22 @@ router.post("/agent/:agentId/give-warning", protect, checkRole('admin'), giveWar
 router.post("/agent/:agentId/terminate", protect, checkRole('admin'), terminateAgent);
 
 const admin = require('../config/firebaseAdmin');
-const fcmToken ='dVpTk5gbTIuTXk4U8GrnKu:APA91bEZK0D-63_irRzutzdbc9o70Lntm-vUZV8wYqkhaRm4f3xPtwH-tpyUsB2ls76voVLAD7qtlUrPBPuPX0FEx_T1MAvrhz7JqjicUu_27vPo2kPaZ9o';
+const fcmToken ='dhntz4297pISXgPjGk9Zw4:APA91bEIqtwOprgR7vEQzTKDfkHz8VLTPvWvYBdbnZ8YPt1SjSrr-sKT-FDlIGKw8DOakhohUyjtokDGfRCgcvTcl5RKY3IV4yUbC83cs6ELik5N206TUUU';
 router.get('/send-test-notification', async (req, res) => {
   const message = {
     token: fcmToken,
     notification: {
-      title: ' New order received from McDonalds 3 items. Total amount 250 rupees. Please open the app for full details',
-      body: 'you got a new order',
+      title: '🛵 New Order from McDonalds',
+      body: '  New Order from McDonalds 3 items - ₹250. Tap to view details',
+    },
+    webpush: {
+      fcmOptions: {
+        link: 'https://your-app.com/order-details', // Replace with your frontend URL
+      },
     },
     data: {
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      orderId: 'ORD12345',
     },
   };
 
@@ -252,6 +258,12 @@ router.get('/send-test-notification', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+
+
+router.post("/save-fcm-token", protect, checkRole('admin'),saveFcmToken)
+
+
 
 // Agent leave management
 router.get('/leaves', protect, checkRole('admin'), getAllLeaveRequests);

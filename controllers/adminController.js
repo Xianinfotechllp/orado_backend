@@ -17,6 +17,8 @@ const AccessLog = require('../models/accessLogModel')
 const { isValidObjectId } = require("mongoose");
 const {uploadOnCloudinary} = require("../utils/cloudinary")
 const fs = require('fs');
+
+const DeviceToken = require("../models/deviceTokenModel");
 const path = require('path');
   exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
@@ -1796,6 +1798,30 @@ exports.getOrdersByCustomerAdmin = async (req, res) => {
 };
 
 
+
+
+exports.saveFcmToken = async (req, res) => {
+  try {
+    const {  token, platform = 'web' } = req.body;
+    console.log("Saving FCM token:", token, platform);
+  const userId = req.user._id;
+    if (!userId || !token) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    // Optional: upsert token so one user/platform has one active token
+    await DeviceToken.findOneAndUpdate(
+      { userId, platform },
+      { token },
+      { upsert: true, new: true }
+    );
+
+    return res.status(200).json({ message: 'FCM token saved' });
+  } catch (error) {
+    console.error('Error saving FCM token:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
 
 
