@@ -7,6 +7,7 @@ const Restaurant = require("../models/restaurantModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
+const EarnigsSettings = require("../models/AgentEarningSettingModel");
 const {
   addAgentEarnings,
   addRestaurantEarnings,
@@ -23,8 +24,12 @@ const formatOrderResponse = require("../utils/formatOrderResponse");
 const { fr } = require("../utils/formatOrder");
 const formatOrder = require("../utils/formatOrder");
 const { notifyNextPendingAgent } = require("../services/allocationService");
+const { sendNotificationToAdmins } = require("../services/notificationService");
 const AgentNotification = require("../models/AgentNotificationModel");
 const AgentSelfie = require("../models/AgentSelfieModel");
+const haversineDistance = require("haversine-distance");
+const  calculateEarningsBreakdown  = require("../utils/agentEarningCalculator");
+const { findApplicableSurgeZones } = require("../utils/surgeCalculator");
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -171,7 +176,7 @@ exports.loginAgent = async (req, res) => {
     }
 
     // ✅ Store FCM token if provided and not already saved
-    if (fcmToken && !agent.fcmTokens.some(t => t.token === fcmToken)) {
+    if (fcmToken && !agent.fcmTokens.some((t) => t.token === fcmToken)) {
       agent.fcmTokens.push({ token: fcmToken });
       await agent.save();
     }
@@ -183,7 +188,9 @@ exports.loginAgent = async (req, res) => {
     );
 
     const MAX_SESSIONS = 1;
-    const existingSessions = await Session.find({ userId: agent._id }).sort({ createdAt: 1 });
+    const existingSessions = await Session.find({ userId: agent._id }).sort({
+      createdAt: 1,
+    });
 
     if (existingSessions.length >= MAX_SESSIONS) {
       const oldest = existingSessions[0];
@@ -216,10 +223,11 @@ exports.loginAgent = async (req, res) => {
     });
   } catch (error) {
     console.error("Agent login error:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
-
 
 // Logout user by deleting session
 
@@ -505,42 +513,30 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 };
 
 //
+
 exports.toggleAvailability = async (req, res) => {
   try {
     const { agentId } = req.params;
     const { status, location } = req.body;
     const io = req.app.get("io");
 
-    // ✅ Validate status
     if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
-    // ✅ Convert location to GeoJSON (from lat/lng OR coordinates)
+    // ✅ Convert location
     let geoLocation;
-
-    if (
-      location &&
-      typeof location.lat === "number" &&
-      typeof location.lng === "number" &&
-      !isNaN(location.lat) &&
-      !isNaN(location.lng)
-    ) {
-      // ✅ Handle { lat, lng }
+    if (location?.lat && location?.lng) {
       geoLocation = {
         type: "Point",
         coordinates: [location.lng, location.lat],
         accuracy: location.accuracy || 0,
       };
     } else if (
-      location &&
-      location.type === "Point" &&
+      location?.type === "Point" &&
       Array.isArray(location.coordinates) &&
-      location.coordinates.length === 2 &&
-      typeof location.coordinates[0] === "number" &&
-      typeof location.coordinates[1] === "number"
+      location.coordinates.length === 2
     ) {
-      // ✅ Handle GeoJSON { type, coordinates }
       geoLocation = {
         type: "Point",
         coordinates: location.coordinates,
@@ -548,12 +544,11 @@ exports.toggleAvailability = async (req, res) => {
       };
     } else {
       return res.status(400).json({
-        message:
-          "Invalid location. Provide either { lat, lng } or GeoJSON format.",
+        message: "Invalid location. Provide either { lat, lng } or GeoJSON.",
       });
     }
 
-    // ✅ Prepare update object
+    // ✅ Update Agent
     const updateData = {
       "agentStatus.availabilityStatus": status,
       "agentStatus.status": status === "AVAILABLE" ? "AVAILABLE" : "OFFLINE",
@@ -561,7 +556,6 @@ exports.toggleAvailability = async (req, res) => {
       updatedAt: new Date(),
     };
 
-    // ✅ Update agent in database
     const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, {
       new: true,
     });
@@ -570,14 +564,27 @@ exports.toggleAvailability = async (req, res) => {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    // ✅ Emit socket event if agent becomes available (optional)
+    await sendNotificationToAdmins({
+      title: "Agent Availability Update",
+      body: `Agent ${
+        updatedAgent.fullName || updatedAgent.phoneNumber
+      } is now ${status}`,
+      data: {
+        agentId: updatedAgent._id.toString(),
+        type: "AGENT_AVAILABILITY_CHANGE",
+        status,
+      },
+    });
+
     if (status === "AVAILABLE" && io) {
-      // Example:
-      // io.emit("agentAvailable", { agentId, location: geoLocation });
+      io.emit("agentAvailable", {
+        agentId: updatedAgent._id,
+        location: updatedAgent.location,
+      });
     }
 
     return res.status(200).json({
-      message: "Status and location updated",
+      message: "Agent status updated",
       data: {
         id: updatedAgent._id,
         status: updatedAgent.agentStatus,
@@ -588,7 +595,7 @@ exports.toggleAvailability = async (req, res) => {
     console.error("Error toggling agent availability:", error);
     return res
       .status(500)
-      .json({ error: "Server error while toggling agent availability" });
+      .json({ error: "Server error while updating status" });
   }
 };
 
@@ -624,11 +631,9 @@ exports.addAgentReview = async (req, res) => {
 
     // Check if order exists and is completed
     if (!order || order.orderStatus !== "completed") {
-      return res
-        .status(400)
-        .json({
-          message: "You can only leave a review after delivery is completed.",
-        });
+      return res.status(400).json({
+        message: "You can only leave a review after delivery is completed.",
+      });
     }
 
     // Optional: Check if the user leaving the review is the customer who made the order
@@ -798,11 +803,9 @@ exports.requestPermission = async (req, res) => {
   );
 
   if (existingRequest) {
-    return res
-      .status(400)
-      .json({
-        error: "You already have a pending request for this permission.",
-      });
+    return res.status(400).json({
+      error: "You already have a pending request for this permission.",
+    });
   }
 
   agent.permissionRequests.push({ permissionType: permission });
@@ -966,21 +969,19 @@ exports.getAssignedOrders = async (req, res) => {
   }
 };
 
-
-// GET /agent/warnings   
+// GET /agent/warnings
 exports.agentWarnings = async (req, res) => {
   const agentId = req.user._id;
-  const agent = await Agent.findById(agentId)
+  const agent = await Agent.findById(agentId);
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   return res.json({ warnings: agent.warnings || [] });
 };
 
-
 // GET /agent/termination
 exports.agentTerminationInfo = async (req, res) => {
   const agentId = req.user._id;
-  const agent = await Agent.findOne(agentId)
+  const agent = await Agent.findOne(agentId);
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   if (!agent.termination?.terminated)
@@ -988,7 +989,6 @@ exports.agentTerminationInfo = async (req, res) => {
 
   return res.json({ termination: agent.termination });
 };
-
 
 exports.agentAcceptOrRejectOrder = async (req, res) => {
   try {
@@ -1005,7 +1005,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
     const order = await Order.findById(orderId);
 
-    console.log(order)
+    console.log(order);
 
     if (!order) {
       return res.status(404).json({
@@ -1035,7 +1035,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       order.assignedAgent = agentId;
       order.agentAssignmentStatus = "accepted_by_agent";
       order.agentAcceptedAt = new Date();
-       await order.save();
+      await order.save();
     }
 
     // 🔁 If rejected, trigger next candidate allocation here if needed
@@ -1086,12 +1086,57 @@ exports.getAssignedOrderDetails = async (req, res) => {
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
+    const earingConfig = await EarnigsSettings.findOne({ mode: "global" });
+    console.log("Earnings Config:", earingConfig);
+    let distance = 0;
+    if (
+      order.restaurantId?.location?.coordinates &&
+      order.deliveryLocation?.coordinates
+    ) {
+      distance = haversineDistance(
+        order.restaurantId.location.coordinates,
+        order.deliveryLocation.coordinates
+      );
+      console.log("📏 Distance (km):", distance);
+    } else {
+      console.warn("❌ Missing location data for distance calculation.");
+    }
+
+
+    let applicableSurges = [];
+if (
+  order.restaurantId?.location?.coordinates &&
+  order.deliveryLocation?.coordinates
+) {
+  const fromCoords = order.restaurantId.location.coordinates;
+  const toCoords = order.deliveryLocation.coordinates;
+
+  // Calculate surge zones
+  applicableSurges = await findApplicableSurgeZones({
+    fromCoords,
+    toCoords,
+    time: new Date(), // optional, defaults inside function
+  });
+
+}
+
+console.log(applicableSurges)
+
+   const earningsBreakdown = calculateEarningsBreakdown({
+  distanceKm: distance,
+  config: earingConfig,
+  surgeZones: applicableSurges, // 👈 pass here
+});
+
+    console.log("💰 earings ",earningsBreakdown) 
+
 
     const formattedOrder = formatOrder(order, agentId); // 👈 use utility
 
     return res.status(200).json({
       status: "success",
       order: formattedOrder,
+      earningsBreakdown,
     });
   } catch (error) {
     console.error("❌ Error in getAssignedOrderDetails:", error);
@@ -1262,10 +1307,6 @@ exports.markAgentNotificationAsRead = async (req, res) => {
   }
 };
 
-
-
-
-
 exports.getAgentHomeData = async (req, res) => {
   try {
     // Mock data (this would normally come from DB queries)
@@ -1289,62 +1330,91 @@ exports.getAgentHomeData = async (req, res) => {
         totalOrders: 12,
         newOrders: 3,
         rejectedOrders: 2,
-      }
+      },
     };
 
     return res.status(200).json({
       status: "success",
-      data: mockData
+      data: mockData,
     });
   } catch (err) {
     return res.status(500).json({
       status: "error",
       message: "Failed to fetch agent home data",
-      error: err.message
+      error: err.message,
     });
   }
 };
 // Apply for leave\
 exports.applyLeave = async (req, res) => {
   try {
-    const agentId = req.user._id; 
-    const { leaveStartDate, leaveEndDate, leaveType } = req.body;
+    const agentId = req.user._id;
+    const { leaveStartDate, leaveEndDate, leaveType, reason } = req.body;
 
+    // Basic validations
     if (!leaveStartDate || !leaveEndDate || !leaveType)
-      return res.status(400).json({ message: "Missing fields" });
+      return res.status(400).json({ message: "Missing required fields" });
 
+    if (new Date(leaveStartDate) > new Date(leaveEndDate))
+      return res
+        .status(400)
+        .json({ message: "Start date cannot be after end date" });
 
     const agent = await Agent.findById(agentId);
+
+    // Optional: Check for overlapping leaves
+    const hasOverlap = agent.leaves.some(
+      (leave) =>
+        new Date(leave.leaveStartDate) <= new Date(leaveEndDate) &&
+        new Date(leave.leaveEndDate) >= new Date(leaveStartDate)
+    );
+
+    if (hasOverlap) {
+      return res
+        .status(409)
+        .json({ message: "Leave request overlaps with existing leave" });
+    }
+
     agent.leaves.push({
       leaveStartDate,
       leaveEndDate,
       leaveType,
+      reason: reason || "", // optional field
       status: "Pending",
+      appliedAt: new Date(),
     });
 
     await agent.save();
 
-    res.status(200).json({ message: "Leave request submitted" });
+    res.status(200).json({ message: "Leave request submitted successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
-
 
 // check leave status
 
 exports.getLeaveStatus = async (req, res) => {
   try {
     const agentId = req.user._id;
-    const agent = await Agent.findById(agentId, "leaves");
-    res.status(200).json(agent.leaves);
+
+    const agent = await Agent.findById(agentId).select("leaves");
+
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const sortedLeaves = (agent.leaves || []).sort(
+      (a, b) => new Date(b.leaveStartDate) - new Date(a.leaveStartDate)
+    );
+
+    res.status(200).json({
+      message: "Leave status retrieved successfully",
+      total: sortedLeaves.length,
+      leaves: sortedLeaves,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
-
-
-
-
-
+  }
+};
 
 exports.uploadSelfie = async (req, res) => {
   try {
@@ -1352,41 +1422,59 @@ exports.uploadSelfie = async (req, res) => {
     const file = req.file;
 
     if (!file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+      return res.status(400).json({ message: "No file uploaded" });
     }
 
+    // Prevent multiple uploads per day
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
     const existing = await AgentSelfie.findOne({
       agentId,
-      takenAt: { $gte: startOfDay }
+      takenAt: { $gte: startOfDay },
     });
 
     if (existing) {
-      return res.status(400).json({ message: 'Selfie already submitted for today.' });
+      return res
+        .status(400)
+        .json({ message: "Selfie already submitted for today." });
     }
 
-    const uploadResult = await uploadOnCloudinary(file.path, 'agent_selfies');
+    // Upload to Cloudinary
+    const uploadResult = await uploadOnCloudinary(file.path, "agent_selfies");
 
     if (!uploadResult?.secure_url) {
-      return res.status(500).json({ message: 'Failed to upload selfie.' });
+      return res.status(500).json({ message: "Failed to upload selfie." });
     }
 
-    const selfie = await AgentSelfie.create({
-      agentId,
-      imageUrl: uploadResult.secure_url
+    // Find agent for notification message
+    const agent = await Agent.findById(agentId).select("fullName phoneNumber");
+
+    // Send notification to all admins
+    await sendNotificationToAdmins({
+      title: "Agent Selfie Submitted",
+      body: `Agent ${
+        agent.fullName || agent.phoneNumber
+      } submitted today's selfie.`,
+      data: {
+        agentId: agent._id.toString(),
+        type: "AGENT_SELFIE_SUBMITTED",
+      },
     });
 
-    return res.json({ message: 'Selfie submitted successfully.', selfie });
+    // Store selfie in DB
+    const selfie = await AgentSelfie.create({
+      agentId,
+      imageUrl: uploadResult.secure_url,
+      takenAt: new Date(),
+    });
 
+    return res.json({ message: "Selfie submitted successfully.", selfie });
   } catch (err) {
     console.error("Upload Selfie Error:", err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: "Server error" });
   }
 };
-
-
 
 exports.getSelfieStatus = async (req, res) => {
   try {
@@ -1403,22 +1491,20 @@ exports.getSelfieStatus = async (req, res) => {
     if (selfie) {
       return res.json({
         selfieRequired: false,
-        message: 'Selfie already submitted for today',
+        message: "Selfie already submitted for today",
         selfie,
       });
     } else {
       return res.json({
         selfieRequired: true,
-        message: 'Selfie is required for today',
+        message: "Selfie is required for today",
       });
     }
   } catch (error) {
-    console.error('Get selfie status error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Get selfie status error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
-
-
 
 exports.agentLogout = async (req, res) => {
   try {
@@ -1436,9 +1522,7 @@ exports.agentLogout = async (req, res) => {
 
     const initialTokenCount = agent.fcmTokens.length;
 
-    agent.fcmTokens = agent.fcmTokens.filter(
-      (t) => t.token !== fcmToken
-    );
+    agent.fcmTokens = agent.fcmTokens.filter((t) => t.token !== fcmToken);
 
     const tokenRemoved = agent.fcmTokens.length !== initialTokenCount;
 
@@ -1448,10 +1532,67 @@ exports.agentLogout = async (req, res) => {
 
     await agent.save();
 
-    return res.status(200).json({ message: "Logout successful. FCM token removed." });
+    return res
+      .status(200)
+      .json({ message: "Logout successful. FCM token removed." });
   } catch (error) {
     console.error("Error during agent logout:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+};
 
+exports.getAgentBasicDetails = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const agent = await Agent.findById(agentId).select(
+      `
+        fullName phoneNumber email profilePicture
+        dashboard totalDeliveries totalCollections totalEarnings tips surge incentives
+        points totalPoints lastAwardedDate
+        bankDetailsProvided payoutDetails
+        qrCode role agentStatus attendance feedback.applicationStatus
+        agentApplicationDocuments
+        permissions codTracking
+      `
+    );
+
+    if (!agent) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Agent not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        fullName: agent.fullName,
+        phoneNumber: agent.phoneNumber,
+        email: agent.email,
+        profilePicture: agent.profilePicture,
+        dashboard: agent.dashboard || {},
+        points: agent.points || {},
+        bankDetailsProvided: agent.bankDetailsProvided,
+        payoutDetails: agent.payoutDetails || {},
+        qrCode: agent.qrCode || null,
+        role: agent.role,
+        agentStatus: agent.agentStatus || {},
+        attendance: {
+          daysWorked: agent.attendance?.daysWorked || 0,
+          daysOff: agent.attendance?.daysOff || 0,
+        },
+        feedback: {
+          averageRating: agent.feedback?.averageRating || 0,
+          totalReviews: agent.feedback?.totalReviews || 0,
+        },
+        applicationStatus: agent.applicationStatus,
+        documents: agent.agentApplicationDocuments || {},
+        permissions: agent.permissions || {},
+        codTracking: agent.codTracking || {},
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching agent profile:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };

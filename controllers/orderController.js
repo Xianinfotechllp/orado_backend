@@ -1331,8 +1331,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       surgeFeeAmount,
       merchantId: restaurant._id
     });
-
-    console.log(costSummary)
+       console.log("Cost Summary:", costSummary);
 
 
 

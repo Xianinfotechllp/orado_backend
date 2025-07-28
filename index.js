@@ -151,7 +151,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("agent:location", (data) => {
-    const { agentId, lat, lng } = data;
+    const { agentId, lat, lng ,deviceInfo} = data;
     console.log(`Agent ${agentId} location update:`, data);
     // Optionally: Save to Redis GEOSET
     redis.geoadd("agent_locations", lng, lat, agentId);
@@ -161,6 +161,7 @@ io.on("connection", (socket) => {
       agentId,
       lat,
       lng,
+      deviceInfo
     });
 
     // Update agent lastSeen for availability timeout logic
@@ -517,86 +518,86 @@ app.get("/", (req, res) => {
 
 
 
-// // test-socket-mock.js
-const ios = require('socket.io-client');
+// // // test-socket-mock.js
+// const ios = require('socket.io-client');
 
-// Create a mock server URL (won't actually connect if backend isn't running)
-const MOCK_SERVER_URL = 'https://orado-backend.onrender.com'; // Replace with your actual URL if needed
+// // Create a mock server URL (won't actually connect if backend isn't running)
+// const MOCK_SERVER_URL = 'https://orado-backend.onrender.com'; // Replace with your actual URL if needed
 
-// Connect to socket (will show connection errors if server isn't running)
-const socket = ios.connect(MOCK_SERVER_URL, {
-  reconnection: false, // Don't keep trying to reconnect
-  autoConnect: false // We'll manually connect
-});
-const agentStates = new Map();
-// Mock data generator
-function generateMockLocation(agentId) {
-  // If agent not yet in state, initialize at Kochi center with random direction
-  if (!agentStates.has(agentId)) {
-    agentStates.set(agentId, {
-      lat: 9.9312,
-      lng: 76.2673,
-      dirLat: Math.random() * 0.0002 - 0.0001, // ~20m step
-      dirLng: Math.random() * 0.0002 - 0.0001
-    });
-  }
+// // Connect to socket (will show connection errors if server isn't running)
+// const socket = ios.connect(MOCK_SERVER_URL, {
+//   reconnection: false, // Don't keep trying to reconnect
+//   autoConnect: false // We'll manually connect
+// });
+// const agentStates = new Map();
+// // Mock data generator
+// function generateMockLocation(agentId) {
+//   // If agent not yet in state, initialize at Kochi center with random direction
+//   if (!agentStates.has(agentId)) {
+//     agentStates.set(agentId, {
+//       lat: 9.9312,
+//       lng: 76.2673,
+//       dirLat: Math.random() * 0.0002 - 0.0001, // ~20m step
+//       dirLng: Math.random() * 0.0002 - 0.0001
+//     });
+//   }
 
-  const state = agentStates.get(agentId);
+//   const state = agentStates.get(agentId);
 
-  // Update location by small steps
-  state.lat += state.dirLat;
-  state.lng += state.dirLng;
+//   // Update location by small steps
+//   state.lat += state.dirLat;
+//   state.lng += state.dirLng;
 
-  // Occasionally change direction to simulate turning
-  if (Math.random() < 0.05) {
-    state.dirLat = Math.random() * 0.0002 - 0.0001;
-    state.dirLng = Math.random() * 0.0002 - 0.0001;
-  }
+//   // Occasionally change direction to simulate turning
+//   if (Math.random() < 0.05) {
+//     state.dirLat = Math.random() * 0.0002 - 0.0001;
+//     state.dirLng = Math.random() * 0.0002 - 0.0001;
+//   }
 
-  // Return updated location
-  return {
-    agentId,
-    lat: parseFloat(state.lat.toFixed(6)),
-    lng: parseFloat(state.lng.toFixed(6))
-  };
-}
+//   // Return updated location
+//   return {
+//     agentId,
+//     lat: parseFloat(state.lat.toFixed(6)),
+//     lng: parseFloat(state.lng.toFixed(6))
+//   };
+// }
 
-// Handle connection events
-socket.on('connect', () => {
-  console.log('Connected to server - sending mock data');
-});
+// // Handle connection events
+// socket.on('connect', () => {
+//   console.log('Connected to server - sending mock data');
+// });
 
-socket.on('connect_error', (err) => {
-  console.log('Connection error (expected if server not running):', err.message);
-  console.log('Starting mock data generation anyway...');
-  startMockData();
-});
+// socket.on('connect_error', (err) => {
+//   console.log('Connection error (expected if server not running):', err.message);
+//   console.log('Starting mock data generation anyway...');
+//   startMockData();
+// });
 
 // Start sending mock data
-function startMockData() {
-  // Send mock data every 2 seconds
-  setInterval(() => {
-    const agentId = `6882213b64dfe00f9ad5a8d6`; // Agents 1-5
-    const data = generateMockLocation(agentId);
+// function startMockData() {
+//   // Send mock data every 2 seconds
+//   setInterval(() => {
+//     const agentId = `6882213b64dfe00f9ad5a8d6`; // Agents 1-5
+//     const data = generateMockLocation(agentId);
     
-    if (socket.connected) {
-      socket.emit('agent:location', data);
-      console.log('Sent mock location to server:', data);
-    } else {
-      console.log('Mock location (server not connected):', data);
-    }
-  }, 2000);
-}
+//     if (socket.connected) {
+//       socket.emit('agent:location', data);
+//       console.log('Sent mock location to server:', data);
+//     } else {
+//       console.log('Mock location (server not connected):', data);
+//     }
+//   }, 2000);
+// }
 
 // Try to connect (will fail if server isn't running)
-socket.connect();
+// socket.connect();
 
 // If not connected after 1 second, start mock data anyway
-setTimeout(() => {
-  if (!socket.connected) {
-    startMockData();
-  }
-}, 1000);
+// setTimeout(() => {
+//   if (!socket.connected) {
+//     startMockData();
+//   }
+// }, 1000);
 
 
 
@@ -721,6 +722,38 @@ io.to("admin_682c3a4a2e9fb5869cb96044").emit("new_order", { data: orderData });
   res.json({hi:"socket"})
 
 });
+
+
+app.get("/socket-test", (req, res) => {
+  const adminId = "68394a55a32c5e36eb8be551"; // Replace with real admin _id
+  const roomName = `user_${adminId}`;
+
+  const orderData = {
+    orderId: "ORD123456",
+    customerName: "John Doe",
+    items: [
+      { name: "Margherita Pizza", quantity: 2, price: 299 },
+      { name: "Garlic Bread", quantity: 1, price: 149 },
+    ],
+    totalAmount: 747,
+    paymentMethod: "UPI",
+    deliveryAddress: {
+      street: "221B Baker Street",
+      city: "London",
+      state: "London",
+      zipCode: "NW1 6XE",
+    },
+    orderStatus: "Preparing",
+    placedAt: new Date().toISOString(),
+  };
+
+  io.to(roomName).emit("test_order_status", { data: orderData });
+
+  return res.json({ message: "Socket notification sent", room: roomName });
+});
+
+
+
 
 // Start server
 const PORT = process.env.PORT || 5000;

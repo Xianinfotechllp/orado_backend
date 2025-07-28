@@ -448,7 +448,9 @@ exports.calculateOrderCostV2 = async ({
   isSurge = false,
   surgeFeeAmount = 0,
   surgeReason = null,
-  merchantId
+  merchantId,
+  cartId, // Accept cartId instead of userId directly
+  useLoyaltyPoints = false
 }) => {
   let cartTotal = 0;
   let appliedCombos = [];
@@ -509,36 +511,50 @@ exports.calculateOrderCostV2 = async ({
   const regularOffers = offers.filter(o => o.type === "flat" || o.type === "percentage");
 
   regularOffers.forEach(offer => {
-    // ✅ Skip if offer is product-level and doesn't match any cart product
+    let discount = 0;
+
     if (offer.applicableLevel === "Product") {
-      const matched = cartProducts.some(cp =>
+      // Find matching products
+      const matchedProducts = cartProducts.filter(cp =>
         offer.applicableProducts?.some(p => p.toString() === cp.productId.toString())
       );
-      if (!matched) return;
-    }
 
-    // ✅ Check minimum order value
-    if (cartTotal < offer.minOrderValue) return;
+      if (!matchedProducts.length) return;
 
-    // ✅ Calculate offer discount
-    let discount = 0;
-    if (offer.type === "flat") {
-      discount = offer.discountValue;
-    } else if (offer.type === "percentage") {
-      discount = (cartTotal * offer.discountValue) / 100;
-      if (offer.maxDiscount) {
-        discount = Math.min(discount, offer.maxDiscount);
+      const matchedTotal = matchedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0);
+
+      if (matchedTotal < offer.minOrderValue) return;
+
+      if (offer.type === "flat") {
+        discount = offer.discountValue;
+      } else if (offer.type === "percentage") {
+        discount = (matchedTotal * offer.discountValue) / 100;
+        if (offer.maxDiscount) {
+          discount = Math.min(discount, offer.maxDiscount);
+        }
+      }
+
+    } else {
+      // Cart-level offer
+      if (cartTotal < offer.minOrderValue) return;
+
+      if (offer.type === "flat") {
+        discount = offer.discountValue;
+      } else if (offer.type === "percentage") {
+        discount = (cartTotal * offer.discountValue) / 100;
+        if (offer.maxDiscount) {
+          discount = Math.min(discount, offer.maxDiscount);
+        }
       }
     }
 
-    // ✅ Apply if better than current
     if (discount > offerDiscount) {
       offerDiscount = discount;
       appliedOffer = offer;
     }
   });
 
-  // ✅ Apply Coupon Code Logic (optional logic - can be moved to DB later)
+  // ✅ Apply Coupon Code Logic
   let couponDiscount = 0;
   if (couponCode) {
     if (couponCode === "WELCOME50") {
@@ -547,11 +563,12 @@ exports.calculateOrderCostV2 = async ({
       couponDiscount = deliveryFee;
     }
   }
+  console.log('appiled offers:', appliedCombos, appliedOffer);
 
   // ✅ Calculate taxable amount
   const taxableAmount = cartTotal - offerDiscount;
 
-  // ✅ Charges Breakdown (packing, add-ons, taxes, etc.)
+  // ✅ Charges Breakdown
   const {
     totalTaxAmount,
     taxBreakdown,
@@ -613,5 +630,4 @@ exports.calculateOrderCostV2 = async ({
     appliedOffer
   };
 };
-
 

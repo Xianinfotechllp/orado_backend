@@ -11,7 +11,7 @@ const {
   updateCategory,
   deleteCategory,
 getApprovedRestaurants ,
-
+saveFcmToken,
 
 
 
@@ -23,7 +23,9 @@ getApprovedRestaurants ,
 const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
-const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave} = require("../controllers/admin/agentControllers")
+const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveApplication, rejectApplication,
+  getAgentSelfies,getAgentSelfieHistory,getSelfieDetails
+} = require("../controllers/admin/agentControllers")
 
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -40,7 +42,7 @@ const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require(".
 const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
 const {sendNotification} = require('../controllers/admin/notificationControllers');
 const { getAllCustomers, getSingleCustomerDetails, getOrdersByCustomerForAdmin } = require("../controllers/admin/customerControllers");
-const { getAllAgents, manualAssignAgent ,sendNotificationToAgent} = require("../controllers/admin/agentControllers");
+const { getAllAgents, manualAssignAgent ,sendNotificationToAgent,getAllList} = require("../controllers/admin/agentControllers");
 const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
 const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
 const { createManager, getAllManagers, getManagerById, updateManager, deleteManager } = require("../controllers/admin/managerController");
@@ -195,7 +197,7 @@ router.patch("/orders/:orderId/status",updateOrderStatus)
 router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)
 
 
-router.get("/agent/list",getAllAgents)
+router.get("/agent/list",getAllList)
 router.post("/agent/send-notification",sendNotificationToAgent)
 // alowcation controller for agent 
 router.post("/agent/manual-assign",manualAssignAgent)
@@ -229,17 +231,44 @@ router.delete("/manager/:managerId",deleteManager)
 router.post("/agent/:agentId/give-warning", protect, checkRole('admin'), giveWarning);
 router.post("/agent/:agentId/terminate", protect, checkRole('admin'), terminateAgent);
 
+
+
+///agenr approve
+
+router.patch('/agent/:agentId/approve', protect, approveApplication);
+router.patch('/agent/:agentId/reject',protect, rejectApplication);
+
+router.get("/agent/getAll",getAllAgents)
+  ///ager selie
+
+
+router.get('/agent/selfies', getAgentSelfies);
+router.get('/agent/selfies/:id', getSelfieDetails);
+router.get('/agent/:agentId/selfies', getAgentSelfieHistory);
+
+
+
+
+
+
 const admin = require('../config/firebaseAdmin');
-const fcmToken ='fMBdJGXbRh2iIUuamsSG0Z:APA91bF9xKmS8AlJP6xIT2ehkgbo6m83VjJQHaz9Bmim71BmnxwqWXesgWk8fwek1rrbf6ztR2lDfPMeBK8znqtewF6PY58Px0PiHVGQWCaHLzHuVAzIFmA';
+const { addAgentEarnigsSetting, getAgentEarningsSettings } = require("../controllers/admin/agentEarnigsettings");
+const fcmToken ='dhntz4297pISXgPjGk9Zw4:APA91bEIqtwOprgR7vEQzTKDfkHz8VLTPvWvYBdbnZ8YPt1SjSrr-sKT-FDlIGKw8DOakhohUyjtokDGfRCgcvTcl5RKY3IV4yUbC83cs6ELik5N206TUUU';
 router.get('/send-test-notification', async (req, res) => {
   const message = {
     token: fcmToken,
     notification: {
-      title: ' New order received from McDonalds 3 items. Total amount 250 rupees. Please open the app for full details',
-      body: 'you got a new order',
+      title: '🛵 New Order from McDonalds',
+      body: '  New Order from McDonalds 3 items - ₹250. Tap to view details',
+    },
+    webpush: {
+      fcmOptions: {
+        link: 'https://your-app.com/order-details', // Replace with your frontend URL
+      },
     },
     data: {
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      orderId: 'ORD12345',
     },
   };
 
@@ -253,9 +282,22 @@ router.get('/send-test-notification', async (req, res) => {
   }
 });
 
+
+
+router.post("/save-fcm-token", protect, checkRole('admin'),saveFcmToken)
+
+
+
 // Agent leave management
-router.get('/leaves', protect, checkRole('admin'), getAllLeaveRequests);
-router.post('/leaves/:agentId/:leaveId/decision', protect, checkRole('admin'), processLeave);
+router.get('/agent/leaves',getAllLeaveRequests);
+router.post('/agent/:agentId/leaves/:leaveId/decision', protect, checkRole('admin'), processLeave);
+
+
+
+//agent earnigs settings
+router.post('/agent-earnings/settings',addAgentEarnigsSetting)
+router.get('/agent-earnings/settings',getAgentEarningsSettings)
+
 
 module.exports = router;
 
