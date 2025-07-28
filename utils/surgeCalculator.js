@@ -96,3 +96,48 @@ exports.findApplicableSurge = (restaurantCoords, deliveryCoords, surgeAreas) => 
 
   return null; // No surge applicable
 };
+
+
+exports.findApplicableSurgeZones = async ({ fromCoords, toCoords, time = new Date() }) => {
+  const activeSurges = await SurgeArea.find({
+    isActive: true,
+    startTime: { $lte: time },
+    endTime: { $gte: time }
+  });
+
+  const insideSurges = [];
+
+  for (const surge of activeSurges) {
+    if (surge.type === 'Polygon') {
+      const turf = require('@turf/turf');
+      const polygon = turf.polygon(surge.area.coordinates);
+      const fromPoint = turf.point(fromCoords);
+      const toPoint = turf.point(toCoords);
+
+      if (turf.booleanPointInPolygon(fromPoint, polygon) || turf.booleanPointInPolygon(toPoint, polygon)) {
+        insideSurges.push(surge);
+      }
+    } else if (surge.type === 'Circle') {
+      const turf = require('@turf/turf');
+      const center = turf.point(surge.center);
+      const radiusInKm = surge.radius / 1000;
+
+      const fromDistance = turf.distance(turf.point(fromCoords), center);
+      const toDistance = turf.distance(turf.point(toCoords), center);
+
+      if (fromDistance <= radiusInKm || toDistance <= radiusInKm) {
+        insideSurges.push(surge);
+      }
+    }
+  }
+
+  return insideSurges.map(surge => ({
+    name: surge.name,
+    reason: surge.surgeReason,
+    surgeType: surge.surgeType,
+    surgeValue: surge.surgeValue,
+    type: surge.type,
+    id: surge._id,
+  }));
+};
+

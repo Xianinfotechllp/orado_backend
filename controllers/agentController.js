@@ -29,6 +29,7 @@ const AgentNotification = require("../models/AgentNotificationModel");
 const AgentSelfie = require("../models/AgentSelfieModel");
 const haversineDistance = require("haversine-distance");
 const  calculateEarningsBreakdown  = require("../utils/agentEarningCalculator");
+const { findApplicableSurgeZones } = require("../utils/surgeCalculator");
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -1101,10 +1102,32 @@ exports.getAssignedOrderDetails = async (req, res) => {
       console.warn("❌ Missing location data for distance calculation.");
     }
 
-     const earningsBreakdown = calculateEarningsBreakdown({
-      distanceKm:distance ,
-      config: earingConfig,
-    });
+
+    let applicableSurges = [];
+if (
+  order.restaurantId?.location?.coordinates &&
+  order.deliveryLocation?.coordinates
+) {
+  const fromCoords = order.restaurantId.location.coordinates;
+  const toCoords = order.deliveryLocation.coordinates;
+
+  // Calculate surge zones
+  applicableSurges = await findApplicableSurgeZones({
+    fromCoords,
+    toCoords,
+    time: new Date(), // optional, defaults inside function
+  });
+
+}
+
+console.log(applicableSurges)
+
+   const earningsBreakdown = calculateEarningsBreakdown({
+  distanceKm: distance,
+  config: earingConfig,
+  surgeZones: applicableSurges, // 👈 pass here
+});
+
     console.log("💰 earings ",earningsBreakdown) 
 
 
