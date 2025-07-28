@@ -7,6 +7,7 @@ const Restaurant = require("../models/restaurantModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
+const EarnigsSettings = require("../models/AgentEarningSettingModel");
 const {
   addAgentEarnings,
   addRestaurantEarnings,
@@ -22,10 +23,12 @@ const Product = require("../models/productModel");
 const formatOrderResponse = require("../utils/formatOrderResponse");
 const { fr } = require("../utils/formatOrder");
 const formatOrder = require("../utils/formatOrder");
-const { notifyNextPendingAgent  } = require("../services/allocationService");
-const { sendNotificationToAdmins } = require("../services/notificationService")
+const { notifyNextPendingAgent } = require("../services/allocationService");
+const { sendNotificationToAdmins } = require("../services/notificationService");
 const AgentNotification = require("../models/AgentNotificationModel");
 const AgentSelfie = require("../models/AgentSelfieModel");
+const haversineDistance = require("haversine-distance");
+const  calculateEarningsBreakdown  = require("../utils/agentEarningCalculator");
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -172,7 +175,7 @@ exports.loginAgent = async (req, res) => {
     }
 
     // ✅ Store FCM token if provided and not already saved
-    if (fcmToken && !agent.fcmTokens.some(t => t.token === fcmToken)) {
+    if (fcmToken && !agent.fcmTokens.some((t) => t.token === fcmToken)) {
       agent.fcmTokens.push({ token: fcmToken });
       await agent.save();
     }
@@ -184,7 +187,9 @@ exports.loginAgent = async (req, res) => {
     );
 
     const MAX_SESSIONS = 1;
-    const existingSessions = await Session.find({ userId: agent._id }).sort({ createdAt: 1 });
+    const existingSessions = await Session.find({ userId: agent._id }).sort({
+      createdAt: 1,
+    });
 
     if (existingSessions.length >= MAX_SESSIONS) {
       const oldest = existingSessions[0];
@@ -217,10 +222,11 @@ exports.loginAgent = async (req, res) => {
     });
   } catch (error) {
     console.error("Agent login error:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
-
 
 // Logout user by deleting session
 
@@ -507,7 +513,7 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
 //
 
-  exports.toggleAvailability = async (req, res) => {
+exports.toggleAvailability = async (req, res) => {
   try {
     const { agentId } = req.params;
     const { status, location } = req.body;
@@ -549,24 +555,26 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
       updatedAt: new Date(),
     };
 
-    const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, { new: true });
+    const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, {
+      new: true,
+    });
 
     if (!updatedAgent) {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-
-
     await sendNotificationToAdmins({
-  title: "Agent Availability Update",
-  body: `Agent ${updatedAgent.fullName || updatedAgent.phoneNumber} is now ${status}`,
-  data: {
-    agentId: updatedAgent._id.toString(),
-    type: "AGENT_AVAILABILITY_CHANGE",
-    status,
-  },
-});
-    
+      title: "Agent Availability Update",
+      body: `Agent ${
+        updatedAgent.fullName || updatedAgent.phoneNumber
+      } is now ${status}`,
+      data: {
+        agentId: updatedAgent._id.toString(),
+        type: "AGENT_AVAILABILITY_CHANGE",
+        status,
+      },
+    });
+
     if (status === "AVAILABLE" && io) {
       io.emit("agentAvailable", {
         agentId: updatedAgent._id,
@@ -584,7 +592,9 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Error toggling agent availability:", error);
-    return res.status(500).json({ error: "Server error while updating status" });
+    return res
+      .status(500)
+      .json({ error: "Server error while updating status" });
   }
 };
 
@@ -620,11 +630,9 @@ exports.addAgentReview = async (req, res) => {
 
     // Check if order exists and is completed
     if (!order || order.orderStatus !== "completed") {
-      return res
-        .status(400)
-        .json({
-          message: "You can only leave a review after delivery is completed.",
-        });
+      return res.status(400).json({
+        message: "You can only leave a review after delivery is completed.",
+      });
     }
 
     // Optional: Check if the user leaving the review is the customer who made the order
@@ -794,11 +802,9 @@ exports.requestPermission = async (req, res) => {
   );
 
   if (existingRequest) {
-    return res
-      .status(400)
-      .json({
-        error: "You already have a pending request for this permission.",
-      });
+    return res.status(400).json({
+      error: "You already have a pending request for this permission.",
+    });
   }
 
   agent.permissionRequests.push({ permissionType: permission });
@@ -962,21 +968,19 @@ exports.getAssignedOrders = async (req, res) => {
   }
 };
 
-
-// GET /agent/warnings   
+// GET /agent/warnings
 exports.agentWarnings = async (req, res) => {
   const agentId = req.user._id;
-  const agent = await Agent.findById(agentId)
+  const agent = await Agent.findById(agentId);
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   return res.json({ warnings: agent.warnings || [] });
 };
 
-
 // GET /agent/termination
 exports.agentTerminationInfo = async (req, res) => {
   const agentId = req.user._id;
-  const agent = await Agent.findOne(agentId)
+  const agent = await Agent.findOne(agentId);
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
   if (!agent.termination?.terminated)
@@ -984,7 +988,6 @@ exports.agentTerminationInfo = async (req, res) => {
 
   return res.json({ termination: agent.termination });
 };
-
 
 exports.agentAcceptOrRejectOrder = async (req, res) => {
   try {
@@ -1001,7 +1004,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
     const order = await Order.findById(orderId);
 
-    console.log(order)
+    console.log(order);
 
     if (!order) {
       return res.status(404).json({
@@ -1031,7 +1034,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       order.assignedAgent = agentId;
       order.agentAssignmentStatus = "accepted_by_agent";
       order.agentAcceptedAt = new Date();
-       await order.save();
+      await order.save();
     }
 
     // 🔁 If rejected, trigger next candidate allocation here if needed
@@ -1082,12 +1085,35 @@ exports.getAssignedOrderDetails = async (req, res) => {
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
+    const earingConfig = await EarnigsSettings.findOne({ mode: "global" });
+    console.log("Earnings Config:", earingConfig);
+    let distance = 0;
+    if (
+      order.restaurantId?.location?.coordinates &&
+      order.deliveryLocation?.coordinates
+    ) {
+      distance = haversineDistance(
+        order.restaurantId.location.coordinates,
+        order.deliveryLocation.coordinates
+      );
+      console.log("📏 Distance (km):", distance);
+    } else {
+      console.warn("❌ Missing location data for distance calculation.");
+    }
+
+     const earningsBreakdown = calculateEarningsBreakdown({
+      distanceKm:distance ,
+      config: earingConfig,
+    });
+    console.log("💰 earings ",earningsBreakdown) 
+
 
     const formattedOrder = formatOrder(order, agentId); // 👈 use utility
 
     return res.status(200).json({
       status: "success",
       order: formattedOrder,
+      earningsBreakdown,
     });
   } catch (error) {
     console.error("❌ Error in getAssignedOrderDetails:", error);
@@ -1258,10 +1284,6 @@ exports.markAgentNotificationAsRead = async (req, res) => {
   }
 };
 
-
-
-
-
 exports.getAgentHomeData = async (req, res) => {
   try {
     // Mock data (this would normally come from DB queries)
@@ -1285,25 +1307,25 @@ exports.getAgentHomeData = async (req, res) => {
         totalOrders: 12,
         newOrders: 3,
         rejectedOrders: 2,
-      }
+      },
     };
 
     return res.status(200).json({
       status: "success",
-      data: mockData
+      data: mockData,
     });
   } catch (err) {
     return res.status(500).json({
       status: "error",
       message: "Failed to fetch agent home data",
-      error: err.message
+      error: err.message,
     });
   }
 };
 // Apply for leave\
 exports.applyLeave = async (req, res) => {
   try {
-    const agentId = req.user._id; 
+    const agentId = req.user._id;
     const { leaveStartDate, leaveEndDate, leaveType, reason } = req.body;
 
     // Basic validations
@@ -1311,18 +1333,23 @@ exports.applyLeave = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
 
     if (new Date(leaveStartDate) > new Date(leaveEndDate))
-      return res.status(400).json({ message: "Start date cannot be after end date" });
+      return res
+        .status(400)
+        .json({ message: "Start date cannot be after end date" });
 
     const agent = await Agent.findById(agentId);
 
     // Optional: Check for overlapping leaves
-    const hasOverlap = agent.leaves.some(leave =>
-      (new Date(leave.leaveStartDate) <= new Date(leaveEndDate)) &&
-      (new Date(leave.leaveEndDate) >= new Date(leaveStartDate))
+    const hasOverlap = agent.leaves.some(
+      (leave) =>
+        new Date(leave.leaveStartDate) <= new Date(leaveEndDate) &&
+        new Date(leave.leaveEndDate) >= new Date(leaveStartDate)
     );
 
     if (hasOverlap) {
-      return res.status(409).json({ message: "Leave request overlaps with existing leave" });
+      return res
+        .status(409)
+        .json({ message: "Leave request overlaps with existing leave" });
     }
 
     agent.leaves.push({
@@ -1331,7 +1358,7 @@ exports.applyLeave = async (req, res) => {
       leaveType,
       reason: reason || "", // optional field
       status: "Pending",
-      appliedAt: new Date()
+      appliedAt: new Date(),
     });
 
     await agent.save();
@@ -1342,8 +1369,6 @@ exports.applyLeave = async (req, res) => {
   }
 };
 
-
-
 // check leave status
 
 exports.getLeaveStatus = async (req, res) => {
@@ -1352,10 +1377,11 @@ exports.getLeaveStatus = async (req, res) => {
 
     const agent = await Agent.findById(agentId).select("leaves");
 
-    if (!agent)
-      return res.status(404).json({ message: "Agent not found" });
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
 
-    const sortedLeaves = (agent.leaves || []).sort((a, b) => new Date(b.leaveStartDate) - new Date(a.leaveStartDate));
+    const sortedLeaves = (agent.leaves || []).sort(
+      (a, b) => new Date(b.leaveStartDate) - new Date(a.leaveStartDate)
+    );
 
     res.status(200).json({
       message: "Leave status retrieved successfully",
@@ -1367,20 +1393,13 @@ exports.getLeaveStatus = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
 exports.uploadSelfie = async (req, res) => {
   try {
     const agentId = req.user._id;
     const file = req.file;
 
     if (!file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+      return res.status(400).json({ message: "No file uploaded" });
     }
 
     // Prevent multiple uploads per day
@@ -1389,27 +1408,31 @@ exports.uploadSelfie = async (req, res) => {
 
     const existing = await AgentSelfie.findOne({
       agentId,
-      takenAt: { $gte: startOfDay }
+      takenAt: { $gte: startOfDay },
     });
 
     if (existing) {
-      return res.status(400).json({ message: 'Selfie already submitted for today.' });
+      return res
+        .status(400)
+        .json({ message: "Selfie already submitted for today." });
     }
 
     // Upload to Cloudinary
-    const uploadResult = await uploadOnCloudinary(file.path, 'agent_selfies');
+    const uploadResult = await uploadOnCloudinary(file.path, "agent_selfies");
 
     if (!uploadResult?.secure_url) {
-      return res.status(500).json({ message: 'Failed to upload selfie.' });
+      return res.status(500).json({ message: "Failed to upload selfie." });
     }
 
     // Find agent for notification message
-    const agent = await Agent.findById(agentId).select('fullName phoneNumber');
+    const agent = await Agent.findById(agentId).select("fullName phoneNumber");
 
     // Send notification to all admins
     await sendNotificationToAdmins({
       title: "Agent Selfie Submitted",
-      body: `Agent ${agent.fullName || agent.phoneNumber} submitted today's selfie.`,
+      body: `Agent ${
+        agent.fullName || agent.phoneNumber
+      } submitted today's selfie.`,
       data: {
         agentId: agent._id.toString(),
         type: "AGENT_SELFIE_SUBMITTED",
@@ -1423,15 +1446,12 @@ exports.uploadSelfie = async (req, res) => {
       takenAt: new Date(),
     });
 
-    return res.json({ message: 'Selfie submitted successfully.', selfie });
-
+    return res.json({ message: "Selfie submitted successfully.", selfie });
   } catch (err) {
     console.error("Upload Selfie Error:", err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: "Server error" });
   }
 };
-
-
 
 exports.getSelfieStatus = async (req, res) => {
   try {
@@ -1448,22 +1468,20 @@ exports.getSelfieStatus = async (req, res) => {
     if (selfie) {
       return res.json({
         selfieRequired: false,
-        message: 'Selfie already submitted for today',
+        message: "Selfie already submitted for today",
         selfie,
       });
     } else {
       return res.json({
         selfieRequired: true,
-        message: 'Selfie is required for today',
+        message: "Selfie is required for today",
       });
     }
   } catch (error) {
-    console.error('Get selfie status error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Get selfie status error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
-
-
 
 exports.agentLogout = async (req, res) => {
   try {
@@ -1481,9 +1499,7 @@ exports.agentLogout = async (req, res) => {
 
     const initialTokenCount = agent.fcmTokens.length;
 
-    agent.fcmTokens = agent.fcmTokens.filter(
-      (t) => t.token !== fcmToken
-    );
+    agent.fcmTokens = agent.fcmTokens.filter((t) => t.token !== fcmToken);
 
     const tokenRemoved = agent.fcmTokens.length !== initialTokenCount;
 
@@ -1493,15 +1509,16 @@ exports.agentLogout = async (req, res) => {
 
     await agent.save();
 
-    return res.status(200).json({ message: "Logout successful. FCM token removed." });
+    return res
+      .status(200)
+      .json({ message: "Logout successful. FCM token removed." });
   } catch (error) {
     console.error("Error during agent logout:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-
-exports.getAgentBasicDetails= async (req, res) => {
+exports.getAgentBasicDetails = async (req, res) => {
   try {
     const { agentId } = req.params;
 
@@ -1518,7 +1535,9 @@ exports.getAgentBasicDetails= async (req, res) => {
     );
 
     if (!agent) {
-      return res.status(404).json({ success: false, message: 'Agent not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Agent not found" });
     }
 
     res.status(200).json({
@@ -1550,9 +1569,7 @@ exports.getAgentBasicDetails= async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching agent profile:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    console.error("Error fetching agent profile:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
-
-

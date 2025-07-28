@@ -63,3 +63,36 @@ exports.getApplicableSurgeFee = async (userCoords, orderAmount) => {
     return null;
   }
 };
+
+
+
+// updated calcucaltion
+exports.findApplicableSurge = (restaurantCoords, deliveryCoords, surgeAreas) => {
+  const midpoint = [
+    (restaurantCoords[0] + deliveryCoords[0]) / 2,
+    (restaurantCoords[1] + deliveryCoords[1]) / 2,
+  ];
+
+  const point = turf.point(midpoint);
+
+  for (const surge of surgeAreas) {
+    if (!surge.isActive) continue;
+
+    const now = new Date();
+    if (now < new Date(surge.startTime) || now > new Date(surge.endTime)) {
+      continue;
+    }
+
+    if (surge.type === 'Polygon' && surge.area?.coordinates) {
+      const polygon = turf.polygon(surge.area.coordinates);
+      if (turf.booleanPointInPolygon(point, polygon)) return surge;
+
+    } else if (surge.type === 'Circle' && surge.center && surge.radius) {
+      const center = turf.point(surge.center);
+      const distance = turf.distance(center, point, { units: 'meters' });
+      if (distance <= surge.radius) return surge;
+    }
+  }
+
+  return null; // No surge applicable
+};

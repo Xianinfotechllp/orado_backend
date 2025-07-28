@@ -42,7 +42,7 @@ const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require(".
 const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
 const {sendNotification} = require('../controllers/admin/notificationControllers');
 const { getAllCustomers, getSingleCustomerDetails, getOrdersByCustomerForAdmin } = require("../controllers/admin/customerControllers");
-const { getAllAgents, manualAssignAgent ,sendNotificationToAgent} = require("../controllers/admin/agentControllers");
+const { getAllAgents, manualAssignAgent ,sendNotificationToAgent,getAllList} = require("../controllers/admin/agentControllers");
 const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
 const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
 const { createManager, getAllManagers, getManagerById, updateManager, deleteManager } = require("../controllers/admin/managerController");
@@ -197,7 +197,7 @@ router.patch("/orders/:orderId/status",updateOrderStatus)
 router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)
 
 
-router.get("/agent/list",getAllAgents)
+router.get("/agent/list",getAllList)
 router.post("/agent/send-notification",sendNotificationToAgent)
 // alowcation controller for agent 
 router.post("/agent/manual-assign",manualAssignAgent)
@@ -252,6 +252,7 @@ router.get('/agent/:agentId/selfies', getAgentSelfieHistory);
 
 
 const admin = require('../config/firebaseAdmin');
+const { addAgentEarnigsSetting, getAgentEarningsSettings } = require("../controllers/admin/agentEarnigsettings");
 const fcmToken ='dhntz4297pISXgPjGk9Zw4:APA91bEIqtwOprgR7vEQzTKDfkHz8VLTPvWvYBdbnZ8YPt1SjSrr-sKT-FDlIGKw8DOakhohUyjtokDGfRCgcvTcl5RKY3IV4yUbC83cs6ELik5N206TUUU';
 router.get('/send-test-notification', async (req, res) => {
   const message = {
@@ -290,6 +291,13 @@ router.post("/save-fcm-token", protect, checkRole('admin'),saveFcmToken)
 // Agent leave management
 router.get('/agent/leaves',getAllLeaveRequests);
 router.post('/agent/:agentId/leaves/:leaveId/decision', protect, checkRole('admin'), processLeave);
+
+
+
+//agent earnigs settings
+router.post('/agent-earnings/settings',addAgentEarnigsSetting)
+router.get('/agent-earnings/settings',getAgentEarningsSettings)
+
 
 module.exports = router;
 

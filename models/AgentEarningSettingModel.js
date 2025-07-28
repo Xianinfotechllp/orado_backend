@@ -41,11 +41,6 @@ const AgentEarningSettingSchema = new mongoose.Schema({
     default: 10,
   },
 
-  surgeBonusEnabled: {
-    type: Boolean,
-    default: true,
-  },
-
   peakHourBonus: {
     type: Number,
     default: 20,

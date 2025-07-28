@@ -5,7 +5,7 @@ const AgentSelfie = require("../../models/AgentSelfieModel");
 const AgentNotification = require('../../models/AgentNotificationModel');
 const admin = require('../../config/firebaseAdmin'); 
 const sendNotificationToAgent = require('../../utils/sendNotificationToAgent')
-exports.getAllAgents = async (req, res) => {
+exports.getAllList = async (req, res) => {
   try {
     const agents = await Agent.find().select(
       "fullName phoneNumber agentStatus.status agentStatus.availabilityStatus location"
