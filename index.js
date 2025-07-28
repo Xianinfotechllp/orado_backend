@@ -721,6 +721,38 @@ io.to("admin_682c3a4a2e9fb5869cb96044").emit("new_order", { data: orderData });
 
 });
 
+
+app.get("/socket-test", (req, res) => {
+  const adminId = "68394a55a32c5e36eb8be551"; // Replace with real admin _id
+  const roomName = `user_${adminId}`;
+
+  const orderData = {
+    orderId: "ORD123456",
+    customerName: "John Doe",
+    items: [
+      { name: "Margherita Pizza", quantity: 2, price: 299 },
+      { name: "Garlic Bread", quantity: 1, price: 149 },
+    ],
+    totalAmount: 747,
+    paymentMethod: "UPI",
+    deliveryAddress: {
+      street: "221B Baker Street",
+      city: "London",
+      state: "London",
+      zipCode: "NW1 6XE",
+    },
+    orderStatus: "Preparing",
+    placedAt: new Date().toISOString(),
+  };
+
+  io.to(roomName).emit("test_order_status", { data: orderData });
+
+  return res.json({ message: "Socket notification sent", room: roomName });
+});
+
+
+
+
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
