@@ -218,25 +218,34 @@ exports.manualAssignAgent = async (req, res) => {
 exports.giveWarning = async (req, res) => {
   const adminId = req.user._id;
   const { agentId } = req.params;
-  const { reason } = req.body;
+  const { reason, severity = "minor" } = req.body;
 
   if (!reason) return res.status(400).json({ message: "Reason is required" });
+
+  // Validate severity (just in case)
+  const validSeverities = ["minor", "major", "critical"];
+  if (!validSeverities.includes(severity)) {
+    return res.status(400).json({ message: "Invalid severity value" });
+  }
 
   const agent = await Agent.findById(agentId);
   if (!agent) return res.status(404).json({ message: "Agent not found." });
 
-  agent.warnings.push({ reason, issuedBy: adminId });
+  // Add warning
+  agent.warnings.push({ reason, severity, issuedBy: adminId });
   await agent.save();
 
-    await sendNotificationToAgent({
+  // Send notification
+  await sendNotificationToAgent({
     agentId,
     title: "Warning Issued",
-    body: `Reason: ${reason}`,
-    data: { type: "warning", reason },
+    body: `Reason: ${reason} | Severity: ${severity}`,
+    data: { type: "warning", reason, severity },
   });
 
   return res.json({ message: "Warning issued.", agent });
 };
+
 
 
 exports.terminateAgent = async (req, res) => {
@@ -737,20 +746,12 @@ exports.rejectApplication = async (req, res) => {
 
 exports.getAllAgents = async (req, res) => {
   try {
-
-
-    // Get query parameters for filtering
     const { status, search } = req.query;
-    
-    // Build the query object
+
     let query = {};
-    
-    // Add status filter if provided
     if (status && status !== 'all') {
       query.applicationStatus = status;
     }
-    
-    // Add search filter if provided
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -759,41 +760,60 @@ exports.getAllAgents = async (req, res) => {
       ];
     }
 
-    // Get all agents with filtering
     const agents = await Agent.find(query)
       .select("-password -fcmTokens -bankAccountDetails")
       .sort({ createdAt: -1 })
       .lean();
 
-    // Format the response data
-    // Format the response data
-const formattedAgents = agents.map(agent => ({
-  id: agent._id,
-  name: agent.fullName,  // This is correct as per schema
-  phone: agent.phoneNumber,  // Changed from phone to phoneNumber
-  email: agent.email,
-  status: agent.applicationStatus || 'pending',
-  documents: {
-    license: agent.agentApplicationDocuments?.license || null,
-    insurance: agent.agentApplicationDocuments?.insurance || null,
-    rcBook: agent.agentApplicationDocuments?.rcBook || null,
-    pollutionCertificate: agent.agentApplicationDocuments?.pollutionCertificate || null,
-    submittedAt: agent.agentApplicationDocuments?.submittedAt || null
-  },
-  createdAt: agent.createdAt,
-  updatedAt: agent.updatedAt,
-  approvedAt: agent.approvedAt,
-  rejectedAt: agent.rejectedAt,
-  approvedBy: agent.approvedBy,
-  rejectedBy: agent.rejectedBy,
-  rejectionReason: agent.rejectionReason
-}));
+    const formattedAgents = agents.map(agent => ({
+      id: agent._id,
+      name: agent.fullName,
+      phone: agent.phoneNumber,
+      email: agent.email,
+      status: agent.applicationStatus || 'pending',
+      documents: {
+        license: agent.agentApplicationDocuments?.license || null,
+        insurance: agent.agentApplicationDocuments?.insurance || null,
+        rcBook: agent.agentApplicationDocuments?.rcBook || null,
+        pollutionCertificate: agent.agentApplicationDocuments?.pollutionCertificate || null,
+        submittedAt: agent.agentApplicationDocuments?.submittedAt || null
+      },
+      warnings: agent.warnings?.map(w => ({
+        reason: w.reason,
+        severity: w.severity, 
+        issuedBy: w.issuedBy ? {
+          id: w.issuedBy._id,
+          name: w.issuedBy.fullName,
+          email: w.issuedBy.email
+        } : null,
+        issuedAt: w.issuedAt
+      })) || [],
+      termination: {
+        terminated: agent.termination?.terminated || false,
+        terminatedAt: agent.termination?.terminatedAt || null,
+        reason: agent.termination?.reason || null,
+        letter: agent.termination?.letter || null,
+        issuedBy: agent.termination?.issuedBy ? {
+          id: agent.termination.issuedBy._id,
+          name: agent.termination.issuedBy.fullName,
+          email: agent.termination.issuedBy.email
+        } : null
+      },
+      createdAt: agent.createdAt,
+      updatedAt: agent.updatedAt,
+      approvedAt: agent.approvedAt,
+      rejectedAt: agent.rejectedAt,
+      approvedBy: agent.approvedBy,
+      rejectedBy: agent.rejectedBy,
+      rejectionReason: agent.rejectionReason
+    }));
 
     return res.status(200).json({
       message: "Agents retrieved successfully",
       count: formattedAgents.length,
       agents: formattedAgents,
     });
+
   } catch (error) {
     console.error("Error fetching agents:", error);
     return res.status(500).json({ 
