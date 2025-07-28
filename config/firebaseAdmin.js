@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 // Get private key and replace escaped newlines
 const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
+
 const firebaseConfig = {
   type: process.env.FIREBASE_TYPE,
   project_id: process.env.FIREBASE_PROJECT_ID,

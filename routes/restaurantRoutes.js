@@ -26,7 +26,7 @@ router.post("/reset-password/:token", protect, checkRole('merchant'), resetPassw
 router.post("/logout", protect, checkRole('merchant'), logoutMerchant)
 router.get('/merchant', protect, getMerchantDetails); 
 router.post("/logout-all", protect, checkRole('merchant'), logoutAll)
-router.get('/merchant/:merchantId/restaurants',  getRestaurantsByMerchantId);
+router.get('/merchant/restaurants', protect,  getRestaurantsByMerchantId);
 
 // restaurant routes
 router.post(
