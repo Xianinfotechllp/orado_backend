@@ -37,11 +37,11 @@ exports.createCategory = async (req, res) => {
     }
 
    if (!description || description.trim() === "") {
-  return res.status(400).json({
-    message: "Description is required",
-    messageType: "failure"
-  });
-}
+      return res.status(400).json({
+        message: "Description is required",
+        messageType: "failure"
+      });
+    }
 
     // Validate description length if provided
     if (description && description.length > 500) {
@@ -71,17 +71,22 @@ exports.createCategory = async (req, res) => {
 
     // Process images if any
     let images = [];
+
     if (req.files && req.files.length > 0) {
-      // Validate number of images
       if (req.files.length > 5) {
-        return res.status(400).json({ 
-          message: 'Maximum of 5 images allowed per category' 
-        });
+        return res.status(400).json({ message: 'Maximum of 5 images allowed per category' });
       }
 
-      // Validate image types and upload
-    
-
+      // Upload each image to Cloudinary
+      for (const file of req.files) {
+        // file.path is provided by multer.diskStorage, if you use memoryStorage you may need to handle buffer upload
+        const cloudinaryResult = await uploadOnCloudinary(file.path, 'your_folder_name_here');
+        if (cloudinaryResult && cloudinaryResult.secure_url) {
+          images.push(cloudinaryResult.secure_url); // Store the URL
+        } else {
+          return res.status(500).json({ message: 'Failed to upload image to Cloudinary' });
+        }
+      }
     }
 
     // Create and save the category
@@ -123,6 +128,7 @@ exports.createCategory = async (req, res) => {
     });
   }
 };
+
 exports.getAResturantCategories = async (req, res) => {
   try {
     const { restaurantId } = req.params; 
