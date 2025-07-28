@@ -150,7 +150,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("agent:location", (data) => {
-    const { agentId, lat, lng } = data;
+    const { agentId, lat, lng ,deviceInfo} = data;
     console.log(`Agent ${agentId} location update:`, data);
     // Optionally: Save to Redis GEOSET
     redis.geoadd("agent_locations", lng, lat, agentId);
@@ -159,7 +159,8 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("admin:updateLocation", {
       agentId,
       lat,
-      lng
+      lng,
+      deviceInfo
     });
 
     // Update agent lastSeen for availability timeout logic
