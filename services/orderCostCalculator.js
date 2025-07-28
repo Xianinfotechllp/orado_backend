@@ -448,7 +448,9 @@ exports.calculateOrderCostV2 = async ({
   isSurge = false,
   surgeFeeAmount = 0,
   surgeReason = null,
-  merchantId
+  merchantId,
+  cartId, // Accept cartId instead of userId directly
+  useLoyaltyPoints = false
 }) => {
   let cartTotal = 0;
   let appliedCombos = [];

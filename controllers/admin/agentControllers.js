@@ -5,12 +5,37 @@ const AgentSelfie = require("../../models/AgentSelfieModel");
 const AgentNotification = require('../../models/AgentNotificationModel');
 const admin = require('../../config/firebaseAdmin'); 
 const sendNotificationToAgent = require('../../utils/sendNotificationToAgent')
+const AgentDeviceInfo = require("../../models/AgentDeviceInfoModel")
 exports.getAllList = async (req, res) => {
   try {
-    const agents = await Agent.find().select(
-      "fullName phoneNumber agentStatus.status agentStatus.availabilityStatus location"
-    );
+    // First get all agents with basic info
+    const agents = await Agent.find()
+      .select("fullName phoneNumber agentStatus.status agentStatus.availabilityStatus location")
+      .lean(); // Convert to plain JS objects
 
+    // Get all device info in one query for efficiency
+    const deviceInfos = await AgentDeviceInfo.find({
+      agent: { $in: agents.map(a => a._id) }
+    }).lean();
+
+    // Create a map of agentId -> deviceInfo for quick lookup
+    const deviceInfoMap = deviceInfos.reduce((map, info) => {
+      map[info.agent.toString()] = {
+        os: info.os,
+        osVersion: info.osVersion,
+        appVersion: info.appVersion,
+        model: info.model,
+        batteryLevel: info.batteryLevel,
+        networkType: info.networkType,
+        timezone: info.timezone,
+        locationEnabled: info.locationEnabled,
+        isRooted: info.isRooted,
+        updatedAt: info.updatedAt
+      };
+      return map;
+    }, {});
+
+    // Format the final response
     const formattedAgents = agents.map((agent) => {
       let derivedStatus = 'Inactive';
 
@@ -43,6 +68,7 @@ exports.getAllList = async (req, res) => {
           lng: coordinates[0],
           accuracy: accuracy,
         },
+        deviceInfo: deviceInfoMap[agent._id.toString()] || null
       };
     });
 
