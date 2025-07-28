@@ -103,6 +103,7 @@ exports.getAdminOrders = async (req, res) => {
   orderStatus: order.orderStatus,
   restaurantName: order.restaurantId?.name || 'N/A',
   restaurantAddress: order.restaurantId?.address || 'N/A',
+  restaurantLocation: order.restaurantId?.location,
   customerName: order.customerId?.name || 'Guest',
   customerId: order.customerId?._id || null,
   amount: `$ ${order.totalAmount?.toFixed(2)}`,
@@ -251,14 +252,14 @@ exports.getAgentOrderDispatchStatuses = async (req, res) => {
   try {
     const orders = await Order.find({})
       .populate("customerId", "name phone email")
-      .populate("restaurantId", "name address")
+      .populate("restaurantId", "name address location")
       .populate("assignedAgent", "fullName phoneNumber agentStatus")  // populate agentStatus too
       .sort({ createdAt: -1 });
 
     const formattedOrders = orders.map(order => ({
       orderId: order._id,
       orderTime: order.createdAt,
-    orderStatus: order.orderStatus,
+       orderStatus: order.orderStatus,
       agentAssignmentStatus: order.agentAssignmentStatus || "Unassigned",
       assignedAgent: order.assignedAgent ? order.assignedAgent.fullName : "Unassigned",
       agentPhone: order.assignedAgent ? order.assignedAgent.phoneNumber : "-",
@@ -266,6 +267,7 @@ exports.getAgentOrderDispatchStatuses = async (req, res) => {
       agentAvailability: order.assignedAgent?.agentStatus?.availability || "Unavailable",
       restaurantName: order.restaurantId ? order.restaurantId.name : "-",
        restaurantAddress:order.restaurantId ? order.restaurantId.address : "",
+       restaurantLocation: order.restaurantId ? order.restaurantId.location : null,
       customerName: order.customerId ? order.customerId.name : "-",
       customerPhone: order.customerId ? order.customerId.phone : "-",
       deliveryLocation: order.deliveryLocation?.coordinates || [],

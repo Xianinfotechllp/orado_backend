@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-
+const mongoosePaginate = require('mongoose-paginate-v2');
 const AgentSelfieSchema = new mongoose.Schema({
   // Reference to the agent who took the selfie
   agentId: {
@@ -38,7 +38,7 @@ const AgentSelfieSchema = new mongoose.Schema({
     }
   }
 });
-
+AgentSelfieSchema.plugin(mongoosePaginate);
 // Create a 2dsphere index for geo queries on selfie location
 AgentSelfieSchema.index({ location: '2dsphere' });
 

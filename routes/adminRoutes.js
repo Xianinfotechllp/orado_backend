@@ -23,7 +23,9 @@ saveFcmToken,
 const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
-const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave} = require("../controllers/admin/agentControllers")
+const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveApplication, rejectApplication,
+  getAgentSelfies,getAgentSelfieHistory,getSelfieDetails
+} = require("../controllers/admin/agentControllers")
 
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
@@ -229,6 +231,26 @@ router.delete("/manager/:managerId",deleteManager)
 router.post("/agent/:agentId/give-warning", protect, checkRole('admin'), giveWarning);
 router.post("/agent/:agentId/terminate", protect, checkRole('admin'), terminateAgent);
 
+
+
+///agenr approve
+
+router.patch('/agent/:agentId/approve', protect, approveApplication);
+router.patch('/agent/:agentId/reject',protect, rejectApplication);
+
+router.get("/agent/getAll",getAllAgents)
+  ///ager selie
+
+
+router.get('/agent/selfies', getAgentSelfies);
+router.get('/agent/selfies/:id', getSelfieDetails);
+router.get('/agent/:agentId/selfies', getAgentSelfieHistory);
+
+
+
+
+
+
 const admin = require('../config/firebaseAdmin');
 const fcmToken ='dhntz4297pISXgPjGk9Zw4:APA91bEIqtwOprgR7vEQzTKDfkHz8VLTPvWvYBdbnZ8YPt1SjSrr-sKT-FDlIGKw8DOakhohUyjtokDGfRCgcvTcl5RKY3IV4yUbC83cs6ELik5N206TUUU';
 router.get('/send-test-notification', async (req, res) => {
@@ -266,7 +288,7 @@ router.post("/save-fcm-token", protect, checkRole('admin'),saveFcmToken)
 
 
 // Agent leave management
-router.get('/leaves', protect, checkRole('admin'), getAllLeaveRequests);
+router.get('/agent/leaves',getAllLeaveRequests);
 router.post('/agent/:agentId/leaves/:leaveId/decision', protect, checkRole('admin'), processLeave);
 
 module.exports = router;

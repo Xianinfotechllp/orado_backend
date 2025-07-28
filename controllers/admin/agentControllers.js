@@ -1,9 +1,10 @@
 const Agent = require("../../models/agentModel");
 const Order = require("../../models/orderModel")
 const User = require("../../models/userModel");
-
+const AgentSelfie = require("../../models/AgentSelfieModel");
 const AgentNotification = require('../../models/AgentNotificationModel');
 const admin = require('../../config/firebaseAdmin'); 
+const sendNotificationToAgent = require('../../utils/sendNotificationToAgent')
 exports.getAllAgents = async (req, res) => {
   try {
     const agents = await Agent.find().select(
@@ -201,6 +202,13 @@ exports.giveWarning = async (req, res) => {
   agent.warnings.push({ reason, issuedBy: adminId });
   await agent.save();
 
+    await sendNotificationToAgent({
+    agentId,
+    title: "Warning Issued",
+    body: `Reason: ${reason}`,
+    data: { type: "warning", reason },
+  });
+
   return res.json({ message: "Warning issued.", agent });
 };
 
@@ -222,12 +230,11 @@ exports.terminateAgent = async (req, res) => {
     letter,
   };
   await agent.save();
-
-  // Change user's role to "customer"
-  await User.findByIdAndUpdate(agent.userId, {
-    userType: "customer",
-    isAgent: false,
-    agentApplicationStatus: "rejected"
+  await sendNotificationToAgent({
+    agentId,
+    title: "Account Terminated",
+    body: `You have been terminated. Reason: ${reason}`,
+    data: { type: "termination", reason },
   });
 
   return res.json({ message: "Agent terminated.", agent });
@@ -528,31 +535,38 @@ exports.sendNotificationToAgent = async (req, res) => {
 
 exports.getAllLeaveRequests = async (req, res) => {
   try {
-    const statusFilter = req.query.status || "Pending";
+    const statusFilter = req.query.status || "all"; // Default to "all"
+    
+    let matchStage = {};
+    if (statusFilter !== "all") {
+      matchStage = { "leaves.status": statusFilter };
+    }
 
     const agents = await Agent.aggregate([
       { $unwind: "$leaves" },
-      { $match: { "leaves.status": statusFilter } },
+      ...(statusFilter !== "all" ? [{ $match: matchStage }] : []),
       {
         $project: {
           _id: 1,
           fullName: 1,
           leaves: 1,
-        },
+        },  
       },
+      { $sort: { "leaves.appliedAt": -1 } } // Optional: sort by application date
     ]);
+
     res.status(200).json(agents);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-
 // Approve or reject leave request
 
 exports.processLeave = async (req, res) => {
   try {
     const { agentId, leaveId } = req.params;
+
     const { decision, rejectionReason } = req.body; 
     const adminId = req.user._id; 
 
@@ -599,3 +613,287 @@ exports.processLeave = async (req, res) => {
 
 
 
+exports.getPendingApplications = async (req, res) => {
+  try {
+    const pendingAgents = await Agent.find({ applicationStatus: "pending" })
+      .select("-password -fcmTokens -bankAccountDetails")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: "Pending agent applications retrieved",
+      count: pendingAgents.length,
+      agents: pendingAgents,
+    });
+  } catch (error) {
+    console.error("Error fetching pending applications:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+exports.approveApplication = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    // Find and update the agent
+    const agent = await Agent.findByIdAndUpdate(
+      agentId,
+      { 
+        applicationStatus: 'approved',
+        approvedAt: new Date(),
+        approvedBy: req.user._id // Track who approved it
+      },
+      { new: true }
+    ).select("-password -fcmTokens -bankAccountDetails");
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    // Here you might want to:
+    // 1. Send approval notification email
+    // 2. Create user credentials if needed
+    // 3. Trigger any onboarding processes
+
+    return res.status(200).json({
+      message: "Agent application approved successfully",
+      agent
+    });
+
+  } catch (error) {
+    console.error("Error approving application:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+exports.rejectApplication = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { rejectionReason } = req.body; // Optional rejection reason
+
+    if (!rejectionReason) {
+      return res.status(400).json({ message: "Rejection reason is required" });
+    }
+
+    const agent = await Agent.findByIdAndUpdate(
+      agentId,
+      { 
+        applicationStatus: 'rejected',
+        rejectedAt: new Date(),
+        rejectedBy: req.user._id,
+        rejectionReason
+      },
+      { new: true }
+    ).select("-password -fcmTokens -bankAccountDetails");
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    // Here you might want to:
+    // 1. Send rejection notification email with reason
+    // 2. Log the rejection for records
+
+    return res.status(200).json({
+      message: "Agent application rejected successfully",
+      agent
+    });
+
+  } catch (error) {
+    console.error("Error rejecting application:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+
+
+exports.getAllAgents = async (req, res) => {
+  try {
+
+
+    // Get query parameters for filtering
+    const { status, search } = req.query;
+    
+    // Build the query object
+    let query = {};
+    
+    // Add status filter if provided
+    if (status && status !== 'all') {
+      query.applicationStatus = status;
+    }
+    
+    // Add search filter if provided
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Get all agents with filtering
+    const agents = await Agent.find(query)
+      .select("-password -fcmTokens -bankAccountDetails")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Format the response data
+    // Format the response data
+const formattedAgents = agents.map(agent => ({
+  id: agent._id,
+  name: agent.fullName,  // This is correct as per schema
+  phone: agent.phoneNumber,  // Changed from phone to phoneNumber
+  email: agent.email,
+  status: agent.applicationStatus || 'pending',
+  documents: {
+    license: agent.agentApplicationDocuments?.license || null,
+    insurance: agent.agentApplicationDocuments?.insurance || null,
+    rcBook: agent.agentApplicationDocuments?.rcBook || null,
+    pollutionCertificate: agent.agentApplicationDocuments?.pollutionCertificate || null,
+    submittedAt: agent.agentApplicationDocuments?.submittedAt || null
+  },
+  createdAt: agent.createdAt,
+  updatedAt: agent.updatedAt,
+  approvedAt: agent.approvedAt,
+  rejectedAt: agent.rejectedAt,
+  approvedBy: agent.approvedBy,
+  rejectedBy: agent.rejectedBy,
+  rejectionReason: agent.rejectionReason
+}));
+
+    return res.status(200).json({
+      message: "Agents retrieved successfully",
+      count: formattedAgents.length,
+      agents: formattedAgents,
+    });
+  } catch (error) {
+    console.error("Error fetching agents:", error);
+    return res.status(500).json({ 
+      message: "Server error", 
+      error: error.message 
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Get all selfies with pagination and filtering
+exports.getAgentSelfies = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, agentId, startDate, endDate } = req.query;
+    
+    // Build query
+    const query = {};
+    
+    if (agentId && mongoose.Types.ObjectId.isValid(agentId)) {
+      query.agentId = agentId;
+    }
+    
+    if (startDate || endDate) {
+      query.takenAt = {};
+      if (startDate) query.takenAt.$gte = new Date(startDate);
+      if (endDate) query.takenAt.$lte = new Date(endDate);
+    }
+
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: { takenAt: -1 },
+      populate: {
+        path: 'agentId',
+        select: 'fullName email phoneNumber' // Customize fields you want from Agent
+      }
+    };
+
+    const result = await AgentSelfie.paginate(query, options);
+
+    res.json({
+      success: true,
+      selfies: result.docs,
+      total: result.totalDocs,
+      pages: result.totalPages,
+      currentPage: result.page
+    });
+
+  } catch (error) {
+    console.error('Error fetching selfie logs:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch selfie logs' 
+    });
+  }
+};
+
+// Get single selfie with details
+exports.getSelfieDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const selfie = await AgentSelfie.findById(id)
+      .populate('agentId', 'name email phone');
+
+    if (!selfie) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Selfie not found' 
+      });
+    }
+
+    res.json({
+      success: true,
+      selfie
+    });
+
+  } catch (error) {
+    console.error('Error fetching selfie details:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch selfie details' 
+    });
+  }
+};
+
+// Get selfies by specific agent
+exports.getAgentSelfieHistory = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { limit = 30 } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid agent ID' 
+      });
+    }
+
+    const selfies = await AgentSelfie.find({ agentId })
+      .sort({ takenAt: -1 })
+      .limit(parseInt(limit))
+      .populate('agentId', 'name');
+
+    res.json({
+      success: true,
+      count: selfies.length,
+      selfies
+    });
+
+  } catch (error) {
+    console.error('Error fetching agent selfie history:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch agent selfie history' 
+    });
+  }
+};

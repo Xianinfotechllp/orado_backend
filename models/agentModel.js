@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-
+const mongoosePaginate = require('mongoose-paginate-v2');
 const agentSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -369,7 +369,7 @@ agentAssignmentStatusHistory: [
   },
   { timestamps: true }
 );
-
+agentSchema.plugin(mongoosePaginate);
 agentSchema.index({ location: "2dsphere" });
 
 module.exports = mongoose.model("Agent", agentSchema);
