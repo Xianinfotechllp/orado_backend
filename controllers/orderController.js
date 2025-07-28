@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const Offer = require("../models/offerModel");
 const Order = require("../models/orderModel");
 const TaxAndCharge = require("../models/taxAndChargeModel")
- 
+ const LoyalitySettings = require("../models/LoyaltySettingModel")
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
 const Cart = require("../models/cartModel");
 const User = require("../models/userModel");
@@ -1261,7 +1261,8 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       couponCode,
       cartId,
       userId,
-      tipAmount = 0
+      tipAmount = 0,
+      useLoyaltyPoints = true // Add this parameter
     } = req.body;
 
     // Validate input
@@ -1281,6 +1282,12 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       return res.status(404).json({ error: "Restaurant not found" });
     }
 
+    // Fetch User and Loyalty Settings
+ const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+
+ if (!loyaltySettings) {
+  return res.status(400).json({ error: "Loyalty program not configured" });
+}
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
 
@@ -1319,7 +1326,12 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       cityId
     );
 
-    // Step 6: Get final cost breakdown from cost calculation engine
+    const user =  await User.findById(userId)
+
+   const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
+    console.log(user.loyaltyPoints,"loyalti point of user  ")
+
+    // Step 6: Get final cost breakdown with loyalty points
     const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
@@ -1329,11 +1341,12 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       revenueShare: { type: "percentage", value: 20 },
       isSurge,
       surgeFeeAmount,
-      merchantId: restaurant._id
+      merchantId: restaurant._id,
+      cartId,
+      useLoyaltyPoints,
+      loyaltyPointsAvailable:loyaltyPointsAvailable,
+      loyaltySettings:loyaltySettings
     });
-       console.log("Cost Summary:", costSummary);
-
-
 
     // Step 7: Calculate distance between restaurant and customer
     const distanceKm = turf.distance(
@@ -1342,44 +1355,62 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       { units: "kilometers" }
     );
 
-    // Step 8: Construct summary object
-   // Step 8: Construct summary object
-const summary = {
-  subtotal: costSummary.cartTotal,
+    // Step 8: Construct enhanced summary object with loyalty points
+    const summary = {
+      subtotal: costSummary.cartTotal,
 
-  // Discounts
-  discount: costSummary.totalDiscount,
-  offerDiscount: costSummary.offerDiscount,
-  couponDiscount: costSummary.couponDiscount,
-  comboDiscount: costSummary.comboDiscount,
-  offersApplied: costSummary.offersApplied,
-  combosApplied: costSummary.combosApplied,
+      // Discounts
+      discount: costSummary.totalDiscount,
+      offerDiscount: costSummary.offerDiscount,
+      couponDiscount: costSummary.couponDiscount,
+      comboDiscount: costSummary.comboDiscount,
+      loyaltyDiscount: costSummary.loyaltyDiscount || 0, // Add this
+      offersApplied: costSummary.offersApplied,
+      combosApplied: costSummary.combosApplied,
 
-  // Delivery + Surge + Tip
-  deliveryFee,
-  surgeFee: costSummary.surgeFee,
-  isSurge,
-  surgeReason: costSummary.surgeReason || surgeObj?.reason || null,
-  tipAmount: costSummary.tipAmount,
+      // Delivery + Surge + Tip
+      deliveryFee,
+      surgeFee: costSummary.surgeFee,
+      isSurge,
+      surgeReason: costSummary.surgeReason || surgeObj?.reason || null,
+      tipAmount: costSummary.tipAmount,
 
-  // Packing and Addons
-  packingCharges: costSummary.packingCharges,
-  totalPackingCharge: costSummary.totalPackingCharge,
-  additionalCharges: costSummary.additionalCharges,
-  totalAdditionalCharges: costSummary.totalAdditionalCharges,
+      // Packing and Addons
+      packingCharges: costSummary.packingCharges,
+      totalPackingCharge: costSummary.totalPackingCharge,
+      additionalCharges: costSummary.additionalCharges,
+      totalAdditionalCharges: costSummary.totalAdditionalCharges,
 
-  // Tax
-  taxes: costSummary.taxBreakdown,
-  tax: costSummary.totalTaxAmount,
-  totalTaxAmount: costSummary.totalTaxAmount,
+      // Tax
+      taxes: costSummary.taxBreakdown,
+      tax: costSummary.totalTaxAmount,
+      totalTaxAmount: costSummary.totalTaxAmount,
 
-  // Distance Info
-  distanceKm,
+      // Distance Info
+      distanceKm,
 
-  // Final Amount
-  total: costSummary.finalAmount
-};
+      // Final Amount
+      total: costSummary.finalAmount,
 
+      // Loyalty Points Information
+      loyaltyPoints: {
+        available: user?.loyaltyPoints || 0,
+        used: costSummary.loyaltyPoints?.used || 0,
+        potentialEarned: costSummary.loyaltyPoints?.potentialEarned || 0,
+        messages: costSummary.loyaltyPoints?.messages || [],
+        redemptionRules: {
+          minOrderAmount: loyaltySettings?.minOrderAmountForRedemption || 0,
+          minPoints: loyaltySettings?.minPointsForRedemption || 0,
+          maxPercent: loyaltySettings?.maxRedemptionPercent || 0,
+          valuePerPoint: loyaltySettings?.valuePerPoint || 0
+        },
+        earningRules: {
+          minOrderAmount: loyaltySettings?.minOrderAmountForEarning || 0,
+          pointsPerAmount: loyaltySettings?.pointsPerAmount || 0,
+          maxPoints: loyaltySettings?.maxEarningPoints || 0
+        }
+      }
+    };
 
     // Final response
     return res.status(200).json({
@@ -1392,7 +1423,6 @@ const summary = {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
-
 
 
 exports.reassignExpiredOrders = async () => {

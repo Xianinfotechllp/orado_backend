@@ -449,9 +449,10 @@ exports.calculateOrderCostV2 = async ({
   surgeFeeAmount = 0,
   surgeReason = null,
   merchantId,
-  cartId, // Accept cartId instead of userId directly
-  useLoyaltyPoints = false
-}) => {
+  cartId,
+  useLoyaltyPoints = false,
+  loyaltyPointsAvailable = 0,
+  loyaltySettings = null}) => {
   let cartTotal = 0;
   let appliedCombos = [];
 
@@ -504,7 +505,7 @@ exports.calculateOrderCostV2 = async ({
     }
   });
 
-  // ✅ Apply Flat / Percentage Offers (with product-level support)
+  // ✅ Apply Flat / Percentage Offers
   let offerDiscount = 0;
   let appliedOffer = null;
 
@@ -514,7 +515,6 @@ exports.calculateOrderCostV2 = async ({
     let discount = 0;
 
     if (offer.applicableLevel === "Product") {
-      // Find matching products
       const matchedProducts = cartProducts.filter(cp =>
         offer.applicableProducts?.some(p => p.toString() === cp.productId.toString())
       );
@@ -533,9 +533,7 @@ exports.calculateOrderCostV2 = async ({
           discount = Math.min(discount, offer.maxDiscount);
         }
       }
-
     } else {
-      // Cart-level offer
       if (cartTotal < offer.minOrderValue) return;
 
       if (offer.type === "flat") {
@@ -563,7 +561,6 @@ exports.calculateOrderCostV2 = async ({
       couponDiscount = deliveryFee;
     }
   }
-  console.log('appiled offers:', appliedCombos, appliedOffer);
 
   // ✅ Calculate taxable amount
   const taxableAmount = cartTotal - offerDiscount;
@@ -596,10 +593,80 @@ exports.calculateOrderCostV2 = async ({
     surgeFee -
     couponDiscount;
 
+  // ✅ Loyalty Points Handling
+  let loyaltyDiscount = 0;
+  let pointsUsed = 0;
+  let loyaltyMessages = [];
+  let potentialPointsEarned = 0;
+console.log(loyaltySettings)
+  if (useLoyaltyPoints) {
+    if (!loyaltySettings) {
+      loyaltyMessages.push("Loyalty program not available for this merchant");
+    } else if (loyaltyPointsAvailable <= 0) {
+      loyaltyMessages.push("You don't have any points to redeem");
+    } else {
+      // Check minimum order amount for redemption
+      if (finalAmountBeforeRevenueShare < loyaltySettings.minOrderAmountForRedemption) {
+        loyaltyMessages.push(
+          `Minimum order amount of ₹${loyaltySettings.minOrderAmountForRedemption} required to redeem points`
+        );
+      } else {
+        // Calculate maximum possible redemption
+        const maxRedemptionAmount = (finalAmountBeforeRevenueShare * loyaltySettings.maxRedemptionPercent) / 100;
+        const maxPointsCanUse = Math.floor(maxRedemptionAmount / loyaltySettings.valuePerPoint);
+        
+        pointsUsed = Math.min(
+          loyaltyPointsAvailable,
+          maxPointsCanUse,
+          Math.max(loyaltySettings.minPointsForRedemption, 0)
+        );
+
+        if (pointsUsed > 0) {
+          loyaltyDiscount = pointsUsed * loyaltySettings.valuePerPoint;
+          loyaltyMessages.push(
+            `Redeemed ${pointsUsed} points (₹${loyaltyDiscount} discount)`
+          );
+
+          if (loyaltyPointsAvailable > pointsUsed && pointsUsed === maxPointsCanUse) {
+            loyaltyMessages.push(
+              `Maximum ${maxPointsCanUse} points can be used for this order (${loyaltySettings.maxRedemptionPercent}% of order value)`
+            );
+          }
+        } else {
+          loyaltyMessages.push(
+            `Minimum ${loyaltySettings.minPointsForRedemption} points required for redemption`
+          );
+        }
+      }
+    }
+  }
+
+  // Calculate potential points to earn
+  if (loyaltySettings) {
+    if (finalAmountBeforeRevenueShare >= loyaltySettings.minOrderAmountForEarning) {
+      potentialPointsEarned = Math.min(
+        Math.floor(finalAmountBeforeRevenueShare / 100 * loyaltySettings.pointsPerAmount),
+        loyaltySettings.maxEarningPoints
+      );
+      if (potentialPointsEarned > 0) {
+        loyaltyMessages.push(
+          `Earn ${potentialPointsEarned} points after successful delivery (${loyaltySettings.pointsPerAmount} pts per ₹100)`
+        );
+      }
+    } else {
+      loyaltyMessages.push(
+        `Add ₹${loyaltySettings.minOrderAmountForEarning - finalAmountBeforeRevenueShare} more to earn loyalty points`
+      );
+    }
+  }
+
+  // ✅ Final Amount After Loyalty Redemption
+  const finalAmountAfterLoyalty = finalAmountBeforeRevenueShare - loyaltyDiscount;
+
   // ✅ Revenue Share
   let revenueShareAmount = 0;
   if (revenueShare.type === 'percentage') {
-    revenueShareAmount = (finalAmountBeforeRevenueShare * revenueShare.value) / 100;
+    revenueShareAmount = (finalAmountAfterLoyalty * revenueShare.value) / 100;
   } else if (revenueShare.type === 'fixed') {
     revenueShareAmount = revenueShare.value;
   }
@@ -612,7 +679,8 @@ exports.calculateOrderCostV2 = async ({
     comboDiscount,
     offerDiscount,
     couponDiscount,
-    totalDiscount: comboDiscount + offerDiscount + couponDiscount,
+    loyaltyDiscount,
+    totalDiscount: comboDiscount + offerDiscount + couponDiscount + loyaltyDiscount,
     offersApplied: appliedOffer ? [appliedOffer.title] : [],
     combosApplied: appliedCombos,
     taxableAmount,
@@ -625,9 +693,26 @@ exports.calculateOrderCostV2 = async ({
     surgeFee,
     isSurge,
     surgeReason,
-    finalAmount: parseFloat(finalAmountBeforeRevenueShare.toFixed(2)),
+    finalAmount: parseFloat(finalAmountAfterLoyalty.toFixed(2)),
     revenueShareAmount: parseFloat(revenueShareAmount.toFixed(2)),
-    appliedOffer
+    appliedOffer,
+    loyaltyPoints: {
+      used: pointsUsed,
+      potentialEarned: potentialPointsEarned,
+      discount: loyaltyDiscount,
+      messages: loyaltyMessages,
+      redemptionInfo: {
+        minOrderAmount: loyaltySettings?.minOrderAmountForRedemption || 0,
+        minPoints: loyaltySettings?.minPointsForRedemption || 0,
+        maxPercent: loyaltySettings?.maxRedemptionPercent || 0,
+        valuePerPoint: loyaltySettings?.valuePerPoint || 0
+      },
+      earningInfo: {
+        minOrderAmount: loyaltySettings?.minOrderAmountForEarning || 0,
+        pointsPerAmount: loyaltySettings?.pointsPerAmount || 0,
+        maxPoints: loyaltySettings?.maxEarningPoints || 0
+      }
+    }
   };
 };
 
