@@ -159,8 +159,7 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("admin:updateLocation", {
       agentId,
       lat,
-      lng,
-      deviceInfo
+      lng
     });
 
     // Update agent lastSeen for availability timeout logic
