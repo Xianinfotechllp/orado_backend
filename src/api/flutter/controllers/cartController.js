@@ -312,7 +312,7 @@ exports.getCart = async (req, res) => {
         productId: product._id,
         name: product.name,
         description: product.description,
-        images: productData.images || [],
+        images: product.images || [],
         foodType: product.foodType,
         price: item.price,
         quantity: item.quantity,
