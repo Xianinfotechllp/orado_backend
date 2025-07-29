@@ -4,6 +4,8 @@ const { calculateOrderCost } = require("../services/orderCostCalculator");
 
 const mongoose = require('mongoose')
 
+
+
 exports.addToCart = async (req, res) => {
   const userId = req.user._id;
   const { restaurantId, products } = req.body;
@@ -20,7 +22,7 @@ exports.addToCart = async (req, res) => {
       return res.status(400).json({ message: "Products must be a non-empty array", messageType: "failure" });
     }
 
-    // Get existing cart or create
+    // Get existing cart or create new one
     let cart = await Cart.findOne({ user: userId });
 
     if (!cart) {
@@ -30,7 +32,7 @@ exports.addToCart = async (req, res) => {
         products: []
       });
     } else if (cart.restaurantId.toString() !== restaurantId) {
-      // Reset cart for new restaurant
+      // Clear cart if restaurant has changed
       cart.products = [];
       cart.restaurantId = restaurantId;
     }
@@ -39,16 +41,15 @@ exports.addToCart = async (req, res) => {
     for (const prod of products) {
       if (!prod.productId || !mongoose.Types.ObjectId.isValid(prod.productId)) continue;
 
-      // Try to find index of this product in the cart
       const index = cart.products.findIndex(p => p.productId.toString() === prod.productId);
 
       if (prod.quantity === 0) {
-        // Remove from cart
+        // Remove product if quantity is 0
         if (index > -1) cart.products.splice(index, 1);
         continue;
       }
 
-      // If adding/updating, must check DB
+      // Fetch product data
       const productData = await Product.findById(prod.productId);
       if (!productData || productData.restaurantId.toString() !== restaurantId) continue;
 
@@ -56,16 +57,16 @@ exports.addToCart = async (req, res) => {
       const price = productData.price;
 
       if (index > -1) {
-        // update existing
+        // Update existing product in cart
         cart.products[index].quantity = newQty;
         cart.products[index].total = newQty * price;
       } else {
-        // add new
+        // Add new product to cart
         cart.products.push({
           productId: prod.productId,
           name: productData.name,
           description: productData.description,
-          images: productData.images,
+          images: productData.images?.[0] || null, // ✅ single image string with field name "images"
           foodType: productData.foodType,
           price,
           quantity: newQty,
@@ -89,12 +90,12 @@ exports.addToCart = async (req, res) => {
           products: [],
           totalPrice: 0,
           createdAt: cart.createdAt,
-          updatedAt: cart.updatedAt,
+          updatedAt: cart.updatedAt
         }
       });
     }
 
-    // Otherwise compute total
+    // Compute total price
     cart.totalPrice = cart.products.reduce((sum, p) => sum + p.total, 0);
     await cart.save();
 
@@ -105,7 +106,7 @@ exports.addToCart = async (req, res) => {
       products: cart.products,
       totalPrice: cart.totalPrice,
       createdAt: cart.createdAt,
-      updatedAt: cart.updatedAt,
+      updatedAt: cart.updatedAt
     };
 
     return res.status(200).json({
@@ -122,6 +123,8 @@ exports.addToCart = async (req, res) => {
     });
   }
 };
+
+
 
 
 exports.decreaseProductQuantity = async (req, res) => {
@@ -292,7 +295,7 @@ exports.getCart = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const cart = await Cart.findOne({ user: userId });
+    const cart = await Cart.findOne({ user: userId }).populate("products.productId");
 
     if (!cart) {
       return res.status(200).json({
@@ -302,16 +305,20 @@ exports.getCart = async (req, res) => {
       });
     }
 
-    const products = cart.products.map(item => ({
-      productId: item.productId,
-      name: item.name,
-      description: item.description,
-      images: item.images,
-      foodType: item.foodType,
-      price: item.price,
-      quantity: item.quantity,
-      total: item.total
-    }));
+    const products = cart.products.map(item => {
+      const product = item.productId;
+
+      return {
+        productId: product._id,
+        name: product.name,
+        description: product.description,
+        images: product.images?.[0] || null,// ✅ now this works
+        foodType: product.foodType,
+        price: item.price,
+        quantity: item.quantity,
+        total: item.total
+      };
+    });
 
     const cartData = {
       cartId: cart._id.toString(),
