@@ -18,8 +18,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    getSelfieStatus,
    uploadSelfie,
    agentLogout,
-   getAgentBasicDetails
-   
+   getAgentBasicDetails,
+   getAgentEarningsSummary
 
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
@@ -116,4 +116,10 @@ router.get('/leave/status', protectAgent, getLeaveStatus);
 router.post('/upload-selfie', protectAgent, upload.single('selfie'), uploadSelfie)
 router.get('/selfie/status', protectAgent,getSelfieStatus)
 router.get('/:agentId',protectAgent, getAgentBasicDetails)
+
+
+router.get('/earning/summary',protectAgent, getAgentEarningsSummary);
+
+
+
 module.exports = router;

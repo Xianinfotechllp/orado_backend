@@ -323,50 +323,48 @@ exports.saveFcmToken = async (req, res) => {
 
 
 
-exports.sendNotificationToAgent = async (req, res) => {
-  try {
-    const { agentId, title, body, data = {} } = req.body;
+// exports.sendNotificationToAgent = async (req, res) => {
+//   try {
+//     const { agentId, title, body, data = {} } = req.body;
 
-    const agent = await Agent.findById(agentId);
-    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No FCM tokens found for this agent',
-      });
-    }
+//     const agent = await Agent.findById(agentId);
+//     if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'No FCM tokens found for this agent',
+//       });
+//     }
 
-    const messages = agent.fcmTokens.map(tokenObj => ({
-      token: tokenObj.token,
-      notification: { title, body },
-      data: {
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        ...data,
-      },
-    }));
+//     const messages = agent.fcmTokens.map(tokenObj => ({
+//       token: tokenObj.token,
+//       notification: { title, body },
+//       data: {
+//         click_action: 'FLUTTER_NOTIFICATION_CLICK',
+//         ...data,
+//       },
+//     }));
 
-    const responses = await Promise.allSettled(
-      messages.map(msg => admin.messaging().send(msg))
-    );
+//     const responses = await Promise.allSettled(
+//       messages.map(msg => admin.messaging().send(msg))
+//     );
 
-    await AgentNotification.create({
-      agentId,
-      title,
-      body,
-      data,
-    });
+//     await AgentNotification.create({
+//       agentId,
+//       title,
+//       body,
+//       data,
+//     });
 
-    res.json({
-      success: true,
-      message: 'Notification sent and saved',
-      results: responses,
-    });
-  } catch (error) {
-    console.error('❌ Error sending agent notification:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-
+//     res.json({
+//       success: true,
+//       message: 'Notification sent and saved',
+//       results: responses,
+//     });
+//   } catch (error) {
+//     console.error('❌ Error sending agent notification:', error);
+//     res.status(500).json({ success: false, error: error.message });
+//   }
+// };
 
 
 
@@ -380,48 +378,50 @@ exports.sendNotificationToAgent = async (req, res) => {
 
 
 
-exports.sendNotificationToAgent = async (req, res) => {
-  try {
-    const { agentId, title, body, data = {} } = req.body;
 
-    const agent = await Agent.findById(agentId);
-    if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No FCM tokens found for this agent',
-      });
-    }
 
-    const messages = agent.fcmTokens.map(tokenObj => ({
-      token: tokenObj.token,
-      notification: { title, body },
-      data: {
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        ...data,
-      },
-    }));
+// exports.sendNotificationToAgent = async (req, res) => {
+//   try {
+//     const { agentId, title, body, data = {} } = req.body;
 
-    const responses = await Promise.allSettled(
-      messages.map(msg => admin.messaging().send(msg))
-    );
+//     const agent = await Agent.findById(agentId);
+//     if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'No FCM tokens found for this agent',
+//       });
+//     }
 
-    await AgentNotification.create({
-      agentId,
-      title,
-      body,
-      data,
-    });
+//     const messages = agent.fcmTokens.map(tokenObj => ({
+//       token: tokenObj.token,
+//       notification: { title, body },
+//       data: {
+//         click_action: 'FLUTTER_NOTIFICATION_CLICK',
+//         ...data,
+//       },
+//     }));
 
-    res.json({
-      success: true,
-      message: 'Notification sent and saved',
-      results: responses,
-    });
-  } catch (error) {
-    console.error('❌ Error sending agent notification:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
+//     const responses = await Promise.allSettled(
+//       messages.map(msg => admin.messaging().send(msg))
+//     );
+
+//     await AgentNotification.create({
+//       agentId,
+//       title,
+//       body,
+//       data,
+//     });
+
+//     res.json({
+//       success: true,
+//       message: 'Notification sent and saved',
+//       results: responses,
+//     });
+//   } catch (error) {
+//     console.error('❌ Error sending agent notification:', error);
+//     res.status(500).json({ success: false, error: error.message });
+//   }
+// };
 
 
 

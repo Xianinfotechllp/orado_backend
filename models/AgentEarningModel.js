@@ -1,4 +1,26 @@
-const mongoose = require('mongoose');const agentEarningSchema = new mongoose.Schema({
+const mongoose = require('mongoose');
+
+const earningComponentSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['base_fee', 'tip', 'surge', 'incentive', 'penalty', 'other'],
+    required: true
+  },
+  label: {
+    type: String,
+    default: null, // e.g. "Evening Surge", "Late Penalty"
+  },
+  amount: {
+    type: Number,
+    required: true
+  },
+  remarks: {
+    type: String,
+    default: null
+  }
+}, { _id: false });
+
+const agentEarningSchema = new mongoose.Schema({
   agentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Agent',
@@ -9,21 +31,18 @@ const mongoose = require('mongoose');const agentEarningSchema = new mongoose.Sch
     ref: 'Order',
     required: true
   },
-  amount: {
+  components: [earningComponentSchema],
+  totalAmount: {
     type: Number,
     required: true
   },
-  type: {
-    type: String,
-    enum: ['delivery_fee', 'incentive', 'penalty', 'other'],
-    required: true
-  },
-  date: {
+  earningDate: {
     type: Date,
     default: Date.now
   },
-  remarks: {
+  earningPeriod: {
     type: String,
+    enum: ['daily', 'weekly', 'monthly', null],
     default: null
   }
 }, {

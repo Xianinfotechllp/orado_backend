@@ -17,6 +17,8 @@ const { uploadOnCloudinary } = require("../utils/cloudinary");
 const {
   findAndAssignNearestAgent,
 } = require("../services/findAndAssignNearestAgent");
+
+const moment = require('moment');
 const { sendPushNotification } = require("../utils/sendPushNotification");
 const AgentDeviceInfo = require("../models/AgentDeviceInfoModel");
 const Product = require("../models/productModel");
@@ -1083,6 +1085,9 @@ exports.getAssignedOrderDetails = async (req, res) => {
       .populate("customerId", "name phone email")
       .populate("orderItems.productId");
 
+
+      console.log(order,"sdsdf")
+
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
@@ -1594,5 +1599,104 @@ exports.getAgentBasicDetails = async (req, res) => {
   } catch (error) {
     console.error("Error fetching agent profile:", error);
     res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+
+
+
+exports.getAgentEarningsSummary = async (req, res) => {
+  try {
+    const { period = 'daily' } = req.query;
+    const agentId = req.user?._id;
+
+    if (!agentId) {
+      return res.status(401).json({ error: 'Unauthorized: agentId missing in token' });
+    }
+
+    // Determine date range
+    let startDate;
+    const now = moment();
+
+    switch (period) {
+      case 'weekly':
+        startDate = now.clone().startOf('isoWeek');
+        break;
+      case 'monthly':
+        startDate = now.clone().startOf('month');
+        break;
+      case 'daily':
+      default:
+        startDate = now.clone().startOf('day');
+        break;
+    }
+
+    // Aggregate earnings
+    const earnings = await AgentEarning.aggregate([
+      {
+        $match: {
+          agentId: new mongoose.Types.ObjectId(agentId),
+          earningDate: { $gte: startDate.toDate(), $lte: now.toDate() }
+        }
+      },
+      { $unwind: "$components" },
+      {
+        $group: {
+          _id: "$components.type",
+          totalAmount: { $sum: "$components.amount" }
+        }
+      }
+    ]);
+
+    // Prepare summary
+    const summary = {
+      base_fee: 0,
+      tip: 0,
+      surge: 0,
+      incentive: 0,
+      penalty: 0,
+      other: 0,
+      total: 0
+    };
+
+    earnings.forEach(item => {
+      summary[item._id] = item.totalAmount;
+      summary.total += item.totalAmount;
+    });
+
+    // Fetch delivery counts
+  const totalDeliveries = await Order.countDocuments({
+  assignedAgent: new mongoose.Types.ObjectId(agentId),
+  createdAt: { $gte: startDate.toDate(), $lte: now.toDate() }
+});
+
+const completedDeliveries = await Order.countDocuments({
+  assignedAgent: new mongoose.Types.ObjectId(agentId),
+  agentDeliveryStatus: 'delivered',
+  createdAt: { $gte: startDate.toDate(), $lte: now.toDate() }
+});
+
+    // Final response
+    return res.json({
+      period,
+      agentId,
+      summary: {
+        totalEarnings: summary.total,
+        baseEarnings: summary.base_fee,
+        tips: summary.tip,
+        surgeBonus: summary.surge,
+        incentives: summary.incentive,
+        penalties: summary.penalty,
+        other: summary.other
+      },
+      deliveryStats: {
+        totalDeliveries,
+        completedDeliveries
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching agent earnings summary:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
