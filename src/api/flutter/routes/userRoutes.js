@@ -5,7 +5,11 @@ const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editadd
     getFavouriteRestaurants,
     removeFavouriteRestaurant,
     getAddress,getUserDetails,
-    updateUserDetails
+    updateUserDetails,
+
+           getUserLoyaltyBalance,
+           getLoyaltyTransactionHistory,
+           getPromoCodesForCustomerAndRestaurant
 } = require("../controllers/userControllers");
 const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
 const {verifyToken} = require("../middlewares/auth");
