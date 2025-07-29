@@ -8,8 +8,10 @@ const Favourite = require("../../../../models/favouriteModel")
 const Restaurant = require("../../../../models/restaurantModel")
 const mongoose = require('mongoose')
 const { toStringSafe } = require("../utils/toStringSafe");
+const PromoCode = require("../../../../models/promoCodeModels");
+const { isValidObjectId } = require("mongoose");
 
-
+const LoyaltyPointTransaction = require("../../../../models/loyaltyTransactionModel")
 // Register user with validations, OTP generation and notifications
 exports.registerUser = async (req, res) => {
   try {
@@ -1297,5 +1299,113 @@ exports.deleteAddressById = async (req, res) => {
       message: "Something went wrong on the server",
       messageType: "failure",
     });
+  }
+};
+
+
+
+
+
+
+
+
+exports.getUserLoyaltyBalance = async (req, res) => {
+  try {
+    const  userId  = req.user._id;
+
+    const user = await User.findById(userId).select("loyaltyPoints");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Loyalty points fetched successfully",
+      data: { loyaltyPoints: user.loyaltyPoints }
+    });
+
+  } catch (error) {
+    console.error("Error fetching loyalty points:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch loyalty points"
+    });
+  }
+};
+
+
+
+
+
+// Get loyalty transaction history for the logged-in user
+exports.getLoyaltyTransactionHistory = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const transactions = await LoyaltyPointTransaction.find({ customerId: userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Loyalty transaction history fetched successfully.",
+      data: transactions,
+    });
+  } catch (error) {
+    console.error("Error fetching loyalty transaction history:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch loyalty transaction history.",
+    });
+  }
+};
+
+
+exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
+  try {
+    const customerId = req.user._id;
+    const { restaurantId } = req.params;
+    const now = new Date();
+
+    // Fetch only valid promo codes for current time and matching rules
+    const promoCodes = await PromoCode.find({
+      isActive: true,
+      validFrom: { $lte: now },
+      validTill: { $gte: now },
+      $or: [
+        {
+          isMerchantSpecific: false,
+          isCustomerSpecific: false
+        },
+        {
+          isMerchantSpecific: true,
+          applicableMerchants: new mongoose.Types.ObjectId(restaurantId)
+        },
+        {
+          isCustomerSpecific: true,
+          applicableCustomers: new mongoose.Types.ObjectId(customerId)
+        }
+      ]
+    });
+
+    // Filter: Allow only if customer hasn't exceeded usage
+    const eligiblePromoCodes = promoCodes.filter((promo) => {
+      if (promo.maxUsagePerCustomer === 0) return true;
+
+      const usageCount = promo.customersUsed.filter(
+        (id) => id.toString() === customerId.toString()
+      ).length;
+
+      return usageCount < promo.maxUsagePerCustomer;
+    });
+
+    return res.status(200).json({ promoCodes: eligiblePromoCodes });
+  } catch (error) {
+    console.error("Error fetching promo codes:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
