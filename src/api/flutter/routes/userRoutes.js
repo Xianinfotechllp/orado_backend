@@ -40,4 +40,13 @@ router.put('/fav/restaurants/remove',protect,removeFavouriteRestaurant);
 
 
 
+
+router.get("/loyalty/balance", protect, getUserLoyaltyBalance)
+router.get("/loyalty/history", protect, getLoyaltyTransactionHistory)
+
+router.get("/promocodes/:restaurantId", protect,getPromoCodesForCustomerAndRestaurant);
+
+
+
+
 module.exports = router;
