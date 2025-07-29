@@ -19,7 +19,8 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    uploadSelfie,
    agentLogout,
    getAgentBasicDetails,
-   getAgentEarningsSummary
+   getAgentEarningsSummary,
+   getAgentIncentiveSummary
 
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
@@ -119,6 +120,8 @@ router.get('/:agentId',protectAgent, getAgentBasicDetails)
 
 
 router.get('/earning/summary',protectAgent, getAgentEarningsSummary);
+router.get('/incentive/summary',protectAgent, getAgentIncentiveSummary);
+
 
 
 

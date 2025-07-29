@@ -22,7 +22,7 @@ const fs = require("fs");
 const turf = require("@turf/turf");
 const feeService = require("../services/feeServices");
 const geoService = require("../services/geoServices");
-
+const PromoCode = require("../models/promoCodeModels")
 const firebaseAdmin = require("../config/firebaseAdmin");
 const {
   findAndAssignNearestAgent,
@@ -1262,8 +1262,8 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       cartId,
       userId,
       tipAmount = 0,
-      useLoyaltyPoints = false, // Add this parameter
-        loyaltyPointsToRedeem = null // Add this
+      useLoyaltyPoints = false,
+      loyaltyPointsToRedeem = null
     } = req.body;
 
     // Validate input
@@ -1284,11 +1284,12 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     }
 
     // Fetch User and Loyalty Settings
- const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+    if (!loyaltySettings) {
+      return res.status(400).json({ error: "Loyalty program not configured" });
+    }
 
- if (!loyaltySettings) {
-  return res.status(400).json({ error: "Loyalty program not configured" });
-}
+    const user = await User.findById(userId);
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
 
@@ -1316,6 +1317,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+    const surgeReason = surgeObj?.reason || null;
 
     // Step 4: Get cityId using geo coordinates
     const cityId = await geoService.findCityByCoordinates(longitude, latitude);
@@ -1327,26 +1329,27 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       cityId
     );
 
-    const user =  await User.findById(userId)
-
-   const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
-    console.log(user.loyaltyPoints,"loyalti point of user  ")
+    const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
 
     // Step 6: Get final cost breakdown with loyalty points
     const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
-      couponCode,
+      promoCode: couponCode, // Changed from couponCode to promoCode to match the function
       deliveryFee,
       offers,
       revenueShare: { type: "percentage", value: 20 },
       isSurge,
       surgeFeeAmount,
+      surgeReason, // Added this
       merchantId: restaurant._id,
       cartId,
       useLoyaltyPoints,
-      loyaltyPointsAvailable:loyaltyPointsAvailable,
-      loyaltySettings:loyaltySettings
+      loyaltyPointsAvailable: loyaltyPointsAvailable,
+      loyaltyPointsToRedeem: loyaltyPointsToRedeem, // Added this
+      loyaltySettings: loyaltySettings,
+      userId: userId, // Added this
+      PromoCode: PromoCode // Added this to support promo code validation
     });
 
     // Step 7: Calculate distance between restaurant and customer
@@ -1363,17 +1366,20 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       // Discounts
       discount: costSummary.totalDiscount,
       offerDiscount: costSummary.offerDiscount,
-      couponDiscount: costSummary.couponDiscount,
+      couponDiscount: costSummary.promoCodeInfo.discount, // Updated to use promoCodeInfo
       comboDiscount: costSummary.comboDiscount,
-      loyaltyDiscount: costSummary.loyaltyDiscount || 0, // Add this
+      loyaltyDiscount: costSummary.loyaltyDiscount,
       offersApplied: costSummary.offersApplied,
       combosApplied: costSummary.combosApplied,
+
+      // Promo Code Information
+      promoCodeInfo: costSummary.promoCodeInfo, // Added this new section
 
       // Delivery + Surge + Tip
       deliveryFee,
       surgeFee: costSummary.surgeFee,
       isSurge,
-      surgeReason: costSummary.surgeReason || surgeObj?.reason || null,
+      surgeReason: costSummary.surgeReason,
       tipAmount: costSummary.tipAmount,
 
       // Packing and Addons
@@ -1395,20 +1401,20 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
 
       // Loyalty Points Information
       loyaltyPoints: {
-        available: user?.loyaltyPoints || 0,
-        used: costSummary.loyaltyPoints?.used || 0,
-        potentialEarned: costSummary.loyaltyPoints?.potentialEarned || 0,
-        messages: costSummary.loyaltyPoints?.messages || [],
+        available: loyaltyPointsAvailable,
+        used: costSummary.loyaltyPoints.used,
+        potentialEarned: costSummary.loyaltyPoints.potentialEarned,
+        messages: costSummary.loyaltyPoints.messages,
         redemptionRules: {
-          minOrderAmount: loyaltySettings?.minOrderAmountForRedemption || 0,
-          minPoints: loyaltySettings?.minPointsForRedemption || 0,
-          maxPercent: loyaltySettings?.maxRedemptionPercent || 0,
-          valuePerPoint: loyaltySettings?.valuePerPoint || 0
+          minOrderAmount: loyaltySettings.minOrderAmountForRedemption,
+          minPoints: loyaltySettings.minPointsForRedemption,
+          maxPercent: loyaltySettings.maxRedemptionPercent,
+          valuePerPoint: loyaltySettings.valuePerPoint
         },
         earningRules: {
-          minOrderAmount: loyaltySettings?.minOrderAmountForEarning || 0,
-          pointsPerAmount: loyaltySettings?.pointsPerAmount || 0,
-          maxPoints: loyaltySettings?.maxEarningPoints || 0
+          minOrderAmount: loyaltySettings.minOrderAmountForEarning,
+          pointsPerAmount: loyaltySettings.pointsPerAmount,
+          maxPoints: loyaltySettings.maxEarningPoints
         }
       }
     };
@@ -1424,7 +1430,6 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
-
 
 exports.reassignExpiredOrders = async () => {
   try {

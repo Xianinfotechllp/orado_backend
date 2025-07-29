@@ -1,6 +1,7 @@
 const Agent = require("../models/agentModel");
 const AgentEarning = require("../models/AgentEarningModel");
 const Order = require("../models/orderModel");
+const IncentiveRule = require('../models/IncentiveRuleModel');
 const User = require("../models/userModel");
 const Session = require("../models/session");
 const Restaurant = require("../models/restaurantModel");
@@ -8,6 +9,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
 const EarnigsSettings = require("../models/AgentEarningSettingModel");
+const AgentIncentiveProgress = require("../models/agentIncentiveProgress")
 const {
   addAgentEarnings,
   addRestaurantEarnings,
@@ -1604,10 +1606,9 @@ exports.getAgentBasicDetails = async (req, res) => {
 
 
 
-
 exports.getAgentEarningsSummary = async (req, res) => {
   try {
-    const { period = 'daily' } = req.query;
+    const { period = 'daily', startDate: customStart, endDate: customEnd } = req.query;
     const agentId = req.user?._id;
 
     if (!agentId) {
@@ -1615,20 +1616,26 @@ exports.getAgentEarningsSummary = async (req, res) => {
     }
 
     // Determine date range
-    let startDate;
     const now = moment();
+    let startDate;
+    let endDate = now;
 
-    switch (period) {
-      case 'weekly':
-        startDate = now.clone().startOf('isoWeek');
-        break;
-      case 'monthly':
-        startDate = now.clone().startOf('month');
-        break;
-      case 'daily':
-      default:
-        startDate = now.clone().startOf('day');
-        break;
+    if (customStart && customEnd) {
+      startDate = moment(customStart).startOf('day');
+      endDate = moment(customEnd).endOf('day');
+    } else {
+      switch (period) {
+        case 'weekly':
+          startDate = now.clone().startOf('isoWeek');
+          break;
+        case 'monthly':
+          startDate = now.clone().startOf('month');
+          break;
+        case 'daily':
+        default:
+          startDate = now.clone().startOf('day');
+          break;
+      }
     }
 
     // Aggregate earnings
@@ -1636,7 +1643,7 @@ exports.getAgentEarningsSummary = async (req, res) => {
       {
         $match: {
           agentId: new mongoose.Types.ObjectId(agentId),
-          earningDate: { $gte: startDate.toDate(), $lte: now.toDate() }
+          earningDate: { $gte: startDate.toDate(), $lte: endDate.toDate() }
         }
       },
       { $unwind: "$components" },
@@ -1648,7 +1655,6 @@ exports.getAgentEarningsSummary = async (req, res) => {
       }
     ]);
 
-    // Prepare summary
     const summary = {
       base_fee: 0,
       tip: 0,
@@ -1664,22 +1670,25 @@ exports.getAgentEarningsSummary = async (req, res) => {
       summary.total += item.totalAmount;
     });
 
-    // Fetch delivery counts
-  const totalDeliveries = await Order.countDocuments({
-  assignedAgent: new mongoose.Types.ObjectId(agentId),
-  createdAt: { $gte: startDate.toDate(), $lte: now.toDate() }
-});
+    // Delivery stats
+    const totalDeliveries = await Order.countDocuments({
+      assignedAgent: new mongoose.Types.ObjectId(agentId),
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+    });
 
-const completedDeliveries = await Order.countDocuments({
-  assignedAgent: new mongoose.Types.ObjectId(agentId),
-  agentDeliveryStatus: 'delivered',
-  createdAt: { $gte: startDate.toDate(), $lte: now.toDate() }
-});
+    const completedDeliveries = await Order.countDocuments({
+      assignedAgent: new mongoose.Types.ObjectId(agentId),
+      agentDeliveryStatus: 'delivered',
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+    });
 
-    // Final response
     return res.json({
       period,
       agentId,
+      dateRange: {
+        from: startDate.format(),
+        to: endDate.format()
+      },
       summary: {
         totalEarnings: summary.total,
         baseEarnings: summary.base_fee,
@@ -1700,3 +1709,201 @@ const completedDeliveries = await Order.countDocuments({
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+
+
+
+exports.getAgentIncentiveSummary = async (req, res) => {
+  try {
+    const agentId = req.user._id;
+    const { type } = req.query; // 'daily', 'weekly', 'monthly'
+
+    if (!["daily", "weekly", "monthly"].includes(type)) {
+      return res.status(400).json({ message: "Invalid incentive type" });
+    }
+
+    const today = new Date();
+
+    // Time key helpers
+    const getDateKey = () => today.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    const getWeekKey = () => {
+      const weekNum = new Intl.DateTimeFormat('en', { week: 'numeric', year: 'numeric' });
+      return weekNum.format(today).replace(" ", "-"); // e.g., '2025-W31'
+    };
+    const getMonthKey = () => `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    let timeFilter = {};
+    let label = "";
+
+    if (type === "daily") {
+      label = getDateKey();
+      timeFilter.date = label;
+    } else if (type === "weekly") {
+      label = getWeekKey();
+      timeFilter.week = label;
+    } else if (type === "monthly") {
+      label = getMonthKey();
+      timeFilter.month = label;
+    }
+
+    // Step 1: Find active rule
+    const rule = await IncentiveRule.findOne({
+      type,
+      active: true,
+      startDate: { $lte: today },
+      endDate: { $gte: today }
+    });
+
+    if (!rule) {
+      return res.status(404).json({ message: `No active ${type} incentive rule found` });
+    }
+
+    // Step 2: Get progress
+    const progress = await AgentIncentiveProgress.findOne({
+      agentId,
+      incentiveRuleId: rule._id,
+      type,
+      ...timeFilter
+    });
+
+    const currentValue = progress?.currentValue || 0;
+
+    // Determine target value dynamically from the rule condition
+    const targetValue = rule.condition?.minEarning || rule.condition?.minOrders || 0;
+
+    const percent = targetValue > 0 ? Math.min(100, Math.floor((currentValue / targetValue) * 100)) : 0;
+    const remaining = Math.max(0, targetValue - currentValue);
+
+    // Step 3: Fetch past earnings
+    const pastEarnings = await AgentIncentiveProgress.find({
+      agentId,
+      type,
+      isCompleted: true
+    })
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .select("currentValue rewardAmount date week month");
+
+    // Final response
+    return res.status(200).json({
+      type,
+      dateLabel: label,
+      title: rule.title,
+      description: rule.description,
+      basedOn: rule.condition?.basedOn,
+      targetValue,
+      currentValue,
+      reward: rule.incentiveAmount,
+      rewardType: rule.rewardType,
+      percent,
+      remaining,
+      completed: currentValue >= targetValue,
+      pastEarnings
+    });
+
+  } catch (error) {
+    console.error("Error in getAgentIncentiveSummary:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+exports.getAgentIncentiveSummary = async (req, res) => {
+  try {
+    const agentId = req.user._id;
+    const { type } = req.query; // 'daily', 'weekly', 'monthly'
+
+    if (!["daily", "weekly", "monthly"].includes(type)) {
+      return res.status(400).json({ message: "Invalid incentive type. Allowed values: daily, weekly, monthly." });
+    }
+
+    const today = new Date();
+
+    // Helper functions
+    const getDateKey = () => today.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    const getWeekKey = () => {
+      const weekNumber = new Intl.DateTimeFormat("en", { week: "numeric", year: "numeric" });
+      return weekNumber.format(today).replace(" ", "-"); // e.g. '2025-W31'
+    };
+    const getMonthKey = () => `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    let timeFilter = {};
+    let label = "";
+
+    if (type === "daily") {
+      label = getDateKey();
+      timeFilter.date = label;
+    } else if (type === "weekly") {
+      label = getWeekKey();
+      timeFilter.week = label;
+    } else if (type === "monthly") {
+      label = getMonthKey();
+      timeFilter.month = label;
+    }
+
+    // Step 1: Find the active incentive rule
+    const rule = await IncentiveRule.findOne({
+      type,
+      active: true,
+      startDate: { $lte: today },
+      endDate: { $gte: today }
+    });
+
+    if (!rule) {
+      return res.status(200).json({
+        type,
+        dateLabel: label,
+        message: `No ${type} incentive program is currently active. Please contact admin or check back later.`,
+        incentiveConfigured: false
+      });
+    }
+
+    // Step 2: Get current agent's progress
+    const progress = await AgentIncentiveProgress.findOne({
+      agentId,
+      incentiveRuleId: rule._id,
+      type,
+      ...timeFilter
+    });
+
+    const currentValue = progress?.currentValue || 0;
+
+    // Dynamic target
+    const targetValue = rule.condition?.minEarning || rule.condition?.minOrders || 0;
+    const percent = targetValue > 0 ? Math.min(100, Math.floor((currentValue / targetValue) * 100)) : 0;
+    const remaining = Math.max(0, targetValue - currentValue);
+
+    // Step 3: Fetch past completed earnings
+    const pastEarnings = await AgentIncentiveProgress.find({
+      agentId,
+      type,
+      isCompleted: true
+    })
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .select("currentValue rewardAmount date week month");
+
+    // Final response
+    return res.status(200).json({
+      incentiveConfigured: true,
+      type,
+      dateLabel: label,
+      title: rule.title,
+      description: rule.description,
+      basedOn: rule.condition?.basedOn,
+      targetValue,
+      currentValue,
+      reward: rule.incentiveAmount,
+      rewardType: rule.rewardType,
+      percent,
+      remaining,
+      completed: currentValue >= targetValue,
+      pastEarnings
+    });
+
+  } catch (error) {
+    console.error("Error in getAgentIncentiveSummary:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+

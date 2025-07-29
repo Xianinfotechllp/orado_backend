@@ -13,7 +13,8 @@ const { registerUser, verifyOtp, loginUser,addAddress,getAddress ,deleteAddressB
        loginWithOtp,
        sendOtpToPhone,
        getUserLoyaltyBalance,
-       getLoyaltyTransactionHistory
+       getLoyaltyTransactionHistory,
+       getPromoCodesForCustomerAndRestaurant
 } = require("../controllers/userControllers");
 const {initiateWalletTopUp, verifyAndCreditWallet, getWalletBalance, getUserWalletTransactions} = require('../controllers/walletController')
 
@@ -97,6 +98,7 @@ router.get("/wallet/transactions", protect, getUserWalletTransactions);
 router.get("/loyalty/balance", protect, getUserLoyaltyBalance)
 router.get("/loyalty/history", protect, getLoyaltyTransactionHistory)
 
+router.get("/promocodes/:restaurantId", protect,getPromoCodesForCustomerAndRestaurant);
 
 
 

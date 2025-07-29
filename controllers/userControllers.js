@@ -8,10 +8,14 @@ const otpGenerator = require("../utils/otpGenerator");
 const { sendEmail } = require("../utils/sendEmail");
 const Restaurant = require("../models/restaurantModel")
 const LoyaltyPointTransaction = require("../models/loyaltyTransactionModel")
-
+const mongoose = require('mongoose')
 const Favourite = require("../models/favouriteModel")
 
 const { NotificationPreference, Notification } = require('../models/notificationModel');
+
+const PromoCode = require("../models/promoCodeModels");
+const { isValidObjectId } = require("mongoose");
+
 
 
 
@@ -1085,3 +1089,55 @@ exports.getLoyaltyTransactionHistory = async (req, res) => {
     });
   }
 };
+
+
+exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
+  try {
+    const customerId = req.user._id;
+    const { restaurantId } = req.params;
+    const now = new Date();
+
+    // Fetch only valid promo codes for current time and matching rules
+    const promoCodes = await PromoCode.find({
+      isActive: true,
+      validFrom: { $lte: now },
+      validTill: { $gte: now },
+      $or: [
+        {
+          isMerchantSpecific: false,
+          isCustomerSpecific: false
+        },
+        {
+          isMerchantSpecific: true,
+          applicableMerchants: new mongoose.Types.ObjectId(restaurantId)
+        },
+        {
+          isCustomerSpecific: true,
+          applicableCustomers: new mongoose.Types.ObjectId(customerId)
+        }
+      ]
+    });
+
+    // Filter: Allow only if customer hasn't exceeded usage
+    const eligiblePromoCodes = promoCodes.filter((promo) => {
+      if (promo.maxUsagePerCustomer === 0) return true;
+
+      const usageCount = promo.customersUsed.filter(
+        (id) => id.toString() === customerId.toString()
+      ).length;
+
+      return usageCount < promo.maxUsagePerCustomer;
+    });
+
+    return res.status(200).json({ promoCodes: eligiblePromoCodes });
+  } catch (error) {
+    console.error("Error fetching promo codes:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+

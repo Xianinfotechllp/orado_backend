@@ -3,10 +3,12 @@ const router = express.Router();
 const incentivePlanController = require('../controllers/incentivePlanController');
 
 // Create a new incentive plan
-router.post('/', incentivePlanController.createIncentivePlan);
-router.get('/', incentivePlanController.getAllIncentivePlans);
-router.delete('/:id', incentivePlanController.deleteIncentivePlan);
-router.patch('/:id/toggle-status', incentivePlanController.toggleIncentivePlanStatus)
+router.post('/', incentivePlanController.createIncentiveRule);
+
+
+// router.get('/', incentivePlanController.getAllIncentivePlans);
+// router.delete('/:id', incentivePlanController.deleteIncentivePlan);
+// router.patch('/:id/toggle-status', incentivePlanController.toggleIncentivePlanStatus)
 // // Get all incentive plans
 // router.get('/', incentiveController.getAllIncentivePlans);
 
