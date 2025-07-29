@@ -1184,32 +1184,109 @@ exports.removeFavouriteRestaurant = async (req, res) => {
 };
 
 
+// exports.getFavouriteRestaurants = async (req, res) => {
+//   try {
+//     const userId = req.user._id; // Assuming JWT middleware sets req.user
+
+//     // Find favourites for user where itemType is 'Restaurant' and populate restaurant details
+//     const favourites = await Favourite.find({ user: userId, itemType: 'Restaurant' })
+//       .populate('item', 'name location cuisine rating images') // select restaurant fields you want
+//       .exec();
+
+//     // Map to return only the restaurant data inside favourites
+//     const favouriteRestaurants = favourites.map(fav => fav.item);
+
+//     res.status(200).json({ 
+//       message: 'Favourite restaurants fetched successfully',
+//       messageType: "success",
+//       data: favouriteRestaurants 
+//     });
+
+//   } catch (error) {
+//     console.error('Error fetching favourites:', error);
+//     res.status(500).json({ message: 'Internal Server Error', messageType: "failure" });
+//   }
+// };
+
+
+
 exports.getFavouriteRestaurants = async (req, res) => {
   try {
-    const userId = req.user._id; // Assuming JWT middleware sets req.user
+    const userId = req.user._id;
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    const userCoords = (!isNaN(lat) && !isNaN(lng)) ? [lng, lat] : null;
+    
+    const currentTime = new Date();
+    const currentDay = currentTime.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+    const currentHours = currentTime.getHours();
+    const currentMinutes = currentTime.getMinutes();
+    const currentTimeString = `${currentHours.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')}`;
 
-    // Find favourites for user where itemType is 'Restaurant' and populate restaurant details
     const favourites = await Favourite.find({ user: userId, itemType: 'Restaurant' })
-      .populate('item', 'name location cuisine rating images') // select restaurant fields you want
+      .populate('item', 'name images rating openingHours active')
       .exec();
 
-    // Map to return only the restaurant data inside favourites
-    const favouriteRestaurants = favourites.map(fav => fav.item);
+    const favouriteRestaurants = await Promise.all(favourites.map(async (fav) => {
+      const restaurant = fav.item;
+      if (!restaurant) return null;
+      
+      // Delivery area check (as string "1" or "0")
+      let outOfDeliveryArea = "0";
+      if (userCoords && restaurant) {
+        try {
+          const isInside = await isPointInsideServiceAreas(userCoords, restaurant._id);
+          outOfDeliveryArea = isInside ? "0" : "1";
+        } catch (error) {
+          console.error('Error checking service area:', error);
+          outOfDeliveryArea = "0";
+        }
+      }
 
-    res.status(200).json({ 
+      // Open/closed status check (as string "1" or "0")
+      let isOpen = "0";
+      if (restaurant.active && restaurant.openingHours) {
+        const todayHours = restaurant.openingHours.find(
+          hours => hours.day === currentDay
+        );
+        
+        if (todayHours && !todayHours.isClosed) {
+          const openingTime = todayHours.openingTime;
+          const closingTime = todayHours.closingTime;
+          
+          if (currentTimeString >= openingTime && currentTimeString <= closingTime) {
+            isOpen = "1";
+          }
+        }
+      }
+
+      return {
+        _id: restaurant._id.toString(),
+        name: restaurant.name,
+        images: restaurant.images || [],
+        rating: restaurant.rating,
+        outOfDeliveryArea: outOfDeliveryArea,  // Will be "1" or "0"
+        isOpen: isOpen  // Will be "1" or "0"
+      };
+    }));
+
+    const validRestaurants = favouriteRestaurants.filter(rest => rest !== null);
+
+    res.status(200).json({
       message: 'Favourite restaurants fetched successfully',
       messageType: "success",
-      data: favouriteRestaurants 
+      data: validRestaurants
     });
 
   } catch (error) {
     console.error('Error fetching favourites:', error);
-    res.status(500).json({ message: 'Internal Server Error', messageType: "failure" });
+    res.status(500).json({ 
+      message: 'Internal Server Error', 
+      messageType: "failure",
+      data: [] 
+    });
   }
 };
-
-
-
 
 
 
