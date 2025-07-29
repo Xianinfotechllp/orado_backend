@@ -1441,7 +1441,15 @@ exports.getLoyaltyTransactionHistory = async (req, res) => {
   }
 };
 
-
+function formatDate(date) {
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
   try {
     const customerId = req.user._id;
@@ -1467,7 +1475,7 @@ exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
           applicableCustomers: new mongoose.Types.ObjectId(customerId)
         }
       ]
-    });
+    }).lean(); // Use lean() for better performance
 
     // Filter: Allow only if customer hasn't exceeded usage
     const eligiblePromoCodes = promoCodes.filter((promo) => {
@@ -1480,7 +1488,16 @@ exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
       return usageCount < promo.maxUsagePerCustomer;
     });
 
-    return res.status(200).json({ promoCodes: eligiblePromoCodes });
+    // Format dates to human-readable strings
+    const formattedPromoCodes = eligiblePromoCodes.map(promo => ({
+      ...promo,
+      validFrom: formatDate(promo.validFrom),
+      validTill: formatDate(promo.validTill),
+      createdAt: formatDate(promo.createdAt),
+      updatedAt: formatDate(promo.updatedAt)
+    }));
+
+    return res.status(200).json({ promoCodes: formattedPromoCodes });
   } catch (error) {
     console.error("Error fetching promo codes:", error);
     return res.status(500).json({ message: "Internal server error" });

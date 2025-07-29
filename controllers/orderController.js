@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
 const Offer = require("../models/offerModel");
 const Order = require("../models/orderModel");
-const TaxAndCharge = require("../models/taxAndChargeModel")
- const LoyalitySettings = require("../models/LoyaltySettingModel")
+const TaxAndCharge = require("../models/taxAndChargeModel");
+const LoyalitySettings = require("../models/LoyaltySettingModel");
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
 const Cart = require("../models/cartModel");
 const User = require("../models/userModel");
@@ -12,7 +12,7 @@ const {
   calculateOrderCost,
   calculateOrderCostV2,
 } = require("../services/orderCostCalculator");
-const razorpay = require("../utils/razorpay")
+const razorpay = require("../utils/razorpay");
 const crypto = require("crypto");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const { haversineDistance } = require("../utils/distanceCalculator");
@@ -22,7 +22,7 @@ const fs = require("fs");
 const turf = require("@turf/turf");
 const feeService = require("../services/feeServices");
 const geoService = require("../services/geoServices");
-const PromoCode = require("../models/promoCodeModels")
+const PromoCode = require("../models/promoCodeModels");
 const firebaseAdmin = require("../config/firebaseAdmin");
 const {
   findAndAssignNearestAgent,
@@ -438,7 +438,8 @@ exports.placeOrderWithAddressId = async (req, res) => {
       });
     }
 
-    const [restaurantLongitude, restaurantLatitude] = restaurant.location.coordinates;
+    const [restaurantLongitude, restaurantLatitude] =
+      restaurant.location.coordinates;
     const restaurantCoords = {
       latitude: restaurantLatitude,
       longitude: restaurantLongitude,
@@ -1034,9 +1035,9 @@ exports.updateOrderStatus = async (req, res) => {
           timestamp: new Date(),
         }
       );
-   
-// flutter
-       io.to(`user_${order.customerId._id.toString()}`).emit(
+
+      // flutter
+      io.to(`user_${order.customerId._id.toString()}`).emit(
         "order_status_update_flutter",
         {
           orderId: order._id,
@@ -1045,8 +1046,6 @@ exports.updateOrderStatus = async (req, res) => {
           timestamp: new Date(),
         }
       );
-
-
 
       // Notify restaurant for certain statuses
       if (
@@ -1263,7 +1262,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       userId,
       tipAmount = 0,
       useLoyaltyPoints = false,
-      loyaltyPointsToRedeem = null
+      loyaltyPointsToRedeem = null,
     } = req.body;
 
     // Validate input
@@ -1282,7 +1281,6 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     if (!restaurant) {
       return res.status(404).json({ error: "Restaurant not found" });
     }
-
     // Fetch User and Loyalty Settings
     const loyaltySettings = await LoyalitySettings.findOne({}).lean();
     if (!loyaltySettings) {
@@ -1298,6 +1296,14 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       userCoords,
       restaurant._id
     );
+    // if (!isInsideServiceArea) {
+    //   return res.status(400).json({
+    //     code: "OUT_OF_DELIVERY_AREA",
+    //     error: "Out of Delivery Area",
+    //     message:
+    //       "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+    //   });
+    // }
 
     // Step 1: Calculate base cart total (pre-offer, pre-surge)
     const preSurgeOrderAmount = cart.products.reduce(
@@ -1310,11 +1316,14 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       applicableRestaurants: restaurant._id,
       isActive: true,
       validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() }
+      validTill: { $gte: new Date() },
     }).lean();
 
     // Step 3: Calculate surge fee based on location and order value
-    const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
+    const surgeObj = await getApplicableSurgeFee(
+      userCoords,
+      preSurgeOrderAmount
+    );
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
     const surgeReason = surgeObj?.reason || null;
@@ -1349,7 +1358,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       loyaltyPointsToRedeem: loyaltyPointsToRedeem, // Added this
       loyaltySettings: loyaltySettings,
       userId: userId, // Added this
-      PromoCode: PromoCode // Added this to support promo code validation
+      PromoCode: PromoCode, // Added this to support promo code validation
     });
 
     // Step 7: Calculate distance between restaurant and customer
@@ -1409,22 +1418,21 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
           minOrderAmount: loyaltySettings.minOrderAmountForRedemption,
           minPoints: loyaltySettings.minPointsForRedemption,
           maxPercent: loyaltySettings.maxRedemptionPercent,
-          valuePerPoint: loyaltySettings.valuePerPoint
+          valuePerPoint: loyaltySettings.valuePerPoint,
         },
         earningRules: {
           minOrderAmount: loyaltySettings.minOrderAmountForEarning,
           pointsPerAmount: loyaltySettings.pointsPerAmount,
-          maxPoints: loyaltySettings.maxEarningPoints
-        }
-      }
+          maxPoints: loyaltySettings.maxEarningPoints,
+        },
+      },
     };
 
     // Final response
     return res.status(200).json({
       message: "Bill summary calculated successfully",
-      data: summary
+      data: summary,
     });
-
   } catch (err) {
     console.error("Error in getOrderPriceSummaryv2:", err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -1876,7 +1884,7 @@ exports.placeOrderV2 = async (req, res) => {
       subtotal: costSummary.cartTotal, // ✅ from V2
       cartTotal: costSummary.cartTotal,
       tax: costSummary.totalTaxAmount, // ✅ from V2
-      discountAmount:  0, // ✅ clean combined discount
+      discountAmount: 0, // ✅ clean combined discount
       deliveryCharge: costSummary.deliveryFee, // ✅ from V2
       offerId: costSummary.appliedOffer?._id || null,
       offerName: costSummary.appliedOffer?.title || null,
@@ -1894,65 +1902,61 @@ exports.placeOrderV2 = async (req, res) => {
     const savedOrder = await newOrder.save();
 
     // ✅ If payment method is online — generate Razorpay order and return immediately
-if (paymentMethod === "online") {
-  const razorpayOrder = await razorpay.orders.create({
-    amount: Math.round(costSummary.finalAmount * 100), // Razorpay accepts amount in paisa
-    currency: "INR",
-    receipt: savedOrder._id.toString(),
-    notes: {
-      restaurantName: restaurant.name,
-      userId: userId.toString(),
-      orderId: savedOrder._id.toString(),
-    },
-  });
-
-  savedOrder.onlinePaymentDetails = {
-    razorpayOrderId: razorpayOrder.id,
-  };
-  await savedOrder.save();
-
-    const io = req.app.get("io");
-    const populatedOrder = await Order.findById(savedOrder._id)
-      .populate("customerId", "name email phone")
-      .lean();
-
-    const sanitizeOrderNumbers = (order, fields) => {
-      fields.forEach((key) => {
-        order[key] = Number(order[key]) || 0;
+    if (paymentMethod === "online") {
+      const razorpayOrder = await razorpay.orders.create({
+        amount: Math.round(costSummary.finalAmount * 100), // Razorpay accepts amount in paisa
+        currency: "INR",
+        receipt: savedOrder._id.toString(),
+        notes: {
+          restaurantName: restaurant.name,
+          userId: userId.toString(),
+          orderId: savedOrder._id.toString(),
+        },
       });
-      return order;
-    };
 
-    sanitizeOrderNumbers(populatedOrder, [
-      "subtotal",
-      "tax",
-      "discountAmount",
-      "deliveryCharge",
-      "offerDiscount",
-      "surgeCharge",
-      "tipAmount",
-      "totalAmount",
-    ]);
+      savedOrder.onlinePaymentDetails = {
+        razorpayOrderId: razorpayOrder.id,
+      };
+      await savedOrder.save();
 
-  
-    io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
-      "new_order",
-      populatedOrder
-    );
+      const io = req.app.get("io");
+      const populatedOrder = await Order.findById(savedOrder._id)
+        .populate("customerId", "name email phone")
+        .lean();
 
-  return res.status(200).json({
-    message: "Order created. Proceed to Razorpay payment.",
-    messageType: "success",
-    orderId: savedOrder._id,
-    razorpayOrderId: razorpayOrder.id,
-    amount: costSummary.finalAmount,
-    currency: "INR",
-    keyId: process.env.RAZORPAY_KEY_ID,
-  });
-}
+      const sanitizeOrderNumbers = (order, fields) => {
+        fields.forEach((key) => {
+          order[key] = Number(order[key]) || 0;
+        });
+        return order;
+      };
 
+      sanitizeOrderNumbers(populatedOrder, [
+        "subtotal",
+        "tax",
+        "discountAmount",
+        "deliveryCharge",
+        "offerDiscount",
+        "surgeCharge",
+        "tipAmount",
+        "totalAmount",
+      ]);
 
-    
+      io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+        "new_order",
+        populatedOrder
+      );
+
+      return res.status(200).json({
+        message: "Order created. Proceed to Razorpay payment.",
+        messageType: "success",
+        orderId: savedOrder._id,
+        razorpayOrderId: razorpayOrder.id,
+        amount: costSummary.finalAmount,
+        currency: "INR",
+        keyId: process.env.RAZORPAY_KEY_ID,
+      });
+    }
 
     // await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
     const io = req.app.get("io");
@@ -1978,7 +1982,6 @@ if (paymentMethod === "online") {
       "totalAmount",
     ]);
 
-  
     io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
       "new_order",
       populatedOrder
@@ -2061,7 +2064,7 @@ if (paymentMethod === "online") {
       totalAmount: currentOrder.totalAmount,
       billSummary,
       orderStatus: currentOrder.orderStatus, // Original status (not changed to assigned_to_agent)
-     
+
       // assignedAgent: currentOrder.assignedAgent
       messageType: "success",
     });
@@ -2074,14 +2077,6 @@ if (paymentMethod === "online") {
     });
   }
 };
-
-
-
-
-
-
-
-
 
 exports.verifyPayment = async (req, res) => {
   try {
@@ -2130,17 +2125,16 @@ exports.verifyPayment = async (req, res) => {
 
     order.onlinePaymentDetails.razorpayPaymentId = razorpay_payment_id;
     order.onlinePaymentDetails.razorpaySignature = razorpay_signature;
-    order.onlinePaymentDetails.razorpayOrderId = razorpay_order_id
-    order.onlinePaymentDetails.verificationStatus = "verified"
+    order.onlinePaymentDetails.razorpayOrderId = razorpay_order_id;
+    order.onlinePaymentDetails.verificationStatus = "verified";
     order.paymentStatus = "completed";
-    
+
     await order.save();
 
     // 🚚 5. Assign delivery agent after successful payment
     const assignmentResult = await assignNearestAgentSimple(order._id);
     if (!assignmentResult.success) {
       console.warn("Agent assignment failed:", assignmentResult.error);
-     
     }
 
     return res.status(200).json({
@@ -2157,7 +2151,3 @@ exports.verifyPayment = async (req, res) => {
     });
   }
 };
-
-
-
-
