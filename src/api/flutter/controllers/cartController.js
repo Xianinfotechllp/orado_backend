@@ -66,7 +66,7 @@ exports.addToCart = async (req, res) => {
           productId: prod.productId,
           name: productData.name,
           description: productData.description,
-          images: productData.images?.[0] || null, // ✅ single image string with field name "images"
+           images: productData.images || [], // ✅ single image string with field name "images"
           foodType: productData.foodType,
           price,
           quantity: newQty,
@@ -312,7 +312,7 @@ exports.getCart = async (req, res) => {
         productId: product._id,
         name: product.name,
         description: product.description,
-        images: product.images?.[0] || null,// ✅ now this works
+        images: productData.images || [],
         foodType: product.foodType,
         price: item.price,
         quantity: item.quantity,
