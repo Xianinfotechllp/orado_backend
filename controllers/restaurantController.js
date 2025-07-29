@@ -15,6 +15,8 @@ const moment = require("moment");
 const { Types } = require("mongoose");
 const ServiceArea = require("../models/serviceAreaModel");
 const parseCoordinates = require("../utils/parseCoordinates");
+
+
 exports.createRestaurant = async (req, res) => {
   try {
     // 1️⃣ Required fields validation (removed password, ownerName, email, phone)
@@ -30,6 +32,7 @@ exports.createRestaurant = async (req, res) => {
       "address.state",
       "foodType",
       "openingHours",
+      "storeType"
     ];
 
     const missingFields = requiredFields.filter((field) => {
@@ -68,6 +71,15 @@ exports.createRestaurant = async (req, res) => {
         code: "INVALID_FOOD_TYPE",
       });
     }
+    const validStoreTypes = ["restaurant", "grocery", "meat", "pharmacy"];
+    if (!validStoreTypes.includes(req.body.storeType?.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid storeType. Allowed: ${validStoreTypes.join(", ")}`,
+        code: "INVALID_STORE_TYPE",
+      });
+    }
+
 
     const validateTimeFormat = (time) =>
       /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
@@ -215,6 +227,14 @@ exports.createRestaurant = async (req, res) => {
       throw new Error("Document upload failed");
     }
 
+    let imageUrls = [];
+    if (req.files && req.files.images && Array.isArray(req.files.images)) {
+      for (const file of req.files.images) {
+        const uploaded = await uploadOnCloudinary(file.path);
+        if (uploaded?.secure_url) imageUrls.push(uploaded.secure_url);
+      }
+    }
+
     // 8️⃣ Slug generation
     const slug = `${req.body.name
       .toLowerCase()
@@ -236,6 +256,7 @@ exports.createRestaurant = async (req, res) => {
         state: req.body.address.state.trim(),
         zip: req.body.address.pincode || req.body.address.zip || "",
       },
+      storeType: req.body.storeType.trim(),
       location: {
         type: "Point",
         coordinates: [
@@ -249,6 +270,7 @@ exports.createRestaurant = async (req, res) => {
       foodType: req.body.foodType.trim(),
       minOrderAmount: req.body.minOrderAmount || 100,
       paymentMethods,
+      images: imageUrls,
       kyc: {
         fssaiNumber: req.body.fssaiNumber.trim(),
         gstNumber: req.body.gstNumber.trim(),

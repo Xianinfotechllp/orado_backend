@@ -36,7 +36,19 @@ const AgentSelfieSchema = new mongoose.Schema({
       type: [Number], // [longitude, latitude]
       default: [0, 0]
     }
-  }
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
+  },
+  reviewedAt: Date,
+  reviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin'
+  },
+  rejectionReason: String
+
 });
 AgentSelfieSchema.plugin(mongoosePaginate);
 // Create a 2dsphere index for geo queries on selfie location

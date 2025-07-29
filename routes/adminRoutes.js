@@ -42,7 +42,7 @@ const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require(".
 const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
 const {sendNotification} = require('../controllers/admin/notificationControllers');
 const { getAllCustomers, getSingleCustomerDetails, getOrdersByCustomerForAdmin } = require("../controllers/admin/customerControllers");
-const { getAllAgents, manualAssignAgent ,sendNotificationToAgent,getAllList} = require("../controllers/admin/agentControllers");
+const { getAllAgents, manualAssignAgent ,sendNotificationToAgent,getAllList, reviewAgentSelfie} = require("../controllers/admin/agentControllers");
 const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationStatus, toggleAutoAllocationStatus } = require("../controllers/allowcationController");
 const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
 const { createManager, getAllManagers, getManagerById, updateManager, deleteManager } = require("../controllers/admin/managerController");
@@ -245,6 +245,7 @@ router.get("/agent/getAll",getAllAgents)
 router.get('/agent/selfies', getAgentSelfies);
 router.get('/agent/selfies/:id', getSelfieDetails);
 router.get('/agent/:agentId/selfies', getAgentSelfieHistory);
+router.patch('/agent/selfie/:id/review', protect, reviewAgentSelfie);
 
 
 
