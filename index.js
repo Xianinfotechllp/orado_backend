@@ -4,8 +4,8 @@ const socketIo = require("socket.io");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const redis = require("./config/redisClient");
-
+const  getRedisClient  = require("./config/redisClient");
+const redis = getRedisClient();
 
 
 
@@ -154,7 +154,7 @@ io.on("connection", (socket) => {
     const { agentId, lat, lng ,deviceInfo} = data;
     console.log(`Agent ${agentId} location update:`, data);
     // Optionally: Save to Redis GEOSET
-    redis.geoadd("agent_locations", lng, lat, agentId);
+
 
     // Broadcast to admin dashboards or dispatchers
     socket.broadcast.emit("admin:updateLocation", {
