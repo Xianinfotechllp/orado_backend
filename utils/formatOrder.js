@@ -78,6 +78,10 @@ const formatOrder = (order, agentId) => {
       phone: order.restaurantId?.phone || "",
     },
 
+
+      paymentMethod: order.paymentMethod,
+      collectAmount: order.totalAmount || 0,
+
     items: orderItems,
 
     offer: {
