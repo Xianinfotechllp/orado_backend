@@ -599,48 +599,52 @@ exports.calculateOrderCostV2 = async ({
   let loyaltyMessages = [];
   let potentialPointsEarned = 0;
 console.log(loyaltySettings)
-  if (useLoyaltyPoints) {
-    if (!loyaltySettings) {
-      loyaltyMessages.push("Loyalty program not available for this merchant");
-    } else if (loyaltyPointsAvailable <= 0) {
-      loyaltyMessages.push("You don't have any points to redeem");
-    } else {
-      // Check minimum order amount for redemption
-      if (finalAmountBeforeRevenueShare < loyaltySettings.minOrderAmountForRedemption) {
+ if (useLoyaltyPoints) {
+  if (!loyaltySettings) {
+    loyaltyMessages.push("Loyalty program not available for this merchant");
+  } else if (loyaltyPointsAvailable <= 0) {
+    loyaltyMessages.push("You don't have any points to redeem");
+  } else if (finalAmountBeforeRevenueShare < loyaltySettings.minOrderAmountForRedemption) {
+    loyaltyMessages.push(
+      `Minimum order amount of ₹${loyaltySettings.minOrderAmountForRedemption} required to redeem points`
+    );
+  } else {
+    // Calculate maximum allowed redemption
+    const maxRedemptionAmount = (finalAmountBeforeRevenueShare * loyaltySettings.maxRedemptionPercent) / 100;
+    const maxPointsCanUse = Math.floor(maxRedemptionAmount / loyaltySettings.valuePerPoint);
+    
+    // If user specified an amount, use it (within limits)
+    if (loyaltyPointsToRedeem !== null && loyaltyPointsToRedeem > 0) {
+      pointsUsed = Math.min(
+        loyaltyPointsToRedeem,
+        loyaltyPointsAvailable,
+        maxPointsCanUse
+      );
+      
+      // Ensure minimum points requirement is met
+      if (pointsUsed < loyaltySettings.minPointsForRedemption) {
+        pointsUsed = 0;
         loyaltyMessages.push(
-          `Minimum order amount of ₹${loyaltySettings.minOrderAmountForRedemption} required to redeem points`
+          `Minimum ${loyaltySettings.minPointsForRedemption} points required for redemption`
         );
-      } else {
-        // Calculate maximum possible redemption
-        const maxRedemptionAmount = (finalAmountBeforeRevenueShare * loyaltySettings.maxRedemptionPercent) / 100;
-        const maxPointsCanUse = Math.floor(maxRedemptionAmount / loyaltySettings.valuePerPoint);
-        
-        pointsUsed = Math.min(
-          loyaltyPointsAvailable,
-          maxPointsCanUse,
-          Math.max(loyaltySettings.minPointsForRedemption, 0)
-        );
-
-        if (pointsUsed > 0) {
-          loyaltyDiscount = pointsUsed * loyaltySettings.valuePerPoint;
-          loyaltyMessages.push(
-            `Redeemed ${pointsUsed} points (₹${loyaltyDiscount} discount)`
-          );
-
-          if (loyaltyPointsAvailable > pointsUsed && pointsUsed === maxPointsCanUse) {
-            loyaltyMessages.push(
-              `Maximum ${maxPointsCanUse} points can be used for this order (${loyaltySettings.maxRedemptionPercent}% of order value)`
-            );
-          }
-        } else {
-          loyaltyMessages.push(
-            `Minimum ${loyaltySettings.minPointsForRedemption} points required for redemption`
-          );
-        }
       }
+    } else {
+      // Auto-apply maximum if user didn't specify
+      pointsUsed = Math.min(
+        loyaltyPointsAvailable,
+        maxPointsCanUse,
+        Math.max(loyaltySettings.minPointsForRedemption, 0)
+      );
+    }
+
+    if (pointsUsed > 0) {
+      loyaltyDiscount = pointsUsed * loyaltySettings.valuePerPoint;
+      loyaltyMessages.push(
+        `Redeemed ${pointsUsed} points (₹${loyaltyDiscount} discount)`
+      );
     }
   }
-
+}
   // Calculate potential points to earn
   if (loyaltySettings) {
     if (finalAmountBeforeRevenueShare >= loyaltySettings.minOrderAmountForEarning) {

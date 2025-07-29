@@ -1262,7 +1262,8 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       cartId,
       userId,
       tipAmount = 0,
-      useLoyaltyPoints = true // Add this parameter
+      useLoyaltyPoints = false, // Add this parameter
+        loyaltyPointsToRedeem = null // Add this
     } = req.body;
 
     // Validate input
