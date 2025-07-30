@@ -1257,7 +1257,7 @@ exports.getPastOrders = async (req, res) => {
         path: "restaurantId",
         select: "name location address active"
       })
-      .select('orderItems restaurantId orderStatus orderTime totalAmount createdAt')
+      .select('orderItems restaurantId orderStatus orderTime totalAmount')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -1361,20 +1361,6 @@ exports.getPastOrders = async (req, res) => {
       }
 
       const displayStatus = order.orderStatus === 'delivered' ? "1" : "0";
-      
-      // Convert dates to human-readable format
-      const orderDate = new Date(order.orderTime);
-      const formattedDate = orderDate.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-      
-      const formattedTime = orderDate.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      });
 
       return {
         orderId: order._id,
@@ -1383,9 +1369,8 @@ exports.getPastOrders = async (req, res) => {
           address: fullAddress,
           location: rest?.location?.coordinates || []
         },
-        orderDate: formattedDate,  // Human-readable date
-        orderTime: formattedTime,  // Human-readable time
-        orderTimestamp: order.orderTime, // Keep original timestamp for reference
+        orderDate: order.orderTime,
+        orderTime: order.orderTime,
         orderStatus: displayStatus,
         isReorderAvailable,
         reorderUnavailableReason,
