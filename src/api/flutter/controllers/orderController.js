@@ -2181,32 +2181,18 @@ exports.reorder = async (req, res) => {
     // Find or create cart
     let cart = await Cart.findOne({ user: userId });
 
+    // Always replace the cart with the new reorder items
     if (cart) {
-      // If cart exists but is for a different restaurant, clear it first
-      if (cart.restaurantId.toString() !== order.restaurantId._id.toString()) {
-        cart.products = [];
-        cart.restaurantId = order.restaurantId._id;
-      }
-      
-      // Add available items to cart
-      availableItems.forEach(item => {
-        const existingItem = cart.products.find(p => p.productId.toString() === item.productId.toString());
-        if (existingItem) {
-          existingItem.quantity += item.quantity;
-          existingItem.total = existingItem.price * existingItem.quantity;
-        } else {
-          cart.products.push({
-            productId: item.productId,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            total: item.total
-          });
-        }
-      });
-      
-      // Recalculate total
-      cart.totalPrice = cart.products.reduce((sum, item) => sum + item.total, 0);
+      // Completely replace the cart contents
+      cart.products = availableItems.map(item => ({
+        productId: item.productId,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        total: item.total
+      }));
+      cart.restaurantId = order.restaurantId._id;
+      cart.totalPrice = totalPrice;
     } else {
       // Create new cart
       cart = new Cart({
@@ -2243,7 +2229,6 @@ exports.reorder = async (req, res) => {
     });
   }
 };
-
 
 
 
