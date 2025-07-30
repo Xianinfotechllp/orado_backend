@@ -934,6 +934,8 @@ exports.getOrderPriceSummary = async (req, res) => {
       cartId, 
       tipAmount = 0 
     } = req.body;
+
+    console.log(req.body)
     const userId = req.user._id;
 
     if (!cartId || !userId) {
