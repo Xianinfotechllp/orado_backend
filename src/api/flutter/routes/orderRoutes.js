@@ -58,6 +58,6 @@ router.get("/:orderId",protect,getOrderDetails)
 router.post("/verify-payment", protect, verifyPayment);
 
 router.get("/active/status", protect,getActiveOrder);
-router.get("/order/:orderId", protect,reorder);
+router.post("/reorder/:orderId", protect,reorder);
 
 module.exports = router;
