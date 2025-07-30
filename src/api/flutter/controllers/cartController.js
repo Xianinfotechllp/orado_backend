@@ -86,8 +86,7 @@ let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name')
         data: {
           cartId: cart._id.toString(),
           userId: cart.user.toString(),
-         restaurantId: cart.restaurantId._id,
-        restaurantName: cart.restaurantId.name, 
+        
           products: [],
           totalPrice: 0,
           createdAt: cart.createdAt,
@@ -103,7 +102,8 @@ let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name')
     const cartData = {
       cartId: cart._id.toString(),
       userId: cart.user.toString(),
-      restaurantId: cart.restaurantId,
+       restaurantId: cart.restaurantId._id,
+        restaurantName: cart.restaurantId.name, 
       products: cart.products,
       totalPrice: cart.totalPrice,
       createdAt: cart.createdAt,
@@ -296,7 +296,10 @@ exports.getCart = async (req, res) => {
   try {
     const userId = req.user._id;
 
-let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name');
+let cart = await Cart.findOne({ user: userId })
+  .populate('restaurantId', 'name')
+  .populate('products.productId'); // ✅ This is key!
+
 
     if (!cart) {
       return res.status(200).json({
@@ -312,7 +315,6 @@ let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name')
       return {
         productId: product._id,
         name: product.name,
-      restaurantName: cart.restaurantId.name,
         description: product.description,
         images: product.images || [],
         foodType: product.foodType,
@@ -325,8 +327,8 @@ let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name')
     const cartData = {
       cartId: cart._id.toString(),
       userId: cart.user.toString(),
-        restaurantId: cart.restaurantId._id,
-        restaurantName: cart.restaurantId.name, 
+      restaurantId: cart.restaurantId._id,
+      restaurantName: cart.restaurantId.name, 
       products,
       totalPrice: cart.totalPrice,
       createdAt: cart.createdAt,
