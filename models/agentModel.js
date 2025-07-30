@@ -245,14 +245,35 @@ const agentSchema = new mongoose.Schema(
       dailyCollected: { type: Number, default: 0 },
     },
 
-    cashDropLogs: [
-      {
-        amount: { type: Number, required: true },
-        droppedAt: { type: Date, default: Date.now },
-        method: { type: String, enum: ["Bank", "Online"], default: "Online" },
-        notes: { type: String },
+    codSubmissionLogs: [  // ← renamed from cashDropLogs
+  {
+    droppedAmount: { type: Number, required: true }, // Amount that was submitted
+    droppedAt: { type: Date, default: Date.now },     // When the COD was submitted
+    dropMethod: {
+      type: String,
+      enum: ["Bank", "Online", "Cash"],               // Method of submission
+      default: "Online",
+    },
+    dropNotes: { type: String },                      // Optional notes from agent
+    isVerifiedByAdmin: { type: Boolean, default: false }, // Whether admin confirmed it
+    verifiedAt: { type: Date },                       // When admin verified
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+    },
+    dropLocation: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
       },
-    ],
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+      },
+    },
+  }
+],
+
     warnings: [
       {
         reason: { type: String, required: true },

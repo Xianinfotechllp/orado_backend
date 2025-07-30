@@ -12,8 +12,8 @@ const orderRouter = require("./routes/orderRoutes");
 const couponRoutes = require("./routes/couponRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const cartRoutes = require("./routes/cartRoutes");
-
-// Dummy test data
+const loyalityRoutes = require("./routes/loyaliityRoutes");
+// Dummy test da  ta
 const dummyCategories = [
   {
     categoryName: "Fruits",
@@ -74,7 +74,7 @@ router.use("/location", locationRouter);
 router.use("/agent", agentRouter);
 router.use("/feedback", feedbackRoutes);
 router.use("/cart", cartRoutes);
-
+router.use("/loyality", loyalityRoutes);
 // Dummy test route
 router.get("/test/categories", (req, res) => {
   res.status(200).json(dummyCategories);
