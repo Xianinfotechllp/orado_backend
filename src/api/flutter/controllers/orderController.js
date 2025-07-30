@@ -19,7 +19,7 @@ const {assignTask} = require("../services/allocationService")
 const crypto = require("crypto");
 const razorpay = require("../config/razorpayInstance");
 const geoService = require("../../../../services/geoServices");
- 
+const LoyalitySettings = require("../../../../models/LoyaltySettingModel")
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -924,18 +924,176 @@ exports.getCustomerOrderStatus = async (req, res) => {
 
 
 
+// exports.getOrderPriceSummary = async (req, res) => {
+//   try {
+//     const { 
+//       longitude, 
+//       latitude, 
+//       couponCode, 
+//       promoCode, // Added promoCode
+//       cartId, 
+//       tipAmount = 0 
+//     } = req.body;
+
+//     console.log(req.body)
+//     const userId = req.user._id;
+
+//     if (!cartId || !userId) {
+//       return res.status(400).json({
+//         message: "cartId and userId are required",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const cart = await Cart.findOne({ _id: cartId, user: userId });
+//     if (!cart) {
+//       return res.status(404).json({
+//         message: "Cart not found for this user",
+//         messageType: "failure",
+//       });
+//     }
+
+//     if (!cart.products || cart.products.length === 0) {
+//       return res.status(400).json({
+//         message: "Cart is empty",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const restaurant = await Restaurant.findById(cart.restaurantId);
+//     if (!restaurant) {
+//       return res.status(404).json({
+//         message: "Restaurant not found",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+//     const restaurantCoords = restaurant.location.coordinates;
+
+//     const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+//       userCoords,
+//       restaurant._id
+//     );
+//     if (!isInsideServiceArea) {
+//       return res.status(200).json({
+//         code: "OUT_OF_DELIVERY_AREA",
+//         error: "Out of Delivery Area",
+//         messageType: "failure",
+//         message: "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+//       });
+//     }
+
+//     const preSurgeOrderAmount = cart.products.reduce(
+//       (total, item) => total + item.price * item.quantity,
+//       0
+//     );
+
+//     const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
+//     const isSurge = !!surgeObj;
+//     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+//     const surgeReason = surgeObj ? surgeObj.reason : null;
+
+//     const deliveryFee = await feeService.calculateDeliveryFee(
+//       restaurantCoords,
+//       userCoords
+//     );
+
+//     const offers = await Offer.find({
+//       applicableRestaurants: restaurant._id,
+//       isActive: true,
+//       validFrom: { $lte: new Date() },
+//       validTill: { $gte: new Date() },
+//     }).lean();
+
+//     const foodTax = await feeService.getActiveTaxes("food");
+
+//     const costSummary = await calculateOrderCostV2({
+//       cartProducts: cart.products,
+//       tipAmount,
+//       couponCode,
+//       promoCode, // Added promoCode
+//       deliveryFee: deliveryFee,
+//       userCoords,
+//       offers,
+//       revenueShare: { type: "percentage", value: 20 },
+//       taxes: foodTax,
+//       isSurge,
+//       surgeFeeAmount,
+//       surgeReason,
+//       merchantId: restaurant.merchant, // Added merchantId for promo validation
+//       userId, // Added userId for promo validation
+//       PromoCode:PromoCode // Added PromoCode model for validation
+//     });
+
+//     const distanceKm = turf.distance(
+//       turf.point(userCoords),
+//       turf.point(restaurantCoords),
+//       { units: "kilometers" }
+//     );
+
+//     const isOffer = costSummary.offersApplied.length > 0 ? "1" : "0";
+//     const isPromo = costSummary.promoCodeInfo.applied ? "1" : "0";
+
+//     const summary = {
+//       deliveryFee: costSummary.deliveryFee.toFixed(2),
+//       discount: costSummary.offerDiscount.toFixed(2),
+//       distanceKm: distanceKm.toFixed(2),
+//       subtotal: costSummary.cartTotal.toFixed(2),
+//       tax: costSummary.totalTaxAmount.toFixed(2),
+//       totalTaxAmount: costSummary.totalTaxAmount.toFixed(2),
+//       surgeFee: costSummary.surgeFee.toFixed(2),
+//       total: costSummary.finalAmount.toFixed(2),
+//       tipAmount: costSummary.tipAmount.toFixed(2),
+//       isSurge: isSurge ? "1" : "0",
+//       surgeReason: surgeReason || "",
+//       offersApplied: costSummary.offersApplied.length
+//         ? costSummary.offersApplied.join(", ")
+//         : "",
+//       isOffer: isOffer,
+//       isPromo: isPromo, // Added isPromo flag
+//       promoCodeInfo: { // Added promo code info
+//         code: costSummary.promoCodeInfo.code || "",
+//         applied: isPromo,
+//         messages: costSummary.promoCodeInfo.messages || [],
+//         discount: costSummary.promoCodeInfo.discount.toFixed(2)
+//       },
+//       taxes: costSummary.taxBreakdown.map((tax) => ({
+//         name: tax.name,
+//         percentage: tax.percentage.toFixed(2),
+//         amount: tax.amount.toFixed(2),
+//       })),
+//       totalDiscount: costSummary.totalDiscount.toFixed(2) // Added total discount
+//     };
+
+//     return res.status(200).json({
+//       message: "Bill summary calculated successfully",
+//       messageType: "success",
+//       data: summary,
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     return res.status(500).json({
+//       message: "Server error",
+//       messageType: "failure",
+//     });
+//   }
+// };
+
 exports.getOrderPriceSummary = async (req, res) => {
   try {
     const { 
       longitude, 
       latitude, 
       couponCode, 
-      promoCode, // Added promoCode
+      promoCode,
       cartId, 
-      tipAmount = 0 
+      tipAmount = 0,
+      useLoyaltyPoints = false,
+      loyaltyPointsToRedeem = null
     } = req.body;
 
-    console.log(req.body)
+    console.log(req.body);
     const userId = req.user._id;
 
     if (!cartId || !userId) {
@@ -967,6 +1125,11 @@ exports.getOrderPriceSummary = async (req, res) => {
         messageType: "failure",
       });
     }
+
+    // Fetch loyalty settings and user info
+    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+    const user = await User.findById(userId);
+    const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
@@ -1012,7 +1175,7 @@ exports.getOrderPriceSummary = async (req, res) => {
       cartProducts: cart.products,
       tipAmount,
       couponCode,
-      promoCode, // Added promoCode
+      promoCode,
       deliveryFee: deliveryFee,
       userCoords,
       offers,
@@ -1021,9 +1184,14 @@ exports.getOrderPriceSummary = async (req, res) => {
       isSurge,
       surgeFeeAmount,
       surgeReason,
-      merchantId: restaurant.merchant, // Added merchantId for promo validation
-      userId, // Added userId for promo validation
-      PromoCode:PromoCode // Added PromoCode model for validation
+      merchantId: restaurant.merchant,
+      userId,
+      PromoCode: PromoCode,
+      // Loyalty parameters
+      useLoyaltyPoints,
+      loyaltyPointsAvailable,
+      loyaltySettings,
+      loyaltyPointsToRedeem
     });
 
     const distanceKm = turf.distance(
@@ -1051,8 +1219,8 @@ exports.getOrderPriceSummary = async (req, res) => {
         ? costSummary.offersApplied.join(", ")
         : "",
       isOffer: isOffer,
-      isPromo: isPromo, // Added isPromo flag
-      promoCodeInfo: { // Added promo code info
+      isPromo: isPromo,
+      promoCodeInfo: {
         code: costSummary.promoCodeInfo.code || "",
         applied: isPromo,
         messages: costSummary.promoCodeInfo.messages || [],
@@ -1063,7 +1231,30 @@ exports.getOrderPriceSummary = async (req, res) => {
         percentage: tax.percentage.toFixed(2),
         amount: tax.amount.toFixed(2),
       })),
-      totalDiscount: costSummary.totalDiscount.toFixed(2) // Added total discount
+      totalDiscount: costSummary.totalDiscount.toFixed(2),
+      // Loyalty points information
+      loyaltyPoints: {
+        available: loyaltyPointsAvailable,
+        used: costSummary.loyaltyPoints?.used || 0,
+        potentialEarned: costSummary.loyaltyPoints?.potentialEarned || 0,
+        discount: costSummary.loyaltyPoints?.discount || 0,
+        messages: costSummary.loyaltyPoints?.messages || [],
+        redemptionInfo: {
+          minOrderAmount: loyaltySettings?.minOrderAmountForRedemption || 0,
+          minPoints: loyaltySettings?.minPointsForRedemption || 0,
+          maxPercent: loyaltySettings?.maxRedemptionPercent || 0,
+          valuePerPoint: loyaltySettings?.valuePerPoint || 0,
+        },
+        earningInfo: {
+          minOrderAmount: loyaltySettings?.minOrderAmountForEarning || 0,
+          pointsPerAmount: loyaltySettings?.pointsPerAmount || 0,
+          maxPoints: loyaltySettings?.maxEarningPoints || 0,
+        },
+      },
+      // Additional breakdowns
+      comboDiscount: costSummary.comboDiscount?.toFixed(2) || "0.00",
+      loyaltyDiscount: costSummary.loyaltyDiscount?.toFixed(2) || "0.00",
+      combosApplied: costSummary.combosApplied || []
     };
 
     return res.status(200).json({
@@ -1079,8 +1270,6 @@ exports.getOrderPriceSummary = async (req, res) => {
     });
   }
 };
-
-
 
 
 
