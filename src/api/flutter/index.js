@@ -13,6 +13,7 @@ const couponRoutes = require("./routes/couponRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const cartRoutes = require("./routes/cartRoutes");
 const loyalityRoutes = require("./routes/loyaliityRoutes");
+const TicketRouter = require("./routes/ticketRoutes");
 // Dummy test da  ta
 const dummyCategories = [
   {
@@ -75,7 +76,9 @@ router.use("/agent", agentRouter);
 router.use("/feedback", feedbackRoutes);
 router.use("/cart", cartRoutes);
 router.use("/loyality", loyalityRoutes);
+router.use("/tickets", TicketRouter);
 // Dummy test route
+
 router.get("/test/categories", (req, res) => {
   res.status(200).json(dummyCategories);
 });
