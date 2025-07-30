@@ -18,6 +18,7 @@ const {assignTask} = require("../services/allocationService")
 const crypto = require("crypto");
 const razorpay = require("../config/razorpayInstance");
 const geoService = require("../../../../services/geoServices");
+ 
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -996,106 +997,106 @@ exports.getOrderPriceSummaryByaddressId = async (req, res) => {
     });
   }
 };
-exports.getPastOrders = async (req, res) => {
-  try {
-    const userId = req.user._id;
-    console.log(userId)
+// exports.getPastOrders = async (req, res) => {
+//   try {
+//     const userId = req.user._id;
+//     console.log(userId)
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({
-        success: false,
-        messageType: "failure",
-        message: "Invalid user ID.",
-        data: null
-      });
-    }
+//     if (!mongoose.Types.ObjectId.isValid(userId)) {
+//       return res.status(400).json({
+//         success: false,
+//         messageType: "failure",
+//         message: "Invalid user ID.",
+//         data: null
+//       });
+//     }
    
-    // Fetch delivered and cancelled orders only
-    const pastOrders = await Order.find({
-      customerId: userId,
-      orderStatus: { $in: ['delivered', 'cancelled_by_customer'] }
-    })
-      .populate({
-        path: "restaurantId",
-        select: "name location address"
-      })
-      .sort({ createdAt: -1 })
-      .lean();
+//     // Fetch delivered and cancelled orders only
+//     const pastOrders = await Order.find({
+//       customerId: userId,
+//       orderStatus: { $in: ['delivered', 'cancelled_by_customer'] }
+//     })
+//       .populate({
+//         path: "restaurantId",
+//         select: "name location address"
+//       })
+//       .sort({ createdAt: -1 })
+//       .lean();
 
-    if (!pastOrders || pastOrders.length === 0) {
-      return res.status(200).json({
-        success: true,
-        messageType: "success",
-        message: "No past orders found.",
-        data: {
-          orders: []
-        }
-      });
-    }
+//     if (!pastOrders || pastOrders.length === 0) {
+//       return res.status(200).json({
+//         success: true,
+//         messageType: "success",
+//         message: "No past orders found.",
+//         data: {
+//           orders: []
+//         }
+//       });
+//     }
 
-    // Format response
-    const formattedOrders = pastOrders.map(order => {
-      const addressObj = order.restaurantId?.address;
-      const fullAddress = addressObj
-        ? [
-            addressObj.street,
-            addressObj.area,
-            addressObj.city,
-            addressObj.state,
-            addressObj.pincode,
-            addressObj.country
-          ].filter(Boolean).join(", ")
-        : "N/A";
+//     // Format response
+//     const formattedOrders = pastOrders.map(order => {
+//       const addressObj = order.restaurantId?.address;
+//       const fullAddress = addressObj
+//         ? [
+//             addressObj.street,
+//             addressObj.area,
+//             addressObj.city,
+//             addressObj.state,
+//             addressObj.pincode,
+//             addressObj.country
+//           ].filter(Boolean).join(", ")
+//         : "N/A";
 
-      // Map status for frontend numeric value
-      let displayStatus = null;
-  if (order.orderStatus === 'delivered') {
-    displayStatus = "1";
-  } else if (order.orderStatus === 'cancelled_by_customer') {
-    displayStatus = "0";
-  }
+//       // Map status for frontend numeric value
+//       let displayStatus = null;
+//   if (order.orderStatus === 'delivered') {
+//     displayStatus = "1";
+//   } else if (order.orderStatus === 'cancelled_by_customer') {
+//     displayStatus = "0";
+//   }
 
-      return {
-        orderId: order._id,
-        restaurant: {
-          name: order.restaurantId?.name || "N/A",
-          address: fullAddress,
-          location: order.restaurantId?.location?.coordinates || []
-        },
-        orderDate: order.orderTime,
-        orderTime: order.orderTime,
-        orderStatus: displayStatus,   // 👈 numeric value here
-        orderItems: order.orderItems.map(item => ({
-          productId: item.productId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          totalPrice: item.totalPrice,
-          image: item.image
-        })),
-        totalAmount: order.totalAmount
-      };
-    });
+//       return {
+//         orderId: order._id,
+//         restaurant: {
+//           name: order.restaurantId?.name || "N/A",
+//           address: fullAddress,
+//           location: order.restaurantId?.location?.coordinates || []
+//         },
+//         orderDate: order.orderTime,
+//         orderTime: order.orderTime,
+//         orderStatus: displayStatus,   // 👈 numeric value here
+//         orderItems: order.orderItems.map(item => ({
+//           productId: item.productId,
+//           name: item.name,
+//           quantity: item.quantity,
+//           price: item.price,
+//           totalPrice: item.totalPrice,
+//           image: item.image
+//         })),
+//         totalAmount: order.totalAmount
+//       };
+//     });
 
-    return res.status(200).json({
-      success: true,
-      messageType: "success",
-      message: "Past orders fetched successfully.",
-      data: {
-        orders: formattedOrders
-      }
-    });
+//     return res.status(200).json({
+//       success: true,
+//       messageType: "success",
+//       message: "Past orders fetched successfully.",
+//       data: {
+//         orders: formattedOrders
+//       }
+//     });
 
-  } catch (err) {
-    console.error("Error fetching past orders:", err);
-    res.status(500).json({
-      success: false,
-      messageType: "failure",
-      message: "Server error while fetching past orders.",
-      data: null
-    });
-  }
-};
+//   } catch (err) {
+//     console.error("Error fetching past orders:", err);
+//     res.status(500).json({
+//       success: false,
+//       messageType: "failure",
+//       message: "Server error while fetching past orders.",
+//       data: null
+//     });
+//   }
+// };
 
 
 
@@ -1230,6 +1231,181 @@ exports.getPastOrders = async (req, res) => {
 
 
 
+exports.getPastOrders = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { lat, lng } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: "0", // Changed to string "0"
+        messageType: "failure",
+        message: "Invalid user ID.",
+        data: null
+      });
+    }
+
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    const userCoords = (lat && lng) ? [lngNum, latNum] : null;
+
+    const pastOrders = await Order.find({
+      customerId: userId,
+      orderStatus: { $in: ['delivered', 'cancelled_by_customer'] }
+    })
+      .populate({
+        path: "restaurantId",
+        select: "name location address active"
+      })
+      .select('orderItems restaurantId orderStatus orderTime totalAmount')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!pastOrders || pastOrders.length === 0) {
+      return res.status(200).json({
+        success: "1", // Changed to string "1"
+        messageType: "success",
+        message: "No past orders found.",
+        data: { orders: [] }
+      });
+    }
+
+    const formattedOrders = await Promise.all(pastOrders.map(async order => {
+      const rest = order.restaurantId;
+      const addressObj = rest?.address;
+
+      const fullAddress = addressObj
+        ? [
+            addressObj.street,
+            addressObj.area,
+            addressObj.city,
+            addressObj.state,
+            addressObj.pincode,
+            addressObj.country
+          ].filter(Boolean).join(", ")
+        : "N/A";
+
+      // Default reorder status - now using "0" and "1"
+      let isReorderAvailable = "0"; // Changed to string "0"
+      let reorderUnavailableReason = "Unknown";
+      let unavailableProducts = [];
+
+      // Check restaurant status
+      if (!rest?.active) {
+        reorderUnavailableReason = "Restaurant is closed";
+      } else if (userCoords) {
+        try {
+          const inside = await geoService.isPointInsideServiceAreas(userCoords, rest._id);
+          if (!inside) {
+            reorderUnavailableReason = "Out of delivery area";
+          } else {
+            // Check product availability
+            const productIds = order.orderItems.map(item => item.productId);
+            const products = await Product.find({ _id: { $in: productIds } }).select(
+              "active availability availableAfterTime enableInventory stock name"
+            );
+
+            const now = new Date();
+            const currentTimeStr = now.toTimeString().split(" ")[0];
+
+            order.orderItems.forEach(item => {
+              const product = products.find(p => p._id.toString() === item.productId.toString());
+              
+              if (!product) {
+                unavailableProducts.push({
+                  productId: item.productId,
+                  name: item.name,
+                  reason: 'Product no longer exists'
+                });
+                return;
+              }
+
+              const isInactive = !product.active;
+              const isOutOfStock = product.availability === "out-of-stock" || 
+                                  (product.enableInventory && product.stock <= 0);
+              const isNotYetAvailable = product.availability === "time-based" &&
+                                      product.availableAfterTime &&
+                                      currentTimeStr < product.availableAfterTime;
+
+              if (isInactive || isOutOfStock || isNotYetAvailable) {
+                let reason = '';
+                if (isInactive) reason = 'Product is inactive';
+                else if (isOutOfStock) reason = 'Out of stock';
+                else if (isNotYetAvailable) reason = `Available after ${product.availableAfterTime}`;
+
+                unavailableProducts.push({
+                  productId: item.productId,
+                  name: item.name,
+                  reason: reason
+                });
+              }
+            });
+
+            // Determine reorder flags - using "1" and "0" strings
+            if (unavailableProducts.length === order.orderItems.length) {
+              reorderUnavailableReason = "All products are unavailable";
+            } else if (unavailableProducts.length > 0) {
+              reorderUnavailableReason = "Some products are unavailable";
+              isReorderAvailable = "1"; // Changed to string "1"
+            } else {
+              isReorderAvailable = "1"; // Changed to string "1"
+              reorderUnavailableReason = null;
+            }
+          }
+        } catch (err) {
+          console.error("Error checking service area or product availability:", err);
+          reorderUnavailableReason = "Service check failed";
+        }
+      } else {
+        reorderUnavailableReason = "Location not provided";
+      }
+
+      const displayStatus = order.orderStatus === 'delivered' ? "1" : "0";
+
+      return {
+        orderId: order._id,
+        restaurant: {
+          name: rest?.name || "N/A",
+          address: fullAddress,
+          location: rest?.location?.coordinates || []
+        },
+        orderDate: order.orderTime,
+        orderTime: order.orderTime,
+        orderStatus: displayStatus,
+        isReorderAvailable, // Now returns "1" or "0"
+        reorderUnavailableReason,
+        unavailableProducts: isReorderAvailable === "1" ? unavailableProducts : undefined,
+        orderItems: order.orderItems.map(item => ({
+          productId: item.productId,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          totalPrice: item.totalPrice,
+          image: item.image
+        })),
+        totalAmount: order.totalAmount
+      };
+    }));
+
+    return res.status(200).json({
+      success: "1", // Changed to string "1"
+      messageType: "success",
+      message: "Past orders fetched successfully.",
+      data: {
+        orders: formattedOrders
+      }
+    });
+
+  } catch (err) {
+    console.error("Error fetching past orders:", err);
+    res.status(500).json({
+      success: "0", // Changed to string "0"
+      messageType: "failure",
+      message: "Server error while fetching past orders.",
+      data: null
+    });
+  }
+};
 
 
 

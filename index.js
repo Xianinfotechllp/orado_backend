@@ -6,14 +6,14 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const  getRedisClient  = require("./config/redisClient");
 const redis = getRedisClient();
-
+const morgan = require('morgan');
 
 
 
 const app = express();
 const server = http.createServer(app);
 
-
+app.use(morgan('dev')); // Logs in console while you develop or ho
 // Middlewares
 // app.use(express.json());
 
