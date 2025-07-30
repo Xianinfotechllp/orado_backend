@@ -17,6 +17,7 @@ const Offer = require("../../../../models/offerModel")
 const {assignTask} = require("../services/allocationService")
 const crypto = require("crypto");
 const razorpay = require("../config/razorpayInstance");
+const geoService = require("../../../../services/geoServices");
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -814,6 +815,23 @@ exports.getOrderPriceSummary = async (req, res) => {
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
+
+   const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+      userCoords,
+      restaurant._id
+    );
+    if (!isInsideServiceArea) {
+      return res.status(400).json({
+        code: "OUT_OF_DELIVERY_AREA",
+        error: "Out of Delivery Area",
+        message:
+          "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+      });
+    }
+
+
+
+
 
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
