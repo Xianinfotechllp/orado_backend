@@ -4,6 +4,7 @@ const Restaurant = require("../../../../models/restaurantModel");
 const User = require("../../../../models/userModel");
 const { calculateOrderCost, calculateOrderCostV2 } = require("../services/orderCostCalculator");
 const turf = require("@turf/turf");
+const PromoCode = require("../../../../models/promoCodeModels")
 // Create Orderconst Product = require("../models/FoodItem"); // Your product model
 const mongoose = require("mongoose");
 const Product = require("../../../../models/productModel");
@@ -779,9 +780,160 @@ exports.getCustomerOrderStatus = async (req, res) => {
       .json({ message: "Server error while fetching order status" });
   }
 };
+// exports.getOrderPriceSummary = async (req, res) => {
+//   try {
+//     const { longitude, latitude, couponCode, cartId, tipAmount = 0 } = req.body;
+//     const userId = req.user._id;
+
+//     if (!cartId || !userId) {
+//       return res.status(400).json({
+//         message: "cartId and userId are required",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const cart = await Cart.findOne({ _id: cartId, user: userId });
+//     if (!cart) {
+//       return res.status(404).json({
+//         message: "Cart not found for this user",
+//         messageType: "failure",
+//       });
+//     }
+
+//     if (!cart.products || cart.products.length === 0) {
+//       return res.status(400).json({
+//         message: "Cart is empty",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const restaurant = await Restaurant.findById(cart.restaurantId);
+//     if (!restaurant) {
+//       return res.status(404).json({
+//         message: "Restaurant not found",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+//     const restaurantCoords = restaurant.location.coordinates;
+
+//    const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+//       userCoords,
+//       restaurant._id
+//     );
+//     if (!isInsideServiceArea) {
+//       return res.status(200).json({
+//         code: "OUT_OF_DELIVERY_AREA",
+//         error: "Out of Delivery Area",
+//         messageType:"failure",
+//         message:
+//           "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+//       });
+//     }
+
+
+
+
+
+//     const preSurgeOrderAmount = cart.products.reduce(
+//       (total, item) => total + item.price * item.quantity,
+//       0
+//     );
+
+//     const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
+//     const isSurge = !!surgeObj;
+//     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+
+//     const deliveryFee = await feeService.calculateDeliveryFee(
+//       restaurantCoords,
+//       userCoords
+//     );
+
+//     const offers = await Offer.find({
+//       applicableRestaurants: restaurant._id,
+//       isActive: true,
+//       validFrom: { $lte: new Date() },
+//       validTill: { $gte: new Date() },
+//     }).lean();
+
+//     const foodTax = await feeService.getActiveTaxes("food");
+
+//     const costSummary = calculateOrderCostV2({
+//       cartProducts: cart.products,
+//       tipAmount,
+//       couponCode,
+//       restaurantCoords,
+//       deliveryFee: deliveryFee,
+//       userCoords,
+//       offers,
+//       revenueShare: { type: "percentage", value: 20 },
+//       taxes: foodTax,
+//       isSurge,
+//       surgeFeeAmount,
+//     });
+
+//     const distanceKm = turf.distance(
+//       turf.point(userCoords),
+//       turf.point(restaurantCoords),
+//       { units: "kilometers" }
+//     );
+//      const isOffer = costSummary.offersApplied.length > 0 ? "1" : "0";
+//     // ✅ Convert all values to string or 1/0 for booleans for Flutter-friendly format
+//     const summary = {
+//       deliveryFee: costSummary.deliveryFee.toFixed(2),
+//       discount: costSummary.offerDiscount.toFixed(2),
+//       distanceKm: distanceKm.toFixed(2),
+//       subtotal: costSummary.cartTotal.toFixed(2),
+//       tax: costSummary.totalTaxAmount.toFixed(2),
+//       totalTaxAmount: costSummary.totalTaxAmount.toFixed(2),
+//       surgeFee: costSummary.surgeFee.toFixed(2),
+//       total: costSummary.finalAmount.toFixed(2),
+//       tipAmount: costSummary.tipAmount.toFixed(2),
+//       isSurge: isSurge ? "1" : "0",
+//       surgeReason: surgeObj ? surgeObj.reason : "",
+//       offersApplied: costSummary.offersApplied.length
+//         ? costSummary.offersApplied.join(", ")
+//         : "",
+//       isOffer: isOffer, 
+//       taxes: costSummary.taxBreakdown.map((tax) => ({
+//         name: tax.name,
+//         percentage: tax.percentage.toFixed(2),
+//         amount: tax.amount.toFixed(2),
+//       })),
+//     };
+
+//     return res.status(200).json({
+//       message: "Bill summary calculated successfully",
+//       messageType: "success",
+//       data: summary,
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     return res.status(500).json({
+//       message: "Server error",
+//       messageType: "failure",
+//     });
+//   }
+// };
+
+// 
+
+
+
+
+
+
 exports.getOrderPriceSummary = async (req, res) => {
   try {
-    const { longitude, latitude, couponCode, cartId, tipAmount = 0 } = req.body;
+    const { 
+      longitude, 
+      latitude, 
+      couponCode, 
+      promoCode, // Added promoCode
+      cartId, 
+      tipAmount = 0 
+    } = req.body;
     const userId = req.user._id;
 
     if (!cartId || !userId) {
@@ -817,7 +969,7 @@ exports.getOrderPriceSummary = async (req, res) => {
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
 
-   const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+    const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
       userCoords,
       restaurant._id
     );
@@ -825,15 +977,10 @@ exports.getOrderPriceSummary = async (req, res) => {
       return res.status(200).json({
         code: "OUT_OF_DELIVERY_AREA",
         error: "Out of Delivery Area",
-        messageType:"failure",
-        message:
-          "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+        messageType: "failure",
+        message: "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
       });
     }
-
-
-
-
 
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
@@ -843,6 +990,7 @@ exports.getOrderPriceSummary = async (req, res) => {
     const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+    const surgeReason = surgeObj ? surgeObj.reason : null;
 
     const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
@@ -858,11 +1006,11 @@ exports.getOrderPriceSummary = async (req, res) => {
 
     const foodTax = await feeService.getActiveTaxes("food");
 
-    const costSummary = calculateOrderCostV2({
+    const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
       couponCode,
-      restaurantCoords,
+      promoCode, // Added promoCode
       deliveryFee: deliveryFee,
       userCoords,
       offers,
@@ -870,6 +1018,10 @@ exports.getOrderPriceSummary = async (req, res) => {
       taxes: foodTax,
       isSurge,
       surgeFeeAmount,
+      surgeReason,
+      merchantId: restaurant.merchant, // Added merchantId for promo validation
+      userId, // Added userId for promo validation
+      PromoCode:PromoCode // Added PromoCode model for validation
     });
 
     const distanceKm = turf.distance(
@@ -877,8 +1029,10 @@ exports.getOrderPriceSummary = async (req, res) => {
       turf.point(restaurantCoords),
       { units: "kilometers" }
     );
-     const isOffer = costSummary.offersApplied.length > 0 ? "1" : "0";
-    // ✅ Convert all values to string or 1/0 for booleans for Flutter-friendly format
+
+    const isOffer = costSummary.offersApplied.length > 0 ? "1" : "0";
+    const isPromo = costSummary.promoCodeInfo.applied ? "1" : "0";
+
     const summary = {
       deliveryFee: costSummary.deliveryFee.toFixed(2),
       discount: costSummary.offerDiscount.toFixed(2),
@@ -890,16 +1044,24 @@ exports.getOrderPriceSummary = async (req, res) => {
       total: costSummary.finalAmount.toFixed(2),
       tipAmount: costSummary.tipAmount.toFixed(2),
       isSurge: isSurge ? "1" : "0",
-      surgeReason: surgeObj ? surgeObj.reason : "",
+      surgeReason: surgeReason || "",
       offersApplied: costSummary.offersApplied.length
         ? costSummary.offersApplied.join(", ")
         : "",
-      isOffer: isOffer, 
+      isOffer: isOffer,
+      isPromo: isPromo, // Added isPromo flag
+      promoCodeInfo: { // Added promo code info
+        code: costSummary.promoCodeInfo.code || "",
+        applied: isPromo,
+        messages: costSummary.promoCodeInfo.messages || [],
+        discount: costSummary.promoCodeInfo.discount.toFixed(2)
+      },
       taxes: costSummary.taxBreakdown.map((tax) => ({
         name: tax.name,
         percentage: tax.percentage.toFixed(2),
         amount: tax.amount.toFixed(2),
       })),
+      totalDiscount: costSummary.totalDiscount.toFixed(2) // Added total discount
     };
 
     return res.status(200).json({
@@ -915,6 +1077,12 @@ exports.getOrderPriceSummary = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
 
 exports.getOrderPriceSummaryByaddressId = async (req, res) => {
   try {
@@ -2229,6 +2397,11 @@ exports.reorder = async (req, res) => {
     });
   }
 };
+
+
+
+
+
 
 
 
