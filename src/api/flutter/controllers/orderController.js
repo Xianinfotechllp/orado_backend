@@ -1238,7 +1238,7 @@ exports.getPastOrders = async (req, res) => {
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
-        success: "0", // Changed to string "0"
+        success: "0",
         messageType: "failure",
         message: "Invalid user ID.",
         data: null
@@ -1263,7 +1263,7 @@ exports.getPastOrders = async (req, res) => {
 
     if (!pastOrders || pastOrders.length === 0) {
       return res.status(200).json({
-        success: "1", // Changed to string "1"
+        success: "1",
         messageType: "success",
         message: "No past orders found.",
         data: { orders: [] }
@@ -1285,8 +1285,7 @@ exports.getPastOrders = async (req, res) => {
           ].filter(Boolean).join(", ")
         : "N/A";
 
-      // Default reorder status - now using "0" and "1"
-      let isReorderAvailable = "0"; // Changed to string "0"
+      let isReorderAvailable = "0";
       let reorderUnavailableReason = "Unknown";
       let unavailableProducts = [];
 
@@ -1341,14 +1340,15 @@ exports.getPastOrders = async (req, res) => {
               }
             });
 
-            // Determine reorder flags - using "1" and "0" strings
+            // Determine reorder flags
             if (unavailableProducts.length === order.orderItems.length) {
               reorderUnavailableReason = "All products are unavailable";
+              isReorderAvailable = "0";
             } else if (unavailableProducts.length > 0) {
               reorderUnavailableReason = "Some products are unavailable";
-              isReorderAvailable = "1"; // Changed to string "1"
+              isReorderAvailable = "1";
             } else {
-              isReorderAvailable = "1"; // Changed to string "1"
+              isReorderAvailable = "1";
               reorderUnavailableReason = null;
             }
           }
@@ -1372,9 +1372,9 @@ exports.getPastOrders = async (req, res) => {
         orderDate: order.orderTime,
         orderTime: order.orderTime,
         orderStatus: displayStatus,
-        isReorderAvailable, // Now returns "1" or "0"
+        isReorderAvailable,
         reorderUnavailableReason,
-        unavailableProducts: isReorderAvailable === "1" ? unavailableProducts : undefined,
+        unavailableProducts: unavailableProducts.length > 0 ? unavailableProducts : undefined,
         orderItems: order.orderItems.map(item => ({
           productId: item.productId,
           name: item.name,
@@ -1388,7 +1388,7 @@ exports.getPastOrders = async (req, res) => {
     }));
 
     return res.status(200).json({
-      success: "1", // Changed to string "1"
+      success: "1",
       messageType: "success",
       message: "Past orders fetched successfully.",
       data: {
@@ -1399,7 +1399,7 @@ exports.getPastOrders = async (req, res) => {
   } catch (err) {
     console.error("Error fetching past orders:", err);
     res.status(500).json({
-      success: "0", // Changed to string "0"
+      success: "0",
       messageType: "failure",
       message: "Server error while fetching past orders.",
       data: null
