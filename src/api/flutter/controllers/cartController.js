@@ -1,7 +1,7 @@
 const Cart = require("../../../../models/cartModel")
 const Product = require('../../../../models/productModel');
 const { calculateOrderCost } = require("../services/orderCostCalculator");
-
+const Restaurant = require("../../../../models/restaurantModel");
 const mongoose = require('mongoose')
 
 
@@ -23,7 +23,7 @@ exports.addToCart = async (req, res) => {
     }
 
     // Get existing cart or create new one
-    let cart = await Cart.findOne({ user: userId });
+let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name');
 
     if (!cart) {
       cart = new Cart({
@@ -87,6 +87,7 @@ exports.addToCart = async (req, res) => {
           cartId: cart._id.toString(),
           userId: cart.user.toString(),
           restaurantId: cart.restaurantId,
+          restaurantName: cart.restaurantId.name,
           products: [],
           totalPrice: 0,
           createdAt: cart.createdAt,
@@ -295,7 +296,7 @@ exports.getCart = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const cart = await Cart.findOne({ user: userId }).populate("products.productId");
+let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name');
 
     if (!cart) {
       return res.status(200).json({
@@ -311,6 +312,7 @@ exports.getCart = async (req, res) => {
       return {
         productId: product._id,
         name: product.name,
+      restaurantName: cart.restaurantId.name,
         description: product.description,
         images: product.images || [],
         foodType: product.foodType,
