@@ -821,9 +821,10 @@ exports.getOrderPriceSummary = async (req, res) => {
       restaurant._id
     );
     if (!isInsideServiceArea) {
-      return res.status(400).json({
+      return res.status(200).json({
         code: "OUT_OF_DELIVERY_AREA",
         error: "Out of Delivery Area",
+        messageType:"failure",
         message:
           "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
       });
