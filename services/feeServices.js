@@ -4,6 +4,9 @@ const Tax = require("../models/taxModel");
 const City = require("../models/cityModel");
 const {Template} = require("../models/TemplateModel")
 const mongoose = require("mongoose")
+const turf = require('@turf/turf');
+
+
 // exports.calculateDeliveryFee = async (restaurantCoords, userCoords, orderType = 'food') => {
 //   const settings = await TaxAndFeeSetting.findOne();
 //   if (!settings) throw new Error("Fee settings not found.");
@@ -41,6 +44,70 @@ const mongoose = require("mongoose")
 //   return deliveryFee;
 // };
 
+// exports.calculateDeliveryFee = async (restaurantCoords, userCoords, cityId) => {
+//   const settings = await TaxAndFeeSetting.findOne();
+//   if (!settings) throw new Error("Fee settings not found.");
+
+//   const {
+//     deliveryFeeType: globalDeliveryFeeType,
+//     baseDeliveryFee: globalBaseFee,
+//     baseDistanceKm: globalBaseDistance,
+//     perKmFeeBeyondBase: globalPerKmFee,
+//     enableSurgePricing,
+//     defaultSurgeFee
+//   } = settings;
+
+//   let deliveryFee = 0;
+
+//   // Convert [lon, lat] → { latitude, longitude }
+//   const from = { latitude: restaurantCoords[1], longitude: restaurantCoords[0] };
+//   const to = { latitude: userCoords[1], longitude: userCoords[0] };
+
+//   let feeType = globalDeliveryFeeType;
+//   let baseFee = globalBaseFee;
+//   let baseDistance = globalBaseDistance;
+//   let perKmFee = globalPerKmFee;
+
+//   // check for city-specific delivery fee
+//   if (cityId) {
+//     const city = await City.findById(cityId);
+//     if (city && city.cityDeliveryFeeSetting?.isCustomFeeEnabled) {
+//       const cityFee = city.cityDeliveryFeeSetting;
+//       perKmFee = cityFee.deliveryFeeType;
+//       baseFee = cityFee.baseDeliveryFee;
+//       perKmFee = cityFee.baseDistanceKm;
+//       perKmFee = cityFee.perKmFeeBeyondBase;
+//     }
+//   }
+
+//   // console.log(perKmFee,perKmFee.perKmFee)
+
+//   // Calculate fee based on type
+//   if (feeType === "Fixed") {
+//     deliveryFee = baseFee;
+
+//   } else if (feeType === "Per KM") {
+//     const distanceInKm = haversine(from, to) / 1000;
+//     console.log(distanceInKm, 'distance in km',from,to);
+
+//     if (distanceInKm <= baseDistance) {
+//       deliveryFee = baseFee;
+//     } else {
+//       const extraDistance = distanceInKm - baseDistance;
+//       deliveryFee = baseFee + (extraDistance * perKmFee);
+//     }
+//   }
+
+//   // Apply surge pricing if enabled
+//   if (enableSurgePricing) {
+//     deliveryFee += defaultSurgeFee;
+//   }
+
+//   return deliveryFee;
+// };
+
+
+
 exports.calculateDeliveryFee = async (restaurantCoords, userCoords, cityId) => {
   const settings = await TaxAndFeeSetting.findOne();
   if (!settings) throw new Error("Fee settings not found.");
@@ -65,11 +132,13 @@ exports.calculateDeliveryFee = async (restaurantCoords, userCoords, cityId) => {
   let baseDistance = globalBaseDistance;
   let perKmFee = globalPerKmFee;
 
-  // check for city-specific delivery fee
+  // ✅ Check for city-specific delivery fee overrides
   if (cityId) {
+
     const city = await City.findById(cityId);
     if (city && city.cityDeliveryFeeSetting?.isCustomFeeEnabled) {
       const cityFee = city.cityDeliveryFeeSetting;
+
       feeType = cityFee.deliveryFeeType;
       baseFee = cityFee.baseDeliveryFee;
       baseDistance = cityFee.baseDistanceKm;
@@ -77,14 +146,19 @@ exports.calculateDeliveryFee = async (restaurantCoords, userCoords, cityId) => {
     }
   }
 
-  // Calculate fee based on type
+  // 🧮 Calculate fee
   if (feeType === "Fixed") {
     deliveryFee = baseFee;
-
   } else if (feeType === "Per KM") {
-    const distanceInKm = haversine(from, to) / 1000;
-    console.log(distanceInKm, 'distance in km');
+    // const distanceInKm = haversine(from, to,{ unit: 'km' }) ;
 
+const distanceInKm = turf.distance(
+  [from.longitude, from.latitude],
+  [to.longitude, to.latitude],
+  { units: 'kilometers' }
+);
+
+    // console.log("Distance in KM:",distanceTurf , distanceInKm, 'From:', from, 'To:', to);
     if (distanceInKm <= baseDistance) {
       deliveryFee = baseFee;
     } else {
@@ -93,7 +167,7 @@ exports.calculateDeliveryFee = async (restaurantCoords, userCoords, cityId) => {
     }
   }
 
-  // Apply surge pricing if enabled
+  // 🔥 Apply surge pricing if enabled
   if (enableSurgePricing) {
     deliveryFee += defaultSurgeFee;
   }

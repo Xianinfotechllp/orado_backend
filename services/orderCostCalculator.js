@@ -456,7 +456,7 @@ async function calculateChargesBreakdown({
 
 // ✅ Now async version of calculateOrderCostV2
 // ✅ Async version of calculateOrderCostV2
-  exports.calculateOrderCostV2 = async ({
+  exports. calculateOrderCostV2 = async ({
     cartProducts,
     tipAmount = 0,
     promoCode, // The promo code string entered by user
@@ -694,7 +694,7 @@ async function calculateChargesBreakdown({
     let pointsUsed = 0;
     let loyaltyMessages = [];
     let potentialPointsEarned = 0;
-    console.log(loyaltySettings);
+   
     if (useLoyaltyPoints) {
       if (!loyaltySettings) {
         loyaltyMessages.push("Loyalty program not available for this merchant");

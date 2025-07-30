@@ -20,8 +20,8 @@ const fs = require('fs');
 
 const DeviceToken = require("../models/deviceTokenModel");
 const path = require('path');
-  exports.adminLogin = async (req, res) => {
-  const { email, password } = req.body;
+ exports.adminLogin = async (req, res) => {
+  const { email, password } = req.body; 
 
   try {
     // 1. Find user

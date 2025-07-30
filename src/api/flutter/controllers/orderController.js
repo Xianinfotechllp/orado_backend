@@ -2059,4 +2059,192 @@ exports.getActiveOrder = async (req, res) => {
 
 
 
+exports.reorder = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { orderId } = req.params;
+
+    // Validate inputs
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: "0",
+        messageType: "failure",
+        message: "Invalid user ID.",
+        data: null
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: "0",
+        messageType: "failure",
+        message: "Invalid order ID.",
+        data: null
+      });
+    }
+
+    // Get the original order
+    const order = await Order.findOne({
+      _id: orderId,
+      customerId: userId
+    }).populate({
+      path: "restaurantId",
+      select: "name location address active"
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: "0",
+        messageType: "failure",
+        message: "Order not found.",
+        data: null
+      });
+    }
+
+    // Check restaurant status
+    if (!order.restaurantId?.active) {
+      return res.status(400).json({
+        success: "0",
+        messageType: "failure",
+        message: "Cannot reorder - restaurant is currently closed.",
+        data: null
+      });
+    }
+
+    // Check product availability
+    const productIds = order.orderItems.map(item => item.productId);
+    const products = await Product.find({ 
+      _id: { $in: productIds },
+      active: true
+    }).select("active availability availableAfterTime enableInventory stock name price");
+
+    const now = new Date();
+    const currentTimeStr = now.toTimeString().split(" ")[0];
+
+    const availableItems = [];
+    const unavailableItems = [];
+
+    order.orderItems.forEach(item => {
+      const product = products.find(p => p._id.toString() === item.productId.toString());
+      
+      if (!product) {
+        unavailableItems.push({
+          productId: item.productId,
+          name: item.name,
+          reason: 'Product no longer exists'
+        });
+        return;
+      }
+
+      const isOutOfStock = product.availability === "out-of-stock" || 
+                          (product.enableInventory && product.stock <= 0);
+      const isNotYetAvailable = product.availability === "time-based" &&
+                              product.availableAfterTime &&
+                              currentTimeStr < product.availableAfterTime;
+
+      if (isOutOfStock || isNotYetAvailable) {
+        let reason = '';
+        if (isOutOfStock) reason = 'Out of stock';
+        else if (isNotYetAvailable) reason = `Available after ${product.availableAfterTime}`;
+
+        unavailableItems.push({
+          productId: item.productId,
+          name: item.name,
+          reason: reason
+        });
+      } else {
+        availableItems.push({
+          productId: product._id,
+          name: product.name,
+          price: product.price,
+          quantity: item.quantity,
+          total: product.price * item.quantity
+        });
+      }
+    });
+
+    // If no available items, return error
+    if (availableItems.length === 0) {
+      return res.status(400).json({
+        success: "0",
+        messageType: "failure",
+        message: "Cannot reorder - none of the products are currently available.",
+        data: {
+          unavailableProducts: unavailableItems
+        }
+      });
+    }
+
+    // Calculate total price
+    const totalPrice = availableItems.reduce((sum, item) => sum + item.total, 0);
+
+    // Find or create cart
+    let cart = await Cart.findOne({ user: userId });
+
+    if (cart) {
+      // If cart exists but is for a different restaurant, clear it first
+      if (cart.restaurantId.toString() !== order.restaurantId._id.toString()) {
+        cart.products = [];
+        cart.restaurantId = order.restaurantId._id;
+      }
+      
+      // Add available items to cart
+      availableItems.forEach(item => {
+        const existingItem = cart.products.find(p => p.productId.toString() === item.productId.toString());
+        if (existingItem) {
+          existingItem.quantity += item.quantity;
+          existingItem.total = existingItem.price * existingItem.quantity;
+        } else {
+          cart.products.push({
+            productId: item.productId,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            total: item.total
+          });
+        }
+      });
+      
+      // Recalculate total
+      cart.totalPrice = cart.products.reduce((sum, item) => sum + item.total, 0);
+    } else {
+      // Create new cart
+      cart = new Cart({
+        user: userId,
+        restaurantId: order.restaurantId._id,
+        products: availableItems,
+        totalPrice: totalPrice
+      });
+    }
+
+    await cart.save();
+
+    // Return success response with info about unavailable items
+    return res.status(200).json({
+      success: "1",
+      messageType: "success",
+      message: "Available items have been added to your cart.",
+      data: {
+        cartId: cart._id,
+        restaurantId: cart.restaurantId,
+        totalItems: cart.products.length,
+        totalPrice: cart.totalPrice,
+        unavailableProducts: unavailableItems.length > 0 ? unavailableItems : undefined
+      }
+    });
+
+  } catch (err) {
+    console.error("Error processing reorder:", err);
+    res.status(500).json({
+      success: "0",
+      messageType: "failure",
+      message: "Server error while processing reorder.",
+      data: null
+    });
+  }
+};
+
+
+
+
 
