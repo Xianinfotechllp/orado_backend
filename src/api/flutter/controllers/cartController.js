@@ -1,7 +1,7 @@
 const Cart = require("../../../../models/cartModel")
 const Product = require('../../../../models/productModel');
 const { calculateOrderCost } = require("../services/orderCostCalculator");
-const Restaurant = require("../../../../models/restaurantModel");
+const Restaurant = require("../../../../models/RestaurantEarningModel");
 const mongoose = require('mongoose')
 
 
@@ -86,8 +86,8 @@ let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name')
         data: {
           cartId: cart._id.toString(),
           userId: cart.user.toString(),
-          restaurantId: cart.restaurantId,
-          restaurantName: cart.restaurantId.name,
+         restaurantId: cart.restaurantId._id,
+        restaurantName: cart.restaurantId.name, 
           products: [],
           totalPrice: 0,
           createdAt: cart.createdAt,
@@ -325,7 +325,8 @@ let cart = await Cart.findOne({ user: userId }).populate('restaurantId', 'name')
     const cartData = {
       cartId: cart._id.toString(),
       userId: cart.user.toString(),
-      restaurantId: cart.restaurantId,
+        restaurantId: cart.restaurantId._id,
+        restaurantName: cart.restaurantId.name, 
       products,
       totalPrice: cart.totalPrice,
       createdAt: cart.createdAt,
