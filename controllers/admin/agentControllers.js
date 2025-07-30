@@ -943,3 +943,62 @@ exports.getAgentSelfieHistory = async (req, res) => {
     });
   }
 };
+
+exports.reviewAgentSelfie = async (req, res) => {
+  
+  try {
+    const { id } = req.params;
+    const { action, rejectionReason } = req.body;
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid review action. Use "approve" or "reject".',
+      });
+    }
+
+    const selfie = await AgentSelfie.findById(id);
+    if (!selfie) {
+      return res.status(404).json({ success: false, message: 'Selfie not found.' });
+    }
+    if (selfie.status !== 'pending') {
+      return res.status(409).json({ success: false, message: 'Selfie already reviewed.' });
+    }
+
+    selfie.status = action === 'approve' ? 'approved' : 'rejected';
+    selfie.reviewedAt = new Date();
+    selfie.reviewedBy =  req.user._id; 
+    if (action === 'reject') {
+      selfie.rejectionReason = rejectionReason || 'No reason provided';
+    }
+
+    await selfie.save();
+
+    await sendNotificationToAgent({
+      agentId: selfie.agentId,
+      title: selfie.status === 'approved' ? 'Selfie Approved' : 'Selfie Rejected',
+      body: selfie.status === 'approved'
+        ? 'Your selfie has been approved by admin. Thank you!'
+        : `Your selfie was rejected. Reason: ${selfie.rejectionReason || 'No reason provided'}`,
+      data: {
+        selfieId: selfie._id.toString(),
+        status: selfie.status
+      }
+    });
+
+    return res.json({
+      success: true,
+      message: `Selfie has been ${selfie.status}.`,
+      data: {
+        id: selfie._id,
+        agentId: selfie.agentId,
+        status: selfie.status,
+        reviewedAt: selfie.reviewedAt,
+        rejectionReason: selfie.rejectionReason,
+      }
+    });
+  } catch (err) {
+    console.error('Review selfie error', err);
+    return res.status(500).json({ success: false, message: 'Server Error', error: err.message });
+  }
+};

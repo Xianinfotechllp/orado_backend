@@ -100,7 +100,6 @@ const offerSchema = new mongoose.Schema({
   applicableLevel: {
     type: String,
     enum: ["Restaurant", "Product"],
-    required: true,
   },
   // Combo offer: list of products and combo price
   comboProducts: [
