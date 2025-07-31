@@ -19,7 +19,8 @@ const {assignTask} = require("../services/allocationService")
 const crypto = require("crypto");
 const razorpay = require("../config/razorpayInstance");
 const geoService = require("../../../../services/geoServices");
-const LoyalitySettings = require("../../../../models/LoyaltySettingModel")
+const LoyalitySettings = require("../../../../models/LoyaltySettingModel");
+const { emitNewOrderToAdmin } = require("../../../../services/orderSocketService");
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -1960,6 +1961,7 @@ exports.placeOrderV2 = async (req, res) => {
       "new_order",
       populatedOrder
     );
+    await emitNewOrderToAdmin(io, savedOrder._id);
     // Try to assign an agent
     let assignmentResult;
     try {
