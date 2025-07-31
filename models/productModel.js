@@ -124,7 +124,7 @@ costPrice: {
     type: Number,
  
     default: 10 // default 10% if percentage type
-  }
+  } 
 }
 }, {
   timestamps: true

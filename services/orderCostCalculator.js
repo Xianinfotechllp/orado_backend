@@ -690,91 +690,85 @@ async function calculateChargesBreakdown({
       promoDiscount;
 
     // ✅ Loyalty Points Handling
-    let loyaltyDiscount = 0;
-    let pointsUsed = 0;
-    let loyaltyMessages = [];
-    let potentialPointsEarned = 0;
-   
-    if (useLoyaltyPoints) {
-      if (!loyaltySettings) {
-        loyaltyMessages.push("Loyalty program not available for this merchant");
-      } else if (loyaltyPointsAvailable <= 0) {
-        loyaltyMessages.push("You don't have any points to redeem");
-      } else if (
-        finalAmountBeforeRevenueShare <
-        loyaltySettings.minOrderAmountForRedemption
-      ) {
-        loyaltyMessages.push(
-          `Minimum order amount of ₹${loyaltySettings.minOrderAmountForRedemption} required to redeem points`
-        );
-      } else {
-        // Calculate maximum allowed redemption
-        const maxRedemptionAmount =
-          (finalAmountBeforeRevenueShare * loyaltySettings.maxRedemptionPercent) /
-          100;
-        const maxPointsCanUse = Math.floor(
-          maxRedemptionAmount / loyaltySettings.valuePerPoint
-        );
+   let loyaltyDiscount = 0;
+let pointsUsed = 0;
+let loyaltyMessages = [];
+let potentialPointsEarned = 0;
 
-        // If user specified an amount, use it (within limits)
-        if (loyaltyPointsToRedeem !== null && loyaltyPointsToRedeem > 0) {
-          pointsUsed = Math.min(
-            loyaltyPointsToRedeem,
-            loyaltyPointsAvailable,
-            maxPointsCanUse
-          );
+// Calculate base amount for loyalty calculations (after other discounts but before taxes/fees)
+const baseAmountForLoyalty = cartTotal - offerDiscount - (isPromoApplied ? promoDiscount : 0);
 
-          // Ensure minimum points requirement is met
-          if (pointsUsed < loyaltySettings.minPointsForRedemption) {
-            pointsUsed = 0;
-            loyaltyMessages.push(
-              `Minimum ${loyaltySettings.minPointsForRedemption} points required for redemption`
-            );
-          }
-        } else {
-          // Auto-apply maximum if user didn't specify
-          pointsUsed = Math.min(
-            loyaltyPointsAvailable,
-            maxPointsCanUse,
-            Math.max(loyaltySettings.minPointsForRedemption, 0)
-          );
-        }
+if (useLoyaltyPoints) {
+  if (!loyaltySettings) {
+    loyaltyMessages.push("Loyalty program not available for this merchant");
+  } else if (loyaltyPointsAvailable <= 0) {
+    loyaltyMessages.push("You don't have any points to redeem");
+  } else if (baseAmountForLoyalty < loyaltySettings.minOrderAmountForRedemption) {
+    loyaltyMessages.push(
+      `Minimum order amount of ₹${loyaltySettings.minOrderAmountForRedemption} required to redeem points`
+    );
+  } else {
+    // Calculate maximum allowed redemption
+    const maxRedemptionAmount = Math.min(
+      (baseAmountForLoyalty * loyaltySettings.maxRedemptionPercent) / 100,
+      baseAmountForLoyalty // Can't discount more than the order total
+    );
+    
+    const maxPointsCanUse = Math.floor(
+      maxRedemptionAmount / loyaltySettings.valuePerPoint
+    );
 
-        if (pointsUsed > 0) {
-          loyaltyDiscount = pointsUsed * loyaltySettings.valuePerPoint;
-          loyaltyMessages.push(
-            `Redeemed ${pointsUsed} points (₹${loyaltyDiscount} discount)`
-          );
-        }
-      }
-    }
-    // Calculate potential points to earn
-    if (loyaltySettings) {
-      if (
-        finalAmountBeforeRevenueShare >= loyaltySettings.minOrderAmountForEarning
-      ) {
-        potentialPointsEarned = Math.min(
-          Math.floor(
-            (finalAmountBeforeRevenueShare / 100) *
-              loyaltySettings.pointsPerAmount
-          ),
-          loyaltySettings.maxEarningPoints
-        );
-        if (potentialPointsEarned > 0) {
-          loyaltyMessages.push(
-            `Earn ${potentialPointsEarned} points after successful delivery (${loyaltySettings.pointsPerAmount} pts per ₹100)`
-          );
-        }
-      } else {
-        loyaltyMessages.push(
-          `Add ₹${
-            loyaltySettings.minOrderAmountForEarning -
-            finalAmountBeforeRevenueShare
-          } more to earn loyalty points`
-        );
-      }
+    // Determine points to use
+    if (loyaltyPointsToRedeem !== null && loyaltyPointsToRedeem > 0) {
+      // User specified an amount
+      pointsUsed = Math.min(
+        loyaltyPointsToRedeem,
+        loyaltyPointsAvailable,
+        maxPointsCanUse
+      );
+    } else {
+      // Auto-apply maximum allowed
+      pointsUsed = Math.min(
+        loyaltyPointsAvailable,
+        maxPointsCanUse
+      );
     }
 
+    // Apply minimum points requirement
+    if (pointsUsed > 0 && pointsUsed < loyaltySettings.minPointsForRedemption) {
+      loyaltyMessages.push(
+        `Minimum ${loyaltySettings.minPointsForRedemption} points required for redemption`
+      );
+      pointsUsed = 0;
+    }
+
+    if (pointsUsed > 0) {
+      loyaltyDiscount = pointsUsed * loyaltySettings.valuePerPoint;
+      loyaltyMessages.push(
+        `Redeemed ${pointsUsed} points (₹${loyaltyDiscount.toFixed(2)} discount)`
+      );
+    }
+  }
+}
+
+// Calculate potential points to earn regardless of redemption
+if (loyaltySettings) {
+  if (baseAmountForLoyalty >= loyaltySettings.minOrderAmountForEarning) {
+    potentialPointsEarned = Math.min(
+      Math.floor((baseAmountForLoyalty / 100) * loyaltySettings.pointsPerAmount),
+      loyaltySettings.maxEarningPoints
+    );
+    if (potentialPointsEarned > 0) {
+      loyaltyMessages.push(
+        `Earn ${potentialPointsEarned} points after successful delivery (${loyaltySettings.pointsPerAmount} pts per ₹100)`
+      );
+    }
+  } else if (useLoyaltyPoints) { // Only show this message if they tried to use points
+    loyaltyMessages.push(
+      `Add ₹${(loyaltySettings.minOrderAmountForEarning - baseAmountForLoyalty).toFixed(2)} more to earn loyalty points`
+    );
+  }
+}
     // ✅ Final Amount After Loyalty Redemption
     const finalAmountAfterLoyalty =
       finalAmountBeforeRevenueShare - loyaltyDiscount;
@@ -802,6 +796,7 @@ async function calculateChargesBreakdown({
       combosApplied: appliedCombos,
         promoCodeInfo: {
         code: validatedPromo?.code || null,
+  promoCodeId: validatedPromo?._id?.toString() || null,
         applied: isPromoApplied,
         messages: promoCodeMessages,
         discount: promoDiscount

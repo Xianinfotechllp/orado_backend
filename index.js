@@ -127,11 +127,15 @@ io.on("connection", (socket) => {
 
     // Join rooms based on user type
     socket.on("join-room", ({ userId, userType }) => {
+     
+     console.log(`User ${userId} of type ${userType} connected with socket ID: ${socket.id}`);
       if (!mongoose.Types.ObjectId.isValid(userId)) {
         return socket.emit("error", { message: "Invalid user ID" });
       }
 
+
       switch (userType) {
+        
         case "admin":
           socket.join(`admin_${userId}`);
           socket.join(`admin_group`);

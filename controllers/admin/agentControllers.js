@@ -1002,3 +1002,61 @@ exports.reviewAgentSelfie = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server Error', error: err.message });
   }
 };
+
+
+
+// controllers/adminAgentController.js
+exports.getAgentCODSummary = async (req, res) => {
+  try {
+    const agents = await Agent.find({})
+      .select("fullName phoneNumber email codTracking codSubmissionLogs permissions")
+      .sort({ "codTracking.currentCODHolding": -1 });
+
+    const agentSummaries = agents.map(agent => {
+      const latestDrop = agent.codSubmissionLogs?.[agent.codSubmissionLogs.length - 1];
+
+      const maxCODLimit = agent.permissions?.maxCODAmount ?? 0;
+      const currentHolding = agent.codTracking?.currentCODHolding ?? 0;
+      const dailyCollected = agent.codTracking?.dailyCollected ?? 0;
+
+      // Determine COD status
+      let codStatus = "OK";
+      if (currentHolding > maxCODLimit) {
+        codStatus = "Limit Crossed";
+      } else if (currentHolding === maxCODLimit) {
+        codStatus = "At Limit";
+      }
+
+      return {
+        _id: agent._id,
+        name: agent.fullName,
+        phone: agent.phoneNumber,
+        email: agent.email,
+
+        maxCODLimit,
+        currentCODHolding: currentHolding,
+        dailyCollected,
+
+        codStatus, // ← New field showing COD holding status
+
+        lastSubmission: latestDrop
+          ? {
+              droppedAmount: latestDrop.droppedAmount,
+              droppedAt: latestDrop.droppedAt,
+              dropMethod: latestDrop.dropMethod,
+              isVerifiedByAdmin: latestDrop.isVerifiedByAdmin,
+              verifiedAt: latestDrop.verifiedAt,
+            }
+          : null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: agentSummaries,
+    });
+  } catch (err) {
+    console.error("Error in getAgentCODSummary:", err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};

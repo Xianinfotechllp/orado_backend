@@ -40,6 +40,7 @@ const {
 } = require("../utils/awardPoints");
 const { assignTask } = require("../services/allocationService");
 const { awardPoints } = require("../services/loyaltyPointService");
+const { emitNewOrderToAdmin } = require("../services/orderSocketService");
 
 exports.createOrder = async (req, res) => {
   try {
@@ -569,13 +570,34 @@ exports.placeOrderWithAddressId = async (req, res) => {
 // Get Order by ID
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.orderId).populate(
-      "customerId restaurantId orderItems.productId assignedAgent"
-    );
+    const order = await Order.findById(req.params.orderId)
+      .populate("customerId restaurantId orderItems.productId assignedAgent")
+      .populate("promoCode.promoCodeId")
+      .populate("appliedOffers.offerId")
+      .populate("comboBreakdown.comboId")
+      .lean();
 
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    res.json(order);
+    // Format the data for frontend
+    const formattedOrder = {
+      ...order,
+      tax: order.totalTaxAmount || order.tax, // Backward compatibility
+      taxDetails: order.taxDetails || [ // Default tax breakdown if not exists
+        {
+          name: "GST",
+          percentage: 5,
+          amount: (order.totalTaxAmount || order.tax) / 2
+        },
+        {
+          name: "Service Charge",
+          percentage: 5,
+          amount: (order.totalTaxAmount || order.tax) / 2
+        }
+      ]
+    };
+
+    res.json(formattedOrder);
   } catch (err) {
     res.status(500).json({ error: "Error fetching order" });
   }
@@ -1264,8 +1286,10 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       useLoyaltyPoints = false,
       loyaltyPointsToRedeem = null,
     } = req.body;
+    console.log("getOrderPriceSummaryv2 called with params:" ,req.body);
 
-    // Validate input
+
+      // Validate input
     if (!cartId || !userId) {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
@@ -1296,14 +1320,14 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       userCoords,
       restaurant._id
     );
-    // if (!isInsideServiceArea) {
-    //   return res.status(400).json({
-    //     code: "OUT_OF_DELIVERY_AREA",
-    //     error: "Out of Delivery Area",
-    //     message:
-    //       "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
-    //   });
-    // }
+    if (!isInsideServiceArea) {
+      return res.status(400).json({
+        code: "OUT_OF_DELIVERY_AREA",
+        error: "Out of Delivery Area",
+        message:
+          "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+      });
+    }
 
     // Step 1: Calculate base cart total (pre-offer, pre-surge)
     const preSurgeOrderAmount = cart.products.reduce(
@@ -1734,6 +1758,351 @@ exports.sendOrderDelayReason = async (req, res) => {
   }
 };
 
+// exports.placeOrderV2 = async (req, res) => {
+//   try {
+//     const {
+//       longitude,
+//       latitude,
+//       cartId,
+//       userId,
+//       paymentMethod,
+//       couponCode,
+//       instructions,
+//       tipAmount = 0,
+//       street,
+//       area,
+//       landmark,
+//       city,
+//       state,
+//       pincode,
+//       country = "India",
+//     } = req.body;
+
+//     // Basic validation
+//     if (
+//       !cartId ||
+//       !userId ||
+//       !paymentMethod ||
+//       !longitude ||
+//       !latitude ||
+//       !street ||
+//       !city ||
+//       !pincode
+//     ) {
+//       return res.status(400).json({
+//         message: "Required fields are missing",
+//         messageType: "failure",
+//       });
+//     }
+
+//     // Find cart and restaurant
+//     const cart = await Cart.findOne({ _id: cartId, user: userId });
+//     if (!cart) {
+//       return res.status(404).json({
+//         message: "Cart not found",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const restaurant = await Restaurant.findById(cart.restaurantId);
+//     if (!restaurant) {
+//       return res.status(404).json({
+//         message: "Restaurant not found",
+//         messageType: "failure",
+//       });
+//     }
+
+//     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+//     const restaurantCoords = restaurant.location.coordinates;
+//     const preSurgeOrderAmount = cart.products.reduce(
+//       (total, item) => total + item.price * item.quantity,
+//       0
+//     );
+
+//     const offers = await Offer.find({
+//       applicableRestaurants: restaurant._id,
+//       isActive: true,
+//       validFrom: { $lte: new Date() },
+//       validTill: { $gte: new Date() },
+//     }).lean();
+
+//     const surgeObj = await getApplicableSurgeFee(
+//       userCoords,
+//       preSurgeOrderAmount
+//     );
+
+//     const isSurge = !!surgeObj;
+//     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+
+//     const deliveryFee = await feeService.calculateDeliveryFee(
+//       restaurantCoords,
+//       userCoords
+//     );
+
+//     const cityId = await geoService.findCityByCoordinates(longitude, latitude);
+//     const foodTax = await feeService.getActiveTaxes("food");
+
+//     const costSummary = calculateOrderCostV2({
+//       cartProducts: cart.products,
+//       tipAmount,
+//       couponCode,
+//       deliveryFee,
+//       offers,
+//       revenueShare: { type: "percentage", value: 20 },
+//       taxes: foodTax,
+//       isSurge,
+//       surgeFeeAmount,
+//     });
+
+//     // Calculate bill summary
+//     const billSummary = calculateOrderCost({
+//       cartProducts: cart.products,
+//       restaurant,
+//       userCoords,
+//       couponCode,
+//     });
+
+//     // Map order items with product images
+//     const orderItems = await Promise.all(
+//       cart.products.map(async (item) => {
+//         const product = await Product.findById(item.productId).select("images");
+//         return {
+//           productId: item.productId,
+//           quantity: item.quantity,
+//           price: item.price,
+//           name: item.name,
+//           totalPrice: item.price * item.quantity,
+//           image: product?.images?.[0] || null,
+//         };
+//       })
+//     );
+
+//     // Determine initial order status based on restaurant permissions
+//     let orderStatus = "pending";
+//     const permission = await Permission.findOne({
+//       restaurantId: restaurant._id,
+//     });
+//     if (permission && !permission.permissions.canAcceptOrder) {
+//       orderStatus = "accepted_by_restaurant";
+//     }
+
+//     // Create and save order
+//     const newOrder = new Order({
+//       customerId: userId,
+//       restaurantId: cart.restaurantId,
+//       orderItems,
+//       paymentMethod,
+//       orderStatus: orderStatus,
+//       deliveryLocation: { type: "Point", coordinates: userCoords },
+//       deliveryAddress: {
+//         street,
+//         area,
+//         landmark,
+//         city,
+//         state,
+//         pincode,
+//         country,
+//         latitude: parseFloat(latitude),
+//         longitude: parseFloat(longitude),
+//       },
+//       subtotal: costSummary.cartTotal, // ✅ from V2
+//       cartTotal: costSummary.cartTotal,
+//       tax: costSummary.totalTaxAmount, // ✅ from V2
+//       discountAmount: 0, // ✅ clean combined discount
+//       deliveryCharge: costSummary.deliveryFee, // ✅ from V2
+//       offerId: costSummary.appliedOffer?._id || null,
+//       offerName: costSummary.appliedOffer?.title || null,
+//       offerDiscount: costSummary.offerDiscount,
+//       surgeCharge: costSummary.surgeFee,
+//       tipAmount,
+//       totalAmount: costSummary.finalAmount, // ✅ final payable
+//       couponCode,
+//       isSurge: costSummary.isSurge,
+//       surgeReason: costSummary.surgeReason,
+//       agentAssignmentStatus: "unassigned",
+//       instructions: instructions,
+//     });
+
+//     const savedOrder = await newOrder.save();
+
+//     // ✅ If payment method is online — generate Razorpay order and return immediately
+//     if (paymentMethod === "online") {
+//       const razorpayOrder = await razorpay.orders.create({
+//         amount: Math.round(costSummary.finalAmount * 100), // Razorpay accepts amount in paisa
+//         currency: "INR",
+//         receipt: savedOrder._id.toString(),
+//         notes: {
+//           restaurantName: restaurant.name,
+//           userId: userId.toString(),
+//           orderId: savedOrder._id.toString(),
+//         },
+//       });
+
+//       savedOrder.onlinePaymentDetails = {
+//         razorpayOrderId: razorpayOrder.id,
+//       };
+//       await savedOrder.save();
+
+//       const io = req.app.get("io");
+//       const populatedOrder = await Order.findById(savedOrder._id)
+//         .populate("customerId", "name email phone")
+//         .lean();
+
+//       const sanitizeOrderNumbers = (order, fields) => {
+//         fields.forEach((key) => {
+//           order[key] = Number(order[key]) || 0;
+//         });
+//         return order;
+//       };
+
+//       sanitizeOrderNumbers(populatedOrder, [
+//         "subtotal",
+//         "tax",
+//         "discountAmount",
+//         "deliveryCharge",
+//         "offerDiscount",
+//         "surgeCharge",
+//         "tipAmount",
+//         "totalAmount",
+//       ]);
+
+//       io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+//         "new_order",
+//         populatedOrder
+//       );
+
+//       return res.status(200).json({
+//         message: "Order created. Proceed to Razorpay payment.",
+//         messageType: "success",
+//         orderId: savedOrder._id,
+//         razorpayOrderId: razorpayOrder.id,
+//         amount: costSummary.finalAmount,
+//         currency: "INR",
+//         keyId: process.env.RAZORPAY_KEY_ID,
+//       });
+//     }
+
+//     // await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
+//     const io = req.app.get("io");
+//     const populatedOrder = await Order.findById(savedOrder._id)
+//       .populate("customerId", "name email phone")
+//       .lean();
+
+//     const sanitizeOrderNumbers = (order, fields) => {
+//       fields.forEach((key) => {
+//         order[key] = Number(order[key]) || 0;
+//       });
+//       return order;
+//     };
+
+//     sanitizeOrderNumbers(populatedOrder, [
+//       "subtotal",
+//       "tax",
+//       "discountAmount",
+//       "deliveryCharge",
+//       "offerDiscount",
+//       "surgeCharge",
+//       "tipAmount",
+//       "totalAmount",
+//     ]);
+
+//     io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+//       "new_order",
+//       populatedOrder
+//     );
+//     // Try to assign an agent
+//     let assignmentResult;
+//     try {
+//       assignmentResult = await assignTask(savedOrder._id);
+//       console.log("Agent assignment result:", assignmentResult);
+
+//       console.log(`Emitting to restaurant_${savedOrder.restaurantId}`);
+//       //   const updatedOrder = await Order.findByIdAndUpdate(orderId, {
+//       //     $set: { assignedAgent: agentId, agentAssignmentStatus: "accepted", agentAcceptedAt: new Date() }
+//       //   })
+//       //   .populate("customerId", "name email")
+//       //   .populate("assignedAgent", "fullName phoneNumber email")
+
+//       // const orderObj = updatedOrder.toObject();
+
+//       if (assignmentResult.success) {
+//         // Update only agent assignment fields, not main order status
+
+//         //  io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
+//         //   success: true,
+//         //   message: "Agent assigned to order",
+//         //   updateType: "agent_assigned",
+//         //   order: mapOrder(orderObj)
+//         // });
+
+//         // Notify all parties about assignment (not pickup)
+//         io.to(`agent_${assignmentResult.agentId}`).emit("delivery_assigned", {
+//           orderId: savedOrder._id,
+//           action: "assignment",
+//           status: "assigned",
+//         });
+
+//         io.to(`user_${savedOrder.customerId}`).emit("order_update", {
+//           orderId: savedOrder._id,
+//           updateType: "agent_assigned",
+//           agentId: assignmentResult.agentId,
+//           currentStatus: savedOrder.orderStatus, // Original status remains
+//         });
+
+//         io.to(`restaurant_${savedOrder.restaurantId}`).emit("order_update", {
+//           orderId: savedOrder._id,
+//           updateType: "agent_assigned",
+//           agentId: assignmentResult.agentId,
+//         });
+
+//         // Send appropriate notifications
+//         await sendPushNotification(
+//           savedOrder.customerId,
+//           "Delivery Agent Assigned",
+//           "An agent has been assigned to your order"
+//         );
+
+//         await sendPushNotification(
+//           assignmentResult.agentId,
+//           "New Delivery Assignment",
+//           "You have been assigned a new delivery"
+//         );
+//       } else {
+//         // No agent available - update only assignment status
+//       }
+//     } catch (error) {
+//       console.error("Error during agent assignment:", error);
+//       await Order.findByIdAndUpdate(savedOrder._id, {
+//         $set: {
+//           agentAssignmentStatus: "awaiting_agent_assignment",
+//         },
+//       });
+//     }
+
+//     // Fetch the latest order state
+//     const currentOrder = await Order.findById(savedOrder._id);
+
+//     return res.status(201).json({
+//       message: "Order placed successfully",
+//       orderId: currentOrder._id,
+//       totalAmount: currentOrder.totalAmount,
+//       billSummary,
+//       orderStatus: currentOrder.orderStatus, // Original status (not changed to assigned_to_agent)
+
+//       // assignedAgent: currentOrder.assignedAgent
+//       messageType: "success",
+//     });
+//   } catch (err) {
+//     console.error("Error placing order:", err);
+//     res.status(500).json({
+//       message: "Failed to place order",
+//       messageType: "failure",
+//       error: err.message,
+//     });
+//   }
+// };
+
+
 exports.placeOrderV2 = async (req, res) => {
   try {
     const {
@@ -1752,6 +2121,8 @@ exports.placeOrderV2 = async (req, res) => {
       state,
       pincode,
       country = "India",
+      useLoyaltyPoints = false,
+      loyaltyPointsToRedeem = null,
     } = req.body;
 
     // Basic validation
@@ -1788,12 +2159,31 @@ exports.placeOrderV2 = async (req, res) => {
       });
     }
 
+    // Fetch loyalty settings and user
+    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+    const user = await User.findById(userId);
+    const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
+
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
+
+    // Check service area
+    const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+      userCoords,
+      restaurant._id
+    );
+    if (!isInsideServiceArea) {
+      return res.status(400).json({
+        code: "OUT_OF_DELIVERY_AREA",
+        error: "Out of Delivery Area",
+        message:
+          "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+      });
+    }
 
     const offers = await Offer.find({
       applicableRestaurants: restaurant._id,
@@ -1806,38 +2196,41 @@ exports.placeOrderV2 = async (req, res) => {
       userCoords,
       preSurgeOrderAmount
     );
-
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
-
-    const deliveryFee = await feeService.calculateDeliveryFee(
-      restaurantCoords,
-      userCoords
-    );
+    const surgeReason = surgeObj?.reason || null;
 
     const cityId = await geoService.findCityByCoordinates(longitude, latitude);
-    const foodTax = await feeService.getActiveTaxes("food");
+    const deliveryFee = await feeService.calculateDeliveryFee(
+      restaurantCoords,
+      userCoords,
+      cityId
+    );
 
-    const costSummary = calculateOrderCostV2({
+    // Get full cost summary using V2 logic
+    const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
-      couponCode,
+      promoCode: couponCode,
       deliveryFee,
       offers,
       revenueShare: { type: "percentage", value: 20 },
-      taxes: foodTax,
       isSurge,
       surgeFeeAmount,
+      surgeReason,
+      merchantId: restaurant._id,
+      cartId,
+      useLoyaltyPoints,
+      loyaltyPointsAvailable,
+      loyaltyPointsToRedeem,
+      loyaltySettings,
+      userId,
+      PromoCode, // Make sure this is imported/available
     });
 
-    // Calculate bill summary
-    const billSummary = calculateOrderCost({
-      cartProducts: cart.products,
-      restaurant,
-      userCoords,
-      couponCode,
-    });
 
+
+    console.log("Cost Summary:", costSummary);
     // Map order items with product images
     const orderItems = await Promise.all(
       cart.products.map(async (item) => {
@@ -1862,7 +2255,7 @@ exports.placeOrderV2 = async (req, res) => {
       orderStatus = "accepted_by_restaurant";
     }
 
-    // Create and save order
+    // Create and save order with all V2 fields
     const newOrder = new Order({
       customerId: userId,
       restaurantId: cart.restaurantId,
@@ -1881,30 +2274,58 @@ exports.placeOrderV2 = async (req, res) => {
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
       },
-      subtotal: costSummary.cartTotal, // ✅ from V2
+      subtotal: costSummary.cartTotal,
       cartTotal: costSummary.cartTotal,
-      tax: costSummary.totalTaxAmount, // ✅ from V2
-      discountAmount: 0, // ✅ clean combined discount
-      deliveryCharge: costSummary.deliveryFee, // ✅ from V2
+      tax: costSummary.totalTaxAmount,
+      totalTaxAmount: costSummary.totalTaxAmount,
+      taxDetails: costSummary.taxBreakdown,
+      discountAmount: costSummary.totalDiscount,
+      deliveryCharge: costSummary.deliveryFee,
       offerId: costSummary.appliedOffer?._id || null,
       offerName: costSummary.appliedOffer?.title || null,
       offerDiscount: costSummary.offerDiscount,
+      comboDiscount: costSummary.comboDiscount,
       surgeCharge: costSummary.surgeFee,
-      tipAmount,
-      totalAmount: costSummary.finalAmount, // ✅ final payable
-      couponCode,
       isSurge: costSummary.isSurge,
       surgeReason: costSummary.surgeReason,
+      tipAmount,
+      totalAmount: costSummary.finalAmount,
+      couponCode,
+      promoCode: {
+        code: costSummary.promoCodeInfo.code,
+        discount: costSummary.promoCodeInfo.discount,
+        promoCodeId: costSummary.promoCodeInfo.applied ? PromoCode._id : null
+      },
+      loyaltyPointsUsed: costSummary.loyaltyPoints.used,
+      loyaltyPointsValue: costSummary.loyaltyPoints.discount,
+      appliedOffers: costSummary.offersApplied.map(offer => ({
+        offerId: offer._id,
+        title: offer.title,
+        discountType: offer.type,
+        discountAmount: offer.discountValue,
+        offerBreakdown: offer.description
+      })),
+      chargesBreakdown: {
+        packingCharges: costSummary.packingCharges,
+        totalPackingCharge: costSummary.totalPackingCharge,
+        additionalCharges: costSummary.additionalCharges,
+        totalAdditionalCharges: costSummary.totalAdditionalCharges
+      },
       agentAssignmentStatus: "unassigned",
       instructions: instructions,
+      distanceKm: turf.distance(
+        turf.point(userCoords),
+        turf.point(restaurantCoords),
+        { units: "kilometers" }
+      )
     });
 
     const savedOrder = await newOrder.save();
 
-    // ✅ If payment method is online — generate Razorpay order and return immediately
+    // Handle online payment (same as before)
     if (paymentMethod === "online") {
       const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(costSummary.finalAmount * 100), // Razorpay accepts amount in paisa
+        amount: Math.round(costSummary.finalAmount * 100),
         currency: "INR",
         receipt: savedOrder._id.toString(),
         notes: {
@@ -1964,6 +2385,9 @@ exports.placeOrderV2 = async (req, res) => {
       .populate("customerId", "name email phone")
       .lean();
 
+
+
+
     const sanitizeOrderNumbers = (order, fields) => {
       fields.forEach((key) => {
         order[key] = Number(order[key]) || 0;
@@ -1986,6 +2410,9 @@ exports.placeOrderV2 = async (req, res) => {
       "new_order",
       populatedOrder
     );
+
+
+     await emitNewOrderToAdmin(io, savedOrder._id);
     // Try to assign an agent
     let assignmentResult;
     try {
@@ -2058,16 +2485,19 @@ exports.placeOrderV2 = async (req, res) => {
     // Fetch the latest order state
     const currentOrder = await Order.findById(savedOrder._id);
 
+   
     return res.status(201).json({
       message: "Order placed successfully",
-      orderId: currentOrder._id,
-      totalAmount: currentOrder.totalAmount,
-      billSummary,
-      orderStatus: currentOrder.orderStatus, // Original status (not changed to assigned_to_agent)
-
-      // assignedAgent: currentOrder.assignedAgent
+      orderId: savedOrder._id,
+      totalAmount: savedOrder.totalAmount,
+      orderStatus: savedOrder.orderStatus,
       messageType: "success",
+      loyaltyPoints: {
+        used: costSummary.loyaltyPoints.used,
+        potentialEarned: costSummary.loyaltyPoints.potentialEarned
+      }
     });
+
   } catch (err) {
     console.error("Error placing order:", err);
     res.status(500).json({
@@ -2077,6 +2507,23 @@ exports.placeOrderV2 = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 exports.verifyPayment = async (req, res) => {
   try {

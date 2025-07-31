@@ -89,6 +89,8 @@ exports.getSimpleRectOrderStats = async (req, res) => {
 
 
 
+
+
 exports.getAdminOrders = async (req, res) => {
   try {
     const orders = await Order.find()
@@ -304,6 +306,7 @@ exports.getAgentOrderDispatchStatuses = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   const { orderId } = req.params;
   const { status } = req.body;
+  const io = req.app.get("io"); // Get socket.io instance
 
   const allowedStatuses = [
     'pending', 'accepted_by_restaurant', 'rejected_by_restaurant',
@@ -323,13 +326,104 @@ exports.updateOrderStatus = async (req, res) => {
     }
 
     // Find and update order
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId)
+      .populate("customerId", "_id")
+      .populate("restaurantId", "_id")
+      .populate("assignedAgent", "_id");
+
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    const previousStatus = order.orderStatus;
     order.orderStatus = status;
     await order.save();
+
+    // Emit socket events to notify relevant parties
+    if (io) {
+      // Always notify the customer
+      io.to(`user_${order.customerId._id.toString()}`).emit(
+        "order_status_update",
+        {
+          orderId: order._id,
+          newStatus: status,
+          previousStatus,
+          timestamp: new Date(),
+        }
+      );
+
+      // Flutter app notification
+      io.to(`user_${order.customerId._id.toString()}`).emit(
+        "order_status_update_flutter",
+        {
+          orderId: order._id,
+          newStatus: status,
+          previousStatus,
+          timestamp: new Date(),
+        }
+      );
+
+      // Special handling for completed/delivered status
+      if (status === "completed" || status === "delivered") {
+        io.to(`user_${order.customerId._id.toString()}`).emit(
+          "order_completed",
+          {
+            orderId: order._id,
+            timestamp: new Date(),
+          }
+        );
+
+        // Also emit order_delivered event for the frontend to handle
+        if (status === "delivered") {
+          io.to(`user_${order.customerId._id.toString()}`).emit(
+            "order_delivered",
+            {
+              orderId: order._id,
+              timestamp: new Date(),
+            }
+          );
+        }
+      }
+
+      // Notify restaurant for relevant status changes
+      if (["preparing", "ready", "rejected_by_restaurant", "completed", "delivered"].includes(status)) {
+        io.to(`restaurant_${order.restaurantId._id.toString()}`).emit(
+          "order_status_update",
+          {
+            orderId: order._id,
+            newStatus: status,
+            previousStatus,
+            timestamp: new Date(),
+          }
+        );
+      }
+
+      // Notify delivery agent for relevant status changes
+      if (order.assignedAgent && ["assigned_to_agent", "picked_up", "on_the_way", "in_progress", "arrived", "completed", "delivered"].includes(status)) {
+        io.to(`agent_${order.assignedAgent._id.toString()}`).emit(
+          "order_status_update",
+          {
+            orderId: order._id,
+            newStatus: status,
+            previousStatus,
+            timestamp: new Date(),
+          }
+        );
+
+        // Special event when order is ready for pickup
+        if (status === "ready") {
+          io.to(`agent_${order.assignedAgent._id.toString()}`).emit(
+            "order_ready_for_pickup",
+            {
+              orderId: order._id,
+              restaurantId: order.restaurantId._id,
+              customerId: order.customerId._id,
+              timestamp: new Date(),
+            }
+          );
+        }
+      }
+    }
 
     return res.status(200).json({
       message: 'Order status updated successfully',

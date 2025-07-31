@@ -24,7 +24,8 @@ const {refundToWallet, getAllRefundTransactions} = require('../controllers/walle
 const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
 const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveApplication, rejectApplication,
-  getAgentSelfies,getAgentSelfieHistory,getSelfieDetails
+  getAgentSelfies,getAgentSelfieHistory,getSelfieDetails,
+  getAgentCODSummary
 } = require("../controllers/admin/agentControllers")
 
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
@@ -298,7 +299,7 @@ router.post('/agent/:agentId/leaves/:leaveId/decision', protect, checkRole('admi
 //agent earnigs settings
 router.post('/agent-earnings/settings',addAgentEarnigsSetting)
 router.get('/agent-earnings/settings',getAgentEarningsSettings)
-
-
+//cod llimt of agetns
+router.get("/agent-cod-summray",getAgentCODSummary)
 module.exports = router;
 
