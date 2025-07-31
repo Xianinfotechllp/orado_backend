@@ -1799,22 +1799,23 @@ exports.getOrdersByCustomerAdmin = async (req, res) => {
 
 
 
-
 exports.saveFcmToken = async (req, res) => {
   try {
-    const {  token, platform = 'web' } = req.body;
-    console.log("Saving FCM token:", token, platform);
-  const userId = req.user._id;
+    const { token, platform = 'web' } = req.body;
+    const userId = req.user._id;
+
     if (!userId || !token) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // Optional: upsert token so one user/platform has one active token
-    await DeviceToken.findOneAndUpdate(
-      { userId, platform },
-      { token },
-      { upsert: true, new: true }
-    );
+    const existing = await DeviceToken.findOne({ token });
+
+    if (!existing) {
+      await DeviceToken.create({ userId, token, platform });
+    } else {
+      // Optionally update userId/platform in case token got reassigned
+      await DeviceToken.updateOne({ token }, { userId, platform });
+    }
 
     return res.status(200).json({ message: 'FCM token saved' });
   } catch (error) {
@@ -1822,6 +1823,7 @@ exports.saveFcmToken = async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 
 
 

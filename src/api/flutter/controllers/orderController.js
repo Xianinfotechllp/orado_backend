@@ -2870,7 +2870,8 @@ exports.getActiveOrder = async (req, res) => {
       restaurant: {
         id: activeOrder.restaurantId._id,
         name: activeOrder.restaurantId.name,
-        address: activeOrder.restaurantId.address
+        address: activeOrder.restaurantId.address,
+        image:activeOrder.restaurantId.images[0]
       },
       orderItems: activeOrder.orderItems,
       orderStatus: activeOrder.orderStatus,
