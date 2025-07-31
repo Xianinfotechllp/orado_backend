@@ -123,7 +123,7 @@ deliveryAddress: {
   landmark: String,
   city: { type: String, required: true },
   state: String,
-  pincode: { type: String, required: true },
+  pincode: { type: String},
   country: { type: String, default: 'India' }
 },
 
