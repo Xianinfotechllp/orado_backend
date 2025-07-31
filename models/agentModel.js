@@ -249,11 +249,18 @@ const agentSchema = new mongoose.Schema(
   {
     droppedAmount: { type: Number, required: true }, // Amount that was submitted
     droppedAt: { type: Date, default: Date.now },     // When the COD was submitted
-    dropMethod: {
-      type: String,
-      enum: ["Bank", "Online", "Cash"],               // Method of submission
-      default: "Online",
-    },
+   dropMethod: {
+  type: String,
+  enum: [
+    "CashDropAtHub",         // Physical cash drop
+    "OnlineTransfer",        // UPI, NEFT, IMPS, etc.
+    "POSMachine",            // Swiping on company POS
+    "CourierPickup",         // Cash picked up
+    "ManualAdjustment",      // Admin manually adjusts
+    "AutoDeductFromPayout",  // System deducts from agent's earnings
+    "ThirdPartyCollection"   // Via 3rd-party
+  ]
+},
     dropNotes: { type: String },                      // Optional notes from agent
     isVerifiedByAdmin: { type: Boolean, default: false }, // Whether admin confirmed it
     verifiedAt: { type: Date },                       // When admin verified

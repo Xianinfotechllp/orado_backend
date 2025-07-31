@@ -6,7 +6,8 @@ const {createCategory} = require("../controllers/categoryController")
 const {getAssignableOffers,createOfferByRestaurantOwner,getOffersForRestaurant,toggleOfferAssignment,
     updateOffer,deleteOffer
 } = require("../controllers/offerController")
-const {protect,checkRestaurantPermission} = require('../middlewares/authMiddleware')
+const {protect,checkRestaurantPermission} = require('../middlewares/authMiddleware');
+const { getMerchantTaxesAndCharges } = require('../controllers/taxAndChargeController');
 router.post("/register",registerMerchant)
 router.post("/login",loginMerchant)
 router.post("/change-password",protect,changePassword)
@@ -33,5 +34,7 @@ router.get("/customer/:userId/orders-list",getOrdersByCustomer)
 
 
 router.get("/order-details/:orderId",getOrderDetails)
+router.get("/:merchantId/taxes",getMerchantTaxesAndCharges)
+
 
 module.exports = router;

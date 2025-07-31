@@ -238,3 +238,26 @@ exports.updateTaxOrCharge = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+exports.getMerchantTaxesAndCharges = async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+
+    const taxes = await TaxAndCharge.find({
+      $or: [
+        { level: "Marketplace" },
+        { level: "Merchant", merchant: merchantId }
+      ]
+    })
+    .sort({ category: 1, applicableOn: 1, name: 1 });
+
+    res.status(200).json({ taxes });
+  } catch (error) {
+    console.error("Error fetching taxes and charges:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
