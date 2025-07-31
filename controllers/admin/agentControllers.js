@@ -128,6 +128,18 @@ exports.manualAssignAgent = async (req, res) => {
     order.agentAssignmentTimestamp = new Date();
     await order.save();
 
+
+    const io = req.app.get("io"); // or however you're accessing the Socket instance
+    console.log(`user_${order.customerId.toString()}`)
+    io.to(`user_${order.customerId._id.toString()}`).emit("agentAssigned", {
+      orderId: order._id,
+      agent: {
+        agentId:agent._id,
+        fullName: agent.fullName,
+        phoneNumber: agent.phoneNumber,
+      },
+    });
+
     // 4. Update agent deliveryStatus
     if (!agent.deliveryStatus) {
       agent.deliveryStatus = {
@@ -161,7 +173,7 @@ exports.manualAssignAgent = async (req, res) => {
     await agent.save();
 
     // 6. Emit via Socket.IO
-    const io = req.app.get("io");
+  
 
     const payload = {
       status: "success",
