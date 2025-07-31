@@ -731,6 +731,10 @@ io.to("admin_682c3a4a2e9fb5869cb96044").emit("new_order", { data: orderData });
 });
 
 
+
+
+
+
 app.get("/socket-test", (req, res) => {
   const adminId = "68394a55a32c5e36eb8be551"; // Replace with real admin _id
   const roomName = `user_${adminId}`;
@@ -756,8 +760,96 @@ app.get("/socket-test", (req, res) => {
 
   io.to(roomName).emit("test_order_status", { data: orderData });
 
-  return res.json({ message: "Socket notification sent", room: roomName });
+  // Define base route (8 points)
+  const baseRoute = [
+    { lat: 9.994778, lng: 76.294771 },
+    { lat: 9.995000, lng: 76.295200 },
+    { lat: 9.995300, lng: 76.295600 },
+    { lat: 9.995600, lng: 76.296000 },
+    { lat: 9.995900, lng: 76.296400 },
+    { lat: 9.996200, lng: 76.296800 },
+    { lat: 9.996500, lng: 76.297200 },
+    { lat: 9.996800, lng: 76.297600 },
+  ];
+
+  // Repeat the route to make ~40 steps
+  const fullRoute = [];
+  const repeatCount = Math.ceil(40 / baseRoute.length);
+  for (let i = 0; i < repeatCount; i++) {
+    fullRoute.push(...baseRoute);
+  }
+
+  // Trim to exactly 40 steps
+  const route = fullRoute.slice(0, 40);
+
+  let index = 0;
+
+  const interval = setInterval(() => {
+    if (index >= route.length) {
+      clearInterval(interval);
+      console.log("✅ 2-minute simulation complete");
+      return;
+    }
+
+    const location = {
+      orderId: orderData.orderId,
+      latitude: route[index].lat,
+      longitude: route[index].lng,
+    };
+
+    io.emit("agentLocationUpdate", location); // You can use io.to(roomName) instead
+    console.log(`📍 [${index + 1}/40] Emitted location:`, location);
+
+    index++;
+  }, 3000); // Every 3 seconds
+
+  return res.json({ message: "✅ 2-minute location stream started", totalPoints: route.length });
 });
+
+
+
+
+
+
+
+
+// app.get("/socket-test", (req, res) => {
+
+
+
+  
+//   const adminId = "68394a55a32c5e36eb8be551"; // Replace with real admin _id
+//   const roomName = `user_${adminId}`;
+
+//   const orderData = {
+//     orderId: "ORD123456",
+//     customerName: "John Doe",
+//     items: [
+//       { name: "Margherita Pizza", quantity: 2, price: 299 },
+//       { name: "Garlic Bread", quantity: 1, price: 149 },
+//     ],
+//     totalAmount: 747,
+//     paymentMethod: "UPI",
+//     deliveryAddress: {
+//       street: "221B Baker Street",
+//       city: "London",
+//       state: "London",
+//       zipCode: "NW1 6XE",
+//     },
+//     orderStatus: "Preparing",
+//     placedAt: new Date().toISOString(),
+//   };
+
+//   io.to(roomName).emit("test_order_status", { data: orderData });
+
+//   return res.json({ message: "Socket notification sent", room: roomName });
+// });
+
+
+
+
+
+
 
 
 
