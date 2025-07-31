@@ -2217,11 +2217,12 @@ exports.placeOrderWithAddressId = async (req, res) => {
       couponCode,
       promoCode,
       instructions,
+      addressId ,
       tipAmount = 0,
       useLoyaltyPoints = false,
       loyaltyPointsToRedeem = null
     } = req.body;
-    const addressId = req.params.addressId;
+
     
     // Validate required fields
     if (!cartId || !paymentMethod || !addressId) {
