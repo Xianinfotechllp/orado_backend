@@ -2859,33 +2859,46 @@ exports.getActiveOrder = async (req, res) => {
     const customer = await User.findById(activeOrder.customerId).select("name email phone");
 
     // Build response object
-    const response = {
-      _id: activeOrder._id,
-      customer: {
-        _id: customer._id,
-        name: customer.name,
-        email: customer.email,
-        phone: customer.phone
-      },
-      restaurant: {
-        id: activeOrder.restaurantId._id,
-        name: activeOrder.restaurantId.name,
-        address: activeOrder.restaurantId.address,
-        image:activeOrder.restaurantId.images[0]
-      },
-      orderItems: activeOrder.orderItems,
-      orderStatus: activeOrder.orderStatus,
-      assignedAgent: activeOrder.assignedAgent
-        ? {
-            id: activeOrder.assignedAgent._id,
-            fullName: activeOrder.assignedAgent.fullName,
-            phoneNumber: activeOrder.assignedAgent.phoneNumber
-          }
-        : null,
-      isAgentAssigned: activeOrder.assignedAgent ? 1 : 0,
-      subtotal: activeOrder.subtotal,
-      orderTime: activeOrder.orderTime
-    };
+const response = {
+  _id: activeOrder._id,
+  customer: {
+    _id: customer._id,
+    name: customer.name,
+    email: customer.email,
+    phone: customer.phone
+  },
+  restaurant: {
+    id: activeOrder.restaurantId._id,
+    name: activeOrder.restaurantId.name,
+    address: activeOrder.restaurantId.address,
+    image: activeOrder.restaurantId.images?.[0] || null,
+    location: activeOrder.restaurantId.location?.coordinates
+      ? {
+          latitude: activeOrder.restaurantId.location.coordinates[1],
+          longitude: activeOrder.restaurantId.location.coordinates[0],
+        }
+      : null
+  },
+  orderItems: activeOrder.orderItems,
+  orderStatus: activeOrder.orderStatus,
+  assignedAgent: activeOrder.assignedAgent
+    ? {
+        id: activeOrder.assignedAgent._id,
+        fullName: activeOrder.assignedAgent.fullName,
+        phoneNumber: activeOrder.assignedAgent.phoneNumber
+      }
+    : null,
+  isAgentAssigned: activeOrder.assignedAgent ? 1 : 0,
+  subtotal: activeOrder.subtotal,
+  orderTime: activeOrder.orderTime,
+
+  deliveryLocation: activeOrder.deliveryLocation?.coordinates
+    ? {
+        latitude: activeOrder.deliveryLocation.coordinates[1],
+        longitude: activeOrder.deliveryLocation.coordinates[0],
+      }
+    : null
+};
 
     return res.status(200).json(response);
   } catch (err) {
