@@ -20,6 +20,7 @@ const fs = require('fs');
 const firebase = require('../config/firebaseAdmin');
 const DeviceToken = require("../models/deviceTokenModel");
 const path = require('path');
+
  exports.adminLogin = async (req, res) => {
   const { email, password } = req.body; 
 
@@ -1824,83 +1825,103 @@ exports.saveFcmToken = async (req, res) => {
   }
 };
 
+
 exports.sendPushNotification = async (req, res) => {
   try {
-    const { userType, userIds, title, body, data = {} } = req.body;
+    const { userType, userIds, title, body, deepLinkUrl, data = {} } = req.body;
+    let imageUrl = null;
 
-    // Validate userType
+    // ✅ If image file is attached
+    if (req.file) {
+      const uploadResult = await uploadOnCloudinary(req.file.path, "orado_notifications");
+      if (uploadResult?.secure_url) {
+        imageUrl = uploadResult.secure_url;
+      }
+    }
+
+    // ✅ Validate userType
     const validUserTypes = ["customer", "agent", "restaurant"];
     if (!validUserTypes.includes(userType)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Invalid user type. Valid types: ${validUserTypes.join(', ')}` 
+      return res.status(400).json({
+        success: false,
+        message: `Invalid user type. Valid types: ${validUserTypes.join(", ")}`
       });
     }
 
-    // Select correct model (fixed restaurant bug)
+    // ✅ Select model
     let Model;
-    switch(userType) {
-      case "customer": Model = User; break;
-      case "agent": Model = Agent; break;
-      case "restaurant": Model = Restaurant; break; // Now correctly uses Restaurant model
+    console.log(userType)
+    switch (userType) {
+      case "customer":
+        Model = User;
+        break;
+      case "agent":
+        Model = Agent;
+        break;
+      case "restaurant":
+        Model = Restaurant;
+        break;
     }
-
-    // Fetch users and extract tokens
+     console.log(userIds)
     const users = await Model.find({ _id: { $in: userIds } }).lean();
+ 
     const tokens = users.flatMap(user => {
-      // Unified token extraction logic (works for all user types)
+      // For agents - get tokens from fcmTokens array
       if (userType === "agent" && Array.isArray(user.fcmTokens)) {
         return user.fcmTokens.map(t => t.token).filter(Boolean);
-      } 
+      }
+      // For customers and restaurants - get tokens from devices array
       else if (Array.isArray(user.devices)) {
         return user.devices
           .filter(d => d.status === "active" && d.token)
-          .map(d => d.token);
+          .map(d => d.token)
+          .filter(Boolean);
       }
       return [];
-    }).filter(Boolean);
+    });
 
-    console.log("Valid FCM tokens:", tokens);
     if (tokens.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "No valid FCM tokens found for the specified users." 
+      return res.status(400).json({
+        success: false,
+        message: "No valid FCM tokens found for the specified users."
       });
     }
 
-    // Send notifications (using sendEachForMulticast for efficiency)
+    // ✅ Construct notification message
     const message = {
       tokens,
-      notification: { title, body },
-      data: {
-        click_action: 'FLUTTER_NOTIFICATION_CLICK', // Required for Flutter
-        ...data,                                    // Merge custom data
+      notification: {
+        title,
+        body,
+        ...(imageUrl && { image: imageUrl })
       },
-      apns: { // iOS-specific config (optional)
+      data: {
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+        ...(deepLinkUrl && { deepLinkUrl }),
+        ...data
+      },
+      apns: {
         payload: {
           aps: {
             sound: "default",
             mutableContent: true
           }
+        },
+        fcm_options: {
+          ...(imageUrl && { image: imageUrl })
         }
       },
-      android: { // Android-specific config (optional)
+      android: {
         priority: "high",
-        notification: { 
+        notification: {
           sound: "default",
-          channel_id: "high_importance_channel" 
+          channel_id: "high_importance_channel",
+          ...(imageUrl && { image: imageUrl })
         }
       }
     };
 
     const response = await firebase.messaging().sendEachForMulticast(message);
-
-    // Log detailed results
-    response.responses.forEach((resp, idx) => {
-      if (!resp.success) {
-        console.error(`Failed to send to ${tokens[idx]}:`, resp.error?.message);
-      }
-    });
 
     res.status(200).json({
       success: true,
@@ -1914,14 +1935,13 @@ exports.sendPushNotification = async (req, res) => {
 
   } catch (err) {
     console.error("Notification error:", err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
-
 
 
 

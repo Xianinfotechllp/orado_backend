@@ -1509,14 +1509,14 @@ exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
 
 exports.saveCustomerToken = async (req, res) => {
   try {
-    const  userId  = req.user._id;
-    const { token, deviceId, platform = 'android', appVersion } = req.body;
+    const userId = req.user._id;
+    const { token, platform = 'android', appVersion } = req.body; // Removed deviceId
 
     // Validate input
-    if (!token || !deviceId) {
+    if (!token) {
       return res.status(400).json({
         success: false,
-        message: 'Token and device ID are required'
+        message: 'Token is required'
       });
     }
 
@@ -1529,34 +1529,29 @@ exports.saveCustomerToken = async (req, res) => {
       });
     }
 
-    // Check if token already exists
+    // Check if token already exists (now only checks token)
     const existingDeviceIndex = user.devices.findIndex(
-      d => d.token === token || d.deviceId === deviceId
+      d => d.token === token // Only compare by token
     );
-    console.log('Existing device index:', existingDeviceIndex);
 
     if (existingDeviceIndex !== -1) {
       // Update existing device
       user.devices[existingDeviceIndex] = {
         ...user.devices[existingDeviceIndex],
         token,
-        deviceId,
         platform,
         appVersion,
         lastActive: new Date(),
         status: 'active',
-       
       };
     } else {
       // Add new device
       user.devices.push({
         token,
-        deviceId,
         platform,
-     
+        appVersion,
         lastActive: new Date(),
         status: 'active',
-      
       });
     }
 

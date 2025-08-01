@@ -251,7 +251,7 @@ router.patch('/agent/selfie/:id/review', protect, reviewAgentSelfie);
 
 
 //push notificton to user agetn restu
-router.post('/send-push-notification',sendPushNotification)
+router.post('/send-push-notification', upload.single("image"),sendPushNotification)
 
 
 
