@@ -140,9 +140,9 @@ exports.getMyTickets = async (req, res) => {
 
 exports.getTicketById = async (req, res) => {
   try {
-    const ticketId = req.params.id;
+    const ticketId = req.params.ticketId;
     const userId = req.user._id;
-
+    console.log("Fetching ticket with ID:", ticketId);
     // Validate ticketId
     if (!mongoose.Types.ObjectId.isValid(ticketId)) {
       return res.status(400).json({
