@@ -1874,29 +1874,36 @@ exports.getPastOrders = async (req, res) => {
 
       const displayStatus = order.orderStatus === 'delivered' ? "1" : "0";
 
-      return {
-        orderId: order._id,
-        restaurant: {
-          name: rest?.name || "N/A",
-          address: fullAddress,
-          location: rest?.location?.coordinates || []
-        },
-        orderDate: order.orderTime,
-        orderTime: order.orderTime,
-        orderStatus: displayStatus,
-        isReorderAvailable, // Now returns "1" or "0"
-        reorderUnavailableReason,
-        unavailableProducts: isReorderAvailable === "1" ? unavailableProducts : undefined,
-        orderItems: order.orderItems.map(item => ({
-          productId: item.productId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          totalPrice: item.totalPrice,
-          image: item.image
-        })),
-        totalAmount: order.totalAmount
-      };
+    return {
+  orderId: order._id,
+  restaurant: {
+    name: rest?.name || "N/A",
+    address: fullAddress,
+    location: rest?.location?.coordinates || []
+  },
+  orderDate: new Intl.DateTimeFormat('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  }).format(new Date(order.orderTime)),
+
+  orderTime: new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: 'numeric', hour12: true
+  }).format(new Date(order.orderTime)),
+
+  orderStatus: displayStatus,
+  isReorderAvailable,
+  reorderUnavailableReason,
+  unavailableProducts: isReorderAvailable === "1" ? unavailableProducts : undefined,
+  orderItems: order.orderItems.map(item => ({
+    productId: item.productId,
+    name: item.name,
+    quantity: item.quantity,
+    price: item.price,
+    totalPrice: item.totalPrice,
+    image: item.image
+  })),
+  totalAmount: order.totalAmount
+};
+
     }));
 
     return res.status(200).json({
