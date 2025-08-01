@@ -1,5 +1,5 @@
 const Ticket = require('../../../../models/ticketModel');
-
+const mongoose = require('mongoose');
 // User creates a ticket
 exports.createTicket = async (req, res) => {
   try {
