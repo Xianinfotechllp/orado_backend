@@ -1501,3 +1501,123 @@ exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+
+
+
+
+exports.saveCustomerToken = async (req, res) => {
+  try {
+    const  userId  = req.user._id;
+    const { token, deviceId, platform = 'android', appVersion } = req.body;
+
+    // Validate input
+    if (!token || !deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token and device ID are required'
+      });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if token already exists
+    const existingDeviceIndex = user.devices.findIndex(
+      d => d.token === token || d.deviceId === deviceId
+    );
+    console.log('Existing device index:', existingDeviceIndex);
+
+    if (existingDeviceIndex !== -1) {
+      // Update existing device
+      user.devices[existingDeviceIndex] = {
+        ...user.devices[existingDeviceIndex],
+        token,
+        deviceId,
+        platform,
+        appVersion,
+        lastActive: new Date(),
+        status: 'active',
+       
+      };
+    } else {
+      // Add new device
+      user.devices.push({
+        token,
+        deviceId,
+        platform,
+     
+        lastActive: new Date(),
+        status: 'active',
+      
+      });
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Device token registered successfully',
+      deviceCount: user.devices.length
+    });
+
+  } catch (error) {
+    console.error('Error saving customer token:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Remove FCM token for customer (user)
+exports.removeCustomerToken = async (req, res) => {
+  try {
+
+    const userId = req.user._id;
+    const { token } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Remove the token
+    const initialCount = user.devices.length;
+    user.devices = user.devices.filter(d => d.token !== token);
+
+    if (user.devices.length === initialCount) {
+      return res.status(404).json({
+        success: false,
+        message: 'Token not found for this user'
+      });
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Device token removed successfully',
+      deviceCount: user.devices.length
+    });
+
+  } catch (error) {
+    console.error('Error removing customer token:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};

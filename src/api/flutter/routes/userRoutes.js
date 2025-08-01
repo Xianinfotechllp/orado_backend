@@ -6,6 +6,7 @@ const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editadd
     removeFavouriteRestaurant,
     getAddress,getUserDetails,
     updateUserDetails,
+    saveCustomerToken,
 
            getUserLoyaltyBalance,
            getLoyaltyTransactionHistory,
@@ -49,7 +50,7 @@ router.get("/loyalty/balance", protect, getUserLoyaltyBalance)
 router.get("/loyalty/history", protect, getLoyaltyTransactionHistory)
 
 router.get("/promocodes/:restaurantId", protect,getPromoCodesForCustomerAndRestaurant);
-
+router.post("/save-fcm-token",protect,saveCustomerToken)
 
 
 

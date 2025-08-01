@@ -112,3 +112,48 @@ exports.getMyTickets = async (req, res) => {
   }
 };
 
+
+
+exports.addTicketReply = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { message } = req.body;
+    const user = req.user;
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    const ticket = await Ticket.findById(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    // Determine if the sender is admin or user
+    const sender = "admin"
+    // Add the reply
+    ticket.replies.push({
+      sender,
+      message,
+      createdAt: new Date()
+    });
+
+    // Update ticket status if admin is replying
+    if (sender === 'admin') {
+      ticket.status = 'in_progress';
+    }
+
+    await ticket.save();
+
+    res.status(201).json({
+      message: "Reply added successfully",
+      ticket
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: "Server error", 
+      details: err.message 
+    });
+  }
+};

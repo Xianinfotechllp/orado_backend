@@ -17,7 +17,7 @@ const AccessLog = require('../models/accessLogModel')
 const { isValidObjectId } = require("mongoose");
 const {uploadOnCloudinary} = require("../utils/cloudinary")
 const fs = require('fs');
-
+const firebase = require('../config/firebaseAdmin');
 const DeviceToken = require("../models/deviceTokenModel");
 const path = require('path');
  exports.adminLogin = async (req, res) => {
@@ -1824,7 +1824,103 @@ exports.saveFcmToken = async (req, res) => {
   }
 };
 
+exports.sendPushNotification = async (req, res) => {
+  try {
+    const { userType, userIds, title, body, data = {} } = req.body;
 
+    // Validate userType
+    const validUserTypes = ["customer", "agent", "restaurant"];
+    if (!validUserTypes.includes(userType)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid user type. Valid types: ${validUserTypes.join(', ')}` 
+      });
+    }
+
+    // Select correct model (fixed restaurant bug)
+    let Model;
+    switch(userType) {
+      case "customer": Model = User; break;
+      case "agent": Model = Agent; break;
+      case "restaurant": Model = Restaurant; break; // Now correctly uses Restaurant model
+    }
+
+    // Fetch users and extract tokens
+    const users = await Model.find({ _id: { $in: userIds } }).lean();
+    const tokens = users.flatMap(user => {
+      // Unified token extraction logic (works for all user types)
+      if (userType === "agent" && Array.isArray(user.fcmTokens)) {
+        return user.fcmTokens.map(t => t.token).filter(Boolean);
+      } 
+      else if (Array.isArray(user.devices)) {
+        return user.devices
+          .filter(d => d.status === "active" && d.token)
+          .map(d => d.token);
+      }
+      return [];
+    }).filter(Boolean);
+
+    console.log("Valid FCM tokens:", tokens);
+    if (tokens.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "No valid FCM tokens found for the specified users." 
+      });
+    }
+
+    // Send notifications (using sendEachForMulticast for efficiency)
+    const message = {
+      tokens,
+      notification: { title, body },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK', // Required for Flutter
+        ...data,                                    // Merge custom data
+      },
+      apns: { // iOS-specific config (optional)
+        payload: {
+          aps: {
+            sound: "default",
+            mutableContent: true
+          }
+        }
+      },
+      android: { // Android-specific config (optional)
+        priority: "high",
+        notification: { 
+          sound: "default",
+          channel_id: "high_importance_channel" 
+        }
+      }
+    };
+
+    const response = await firebase.messaging().sendEachForMulticast(message);
+
+    // Log detailed results
+    response.responses.forEach((resp, idx) => {
+      if (!resp.success) {
+        console.error(`Failed to send to ${tokens[idx]}:`, resp.error?.message);
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Notifications processed",
+      sentCount: response.successCount,
+      failedCount: response.failureCount,
+      failedTokens: response.responses
+        .map((resp, idx) => (!resp.success ? tokens[idx] : null))
+        .filter(Boolean)
+    });
+
+  } catch (err) {
+    console.error("Notification error:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error",
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
+  }
+};
 
 
 

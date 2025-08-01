@@ -163,8 +163,52 @@ const userSchema = new mongoose.Schema(
     },
 
 
+devices: [
+      {
+        token: {
+          type: String,
+          required: true,
+       
+        },
+        platform: {
+          type: String,
+          enum: ['android', 'ios', 'web'],
+          
+        },
+        deviceId: {
+          type: String,
+          
+        },
+        fcmToken: {
+          type: String,
+        
+        },
+        status: {
+          type: String,
+          enum: ['active', 'inactive'],
+          default: 'active'
+        },
+        lastActive: {
+          type: Date,
+          default: Date.now
+        },
+        appVersion: String,
+        osVersion: String,
+        // Additional metadata if needed
+        metadata: mongoose.Schema.Types.Mixed
+      }
+    ]
+
+
+
+
+
+
+
   },
   { timestamps: true }
 );
+
+
 
 module.exports = mongoose.model("User", userSchema);

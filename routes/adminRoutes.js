@@ -16,8 +16,8 @@ saveFcmToken,
 
 
 
-   getAdminProfileById, updateAdminProfile, updateAdminPassword, getOrdersByCustomerAdmin,
-
+   getAdminProfileById, updateAdminProfile, updateAdminPassword, getOrdersByCustomerAdmin
+   ,sendPushNotification
   
 } = require("../controllers/adminController");
 const {refundToWallet, getAllRefundTransactions} = require('../controllers/walletController')
@@ -248,6 +248,10 @@ router.get('/agent/selfies/:id', getSelfieDetails);
 router.get('/agent/:agentId/selfies', getAgentSelfieHistory);
 router.patch('/agent/selfie/:id/review', protect, reviewAgentSelfie);
 
+
+
+//push notificton to user agetn restu
+router.post('/send-push-notification',sendPushNotification)
 
 
 

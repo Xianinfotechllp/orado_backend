@@ -135,3 +135,45 @@ exports.getMyTickets = async (req, res) => {
   }
 };
 
+
+
+
+exports.getTicketById = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const userId = req.user._id;
+
+    // Validate ticketId
+    if (!mongoose.Types.ObjectId.isValid(ticketId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID",
+      });
+    }
+
+    // Find the ticket by ID and make sure it belongs to the current user
+    const ticket = await Ticket.findOne({ _id: ticketId, user: userId }).lean();
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Ticket not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Ticket fetched successfully",
+      data: ticket
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch ticket",
+      error: err.message
+    });
+  }
+};
+
+
+
