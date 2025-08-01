@@ -50,7 +50,7 @@ exports.addMessage = async (req, res) => {
   try {
     const { ticketId } = req.params;
     const { message } = req.body;
-    const sender = req.user.userType?.toLowerCase() === "admin" ? "admin" : "user";
+    const sender =  "user";
 
     if (!message) {
       return res.status(400).json({ error: "Message is required" });

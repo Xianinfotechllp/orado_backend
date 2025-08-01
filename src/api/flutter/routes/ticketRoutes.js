@@ -9,7 +9,7 @@ const { protect, isAdmin,checkPermission } = require("../middlewares/authMiddlew
 // // User routes
 router.post("/create", protect, ticketController.createTicket);
 router.get("/my", protect, ticketController.getMyTickets);
-router.post("/:ticketId/message", protect, ticketController.addMessage);
+router.post("/:ticketId/reply", protect, ticketController.addMessage);
 router.get("/my/:ticketId", protect, ticketController.getTicketById);
 
 // Admin routes
