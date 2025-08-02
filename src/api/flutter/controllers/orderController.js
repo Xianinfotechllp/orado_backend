@@ -2506,15 +2506,15 @@ exports.placeOrderWithAddressId = async (req, res) => {
     await emitNewOrderToAdmin(io, savedOrder._id);
     
 const orderItemsList = savedOrder.orderItems.map(item => 
-  `${item.quantity} ${item.name} (₹${item.price} each)`
+  `${item.quantity} ${item.name}` 
 ).join(', ');
 
 const totalAmount = savedOrder.orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
 const orderNumber = savedOrder._id.toString().slice(-6).toUpperCase();
 
 await notificationService.sendNotificationToAdmins({
-  title: `New Order #${orderNumber} - ₹${totalAmount}`,
-  body: `New order received. Order ${orderNumber}: ${orderItemsList}. Total: ₹${totalAmount}`,
+  title: `New Order Recieved`,
+  body: `Order for ${orderItemsList}. Total: ₹${totalAmount}`,
 
 });
 
