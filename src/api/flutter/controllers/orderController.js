@@ -2226,18 +2226,25 @@ exports.placeOrderWithAddressId = async (req, res) => {
       couponCode,
       promoCode,
       instructions,
-      addressId ,
+      addressId,
       tipAmount = 0,
       useLoyaltyPoints = false,
       loyaltyPointsToRedeem = null
     } = req.body;
 
-    
     // Validate required fields
     if (!cartId || !paymentMethod || !addressId) {
       return res.status(400).json({
         message: "Missing required fields: cartId, paymentMethod, addressId",
         messageType: "failure",
+      });
+    }
+
+    // Validate payment method
+    if (!['online', 'cash', 'wallet'].includes(paymentMethod)) {
+      return res.status(400).json({
+        message: "Invalid payment method",
+        messageType: "failure"
       });
     }
 
@@ -2250,7 +2257,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
       });
     }
 
-    // Validate address
+    // Validate address exists and has coordinates
     const selectedAddress = user.addresses.id(addressId);
     if (!selectedAddress || !selectedAddress.location?.coordinates) {
       return res.status(404).json({ 
@@ -2289,6 +2296,14 @@ exports.placeOrderWithAddressId = async (req, res) => {
       return res.status(404).json({
         message: "Restaurant not found",
         messageType: "failure",
+      });
+    }
+
+    // Check if restaurant is open
+    if (!restaurant.isOpen) {
+      return res.status(400).json({
+        message: "Restaurant is currently closed",
+        messageType: "failure"
       });
     }
 
@@ -2357,10 +2372,11 @@ exports.placeOrderWithAddressId = async (req, res) => {
       orderStatus = "accepted_by_restaurant";
     }
 
-    // Create the order document with comprehensive structure
+    // Create the order document
     const newOrder = new Order({
       customerId: userId,
       restaurantId: restaurant._id,
+      cartId, // Store cart ID for cleanup
       orderItems: cartProducts,
       paymentMethod,
       orderStatus,
@@ -2400,12 +2416,12 @@ exports.placeOrderWithAddressId = async (req, res) => {
       totalAmount: bill.finalAmount,
       couponCode,
       promoCode: {
-        code: bill.promoCodeInfo.code,
-        discount: bill.promoCodeInfo.discount,
-        promoCodeId: bill.promoCodeInfo.applied ? PromoCode._id : null
+        code: bill.promoCodeInfo?.code || null,
+        discount: bill.promoCodeInfo?.discount || 0,
+        promoCodeId: bill.promoCodeInfo?.applied ? PromoCode._id : null
       },
-      loyaltyPointsUsed: bill.loyaltyPoints.used,
-      loyaltyPointsValue: bill.loyaltyPoints.discount,
+      loyaltyPointsUsed: bill.loyaltyPoints?.used || 0,
+      loyaltyPointsValue: bill.loyaltyPoints?.discount || 0,
       appliedOffers: bill.offersApplied?.map(offer => ({
         offerId: offer._id,
         title: offer.title,
@@ -2427,9 +2443,9 @@ exports.placeOrderWithAddressId = async (req, res) => {
         { units: "kilometers" }
       ),
       loyaltyPoints: {
-        used: bill.loyaltyPoints.used,
-        value: bill.loyaltyPoints.discount,
-        potentialEarned: bill.loyaltyPoints.potentialEarned
+        used: bill.loyaltyPoints?.used || 0,
+        value: bill.loyaltyPoints?.discount || 0,
+        potentialEarned: bill.loyaltyPoints?.potentialEarned || 0
       }
     });
 
@@ -2450,13 +2466,11 @@ exports.placeOrderWithAddressId = async (req, res) => {
         razorpayOrderId: razorpayOrder.id,
         amount: bill.finalAmount,
         currency: "INR",
-        status: "created"
+        status: "created",
+        verificationStatus: "pending"
       };
 
       await newOrder.save();
-
-      // Emit events
-
 
       return res.status(200).json({
         message: "Order created. Proceed to payment.",
@@ -2475,19 +2489,21 @@ exports.placeOrderWithAddressId = async (req, res) => {
 
     // Emit events
     const io = req.app.get("io");
-   await emitNewOrderToAdmin(io, savedOrder._id);
-await notificationService.sendNotificationToAdmins({
-  title: "New Order Received",
-  body: `New order with ${savedOrder.orderItems.length} items`,
-  data: {
-    orderId: savedOrder._id.toString(),
-    restaurantId: savedOrder.restaurantId.toString(),
-    itemCount: savedOrder.orderItems.length,
-    itemNames: savedOrder.orderItems.map(item => item.name).join(', '),
-    totalAmount: savedOrder.totalAmount,
-    deepLinkUrl: `/admin/orders/${savedOrder._id}`
-  }
-});
+    await emitNewOrderToAdmin(io, savedOrder._id);
+    
+    await notificationService.sendNotificationToAdmins({
+      title: "New Order Received",
+      body: `New order with ${savedOrder.orderItems.length} items`,
+      data: {
+        orderId: savedOrder._id.toString(),
+        restaurantId: savedOrder.restaurantId.toString(),
+        itemCount: savedOrder.orderItems.length,
+        itemNames: savedOrder.orderItems.map(item => item.name).join(', '),
+        totalAmount: savedOrder.totalAmount,
+        deepLinkUrl: `/admin/orders/${savedOrder._id}`
+      }
+    });
+
     // Assign delivery agent
     try {
       const assignmentResult = await assignTask(savedOrder._id);
@@ -2525,8 +2541,8 @@ await notificationService.sendNotificationToAdmins({
       orderStatus: savedOrder.orderStatus,
       agentAssignmentStatus: savedOrder.agentAssignmentStatus,
       loyaltyPoints: {
-        used: bill.loyaltyPoints.used,
-        potentialEarned: bill.loyaltyPoints.potentialEarned
+        used: bill.loyaltyPoints?.used || 0,
+        potentialEarned: bill.loyaltyPoints?.potentialEarned || 0
       }
     });
 
@@ -2750,6 +2766,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 exports.verifyPayment = async (req, res) => {
   try {
+    const userId = req.user._id;
     const {
       razorpay_order_id,
       razorpay_payment_id,
@@ -2757,79 +2774,104 @@ exports.verifyPayment = async (req, res) => {
       orderId,
     } = req.body;
 
-    if (
-      !razorpay_order_id ||
-      !razorpay_payment_id ||
-      !razorpay_signature ||
-      !orderId
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Missing payment details", messageType: "failure" });
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !orderId) {
+      return res.status(400).json({ 
+        message: "Missing payment details", 
+        messageType: "failure" 
+      });
     }
 
-    // 1️⃣ Generate expected signature
+    // Verify order exists and belongs to user
+    const order = await Order.findOne({
+      _id: orderId,
+      customerId: userId
+    });
+
+    if (!order) {
+      return res.status(404).json({ 
+        message: "Order not found or doesn't belong to user",
+        messageType: "failure" 
+      });
+    }
+
+    // Check if payment is already verified
+    if (order.paymentStatus === 'completed') {
+      return res.status(200).json({
+        message: "Payment already verified",
+        messageType: "success",
+        orderId: order._id,
+        paymentStatus: order.paymentStatus
+      });
+    }
+
+    // Generate expected signature
     const generatedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(razorpay_order_id + "|" + razorpay_payment_id)
       .digest("hex");
 
-    // 2️⃣ Compare
+    // Compare signatures
     if (generatedSignature !== razorpay_signature) {
       await Order.findByIdAndUpdate(orderId, {
         $set: {
           "onlinePaymentDetails.verificationStatus": "failed",
           "onlinePaymentDetails.failureReason": "Invalid signature",
-        },
+          "paymentStatus": "failed"
+        }
       });
 
-      return res
-        .status(400)
-        .json({ message: "Invalid payment signature", messageType: "failure" });
+      return res.status(400).json({ 
+        message: "Invalid payment signature", 
+        messageType: "failure" 
+      });
     }
 
-    // 3️⃣ Update order payment status
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res
-        .status(404)
-        .json({ message: "Order not found", messageType: "failure" });
-    }
-
+    // Update order payment status
     order.paymentStatus = "completed";
     order.onlinePaymentDetails = {
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature,
       verificationStatus: "verified",
+      verifiedAt: new Date()
     };
+    
     await order.save();
 
-  if (order.cartId) {
-  await Cart.findByIdAndDelete(order.cartId);
-}
+    // Clear cart if exists
+    if (order.cartId) {
+      await Cart.findByIdAndDelete(order.cartId);
+    }
 
-    // 4️⃣ Trigger task allocation after payment verification
+    // Trigger task allocation after payment verification
     const allocationResult = await assignTask(orderId);
-    console.log("🚚 Allocation Result after payment:", allocationResult);
 
-  return res.status(200).json({
-  message: "Payment verified and order confirmed.",
-  messageType: "success",
-  orderId: order._id,
-  paymentStatus: order.paymentStatus,
-  allocation: {
-    status: allocationResult.status,
-    agentId: allocationResult.agent ? allocationResult.agent._id : null,
-    agentName: allocationResult.agent ? allocationResult.agent.fullName : null,
-    reason: allocationResult.reason || allocationResult.error || null,
-  },
-  nextSteps: order.paymentMethod === "online"
-    ? "Order is now being processed, agent will be assigned shortly."
-    : "Awaiting agent assignment.",
-})
+    return res.status(200).json({
+      message: "Payment verified and order confirmed.",
+      messageType: "success",
+      orderId: order._id,
+      paymentStatus: order.paymentStatus,
+      allocation: {
+        status: allocationResult.success ? "success" : "pending",
+        agentId: allocationResult.agentId || null,
+        reason: allocationResult.message || null,
+      }
+    });
+
   } catch (err) {
     console.error("Payment verification error:", err);
+    
+    // Update order status if verification failed
+    if (orderId) {
+      await Order.findByIdAndUpdate(orderId, {
+        $set: {
+          "onlinePaymentDetails.verificationStatus": "failed",
+          "onlinePaymentDetails.failureReason": err.message,
+          "paymentStatus": "failed"
+        }
+      });
+    }
+
     res.status(500).json({
       message: "Failed to verify payment",
       messageType: "failure",
