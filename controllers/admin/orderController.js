@@ -2,6 +2,8 @@ const Order = require("../../models/orderModel")
 const Agent = require("../../models/agentModel")
 const Restaurant = require("../../models/restaurantModel")
 
+const notificationService = require("../../services/notificationService"); // Import the notification service
+
 const mongoose = require("mongoose")
 exports.getActiveOrdersStats = async (req, res) => {
   try {
@@ -327,7 +329,7 @@ exports.updateOrderStatus = async (req, res) => {
 
     // Find and update order
     const order = await Order.findById(orderId)
-      .populate("customerId", "_id")
+      .populate("customerId", "_id devices") // Include devices for FCM tokens
       .populate("restaurantId", "_id")
       .populate("assignedAgent", "_id");
 
@@ -423,6 +425,23 @@ exports.updateOrderStatus = async (req, res) => {
           );
         }
       }
+    }
+
+    // Send FCM notification to the customer
+    try {
+      await notificationService.sendOrderNotification({
+        userId: order.customerId._id,
+        title: `Order Status Updated`,
+        body: `Your order #${order._id.toString().slice(-6)} is now ${status}.`,
+        orderId: order._id.toString(),
+        data: {
+          orderStatus: status,
+          previousStatus: previousStatus,
+        },
+        deepLinkUrl: `/orders/${order._id}`,
+      });
+    } catch (notificationError) {
+      console.error("Failed to send FCM notification:", notificationError.message);
     }
 
     return res.status(200).json({
