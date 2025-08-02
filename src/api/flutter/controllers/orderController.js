@@ -2300,7 +2300,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
     }
 
     // Check if restaurant is open
-    if (!restaurant.isOpen) {
+    if (!restaurant.active) {
       return res.status(400).json({
         message: "Restaurant is currently closed",
         messageType: "failure"
