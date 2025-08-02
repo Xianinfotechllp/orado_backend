@@ -2376,7 +2376,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
     const newOrder = new Order({
       customerId: userId,
       restaurantId: restaurant._id,
-      cartId, // Store cart ID for cleanup
+      cartId:cartId,
       orderItems: cartProducts,
       paymentMethod,
       orderStatus,
@@ -2851,10 +2851,10 @@ exports.verifyPayment = async (req, res) => {
       verifiedAt: new Date()
     };
     
-    await order.save();
+   const savedOrder =   await order.save();
 
     // Clear cart if exists
-    if (order.cartId) {
+    if (savedOrder.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
@@ -2862,7 +2862,7 @@ exports.verifyPayment = async (req, res) => {
 
 
       await notificationService.sendOrderNotification({
-      userId: userId,
+      userId: savedOrder.customerId,
       title: "Payment Successful",
       body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
       orderId: order._id.toString(),

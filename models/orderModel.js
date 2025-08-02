@@ -21,7 +21,7 @@ respondedAt: Date,
 const orderSchema = new mongoose.Schema({
 customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant' },
-
+cartId:{type: mongoose.Schema.Types.ObjectId, ref:"Cart"},
 orderItems: [{
   productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
   quantity: Number,
