@@ -286,9 +286,9 @@ router.get('/send-test-notification', async (req, res) => {
   };
 
   try {
-    const response = await admin.messaging().send(message);
+    // const response = await admin.messaging().send(message);
     console.log('✅ Notification sent:');
-    res.json({ success: true, message: 'Notification sent',response  });
+    res.json({ success: true, message: 'Notification sent'  });
   } catch (error) {
     console.error('❌ Error sending notification:', error);
     res.status(500).json({ success: false, error: error.message });

@@ -2507,15 +2507,8 @@ exports.placeOrderWithAddressId = async (req, res) => {
     
     await notificationService.sendNotificationToAdmins({
       title: "New Order Received",
-      body: `New order with ${savedOrder.orderItems.length} items`,
-      data: {
-        orderId: savedOrder._id.toString(),
-        restaurantId: savedOrder.restaurantId.toString(),
-        itemCount: savedOrder.orderItems.length,
-        itemNames: savedOrder.orderItems.map(item => item.name).join(', '),
-        totalAmount: savedOrder.totalAmount,
-        deepLinkUrl: `/admin/orders/${savedOrder._id}`
-      }
+      body: `New order with items`,
+
     });
 
   
