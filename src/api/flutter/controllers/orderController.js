@@ -2851,10 +2851,10 @@ exports.verifyPayment = async (req, res) => {
       verifiedAt: new Date()
     };
     
-   const savedOrder =   await order.save();
+   await order.save();
 
     // Clear cart if exists
-    if (savedOrder.cartId) {
+    if (order.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
@@ -2862,7 +2862,7 @@ exports.verifyPayment = async (req, res) => {
 
 
       await notificationService.sendOrderNotification({
-      userId: savedOrder.customerId,
+      userId: order.customerId,
       title: "Payment Successful",
       body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
       orderId: order._id.toString(),
