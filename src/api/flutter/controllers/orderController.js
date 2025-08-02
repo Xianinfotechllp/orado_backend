@@ -2515,13 +2515,7 @@ const orderNumber = savedOrder._id.toString().slice(-6).toUpperCase();
 await notificationService.sendNotificationToAdmins({
   title: `New Order #${orderNumber} - ₹${totalAmount}`,
   body: `New order received. Order ${orderNumber}: ${orderItemsList}. Total: ₹${totalAmount}`,
-  data: {
-    orderId: savedOrder._id.toString(),
-    restaurantName: restaurant.name,
-    totalAmount: totalAmount,
-    orderItems: savedOrder.orderItems,
-    currency: "INR"
-  }
+
 });
 
   
