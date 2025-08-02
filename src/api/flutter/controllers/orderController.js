@@ -1276,159 +1276,159 @@ exports.getOrderPriceSummary = async (req, res) => {
 
 
 
-exports.getOrderPriceSummaryByaddressId = async (req, res) => {
-  try {
-    const { addressId } = req.params;
-    const { 
-      couponCode, 
-      cartId, 
-   
-      tipAmount = 0,
-      promoCode,
-      useLoyaltyPoints = false,
-      loyaltyPointsToRedeem = null
-    } = req.body;
-const userId = req.user._id;
-console.log(req.body)
-console.log(userId,cartId,addressId)
+  exports.getOrderPriceSummaryByaddressId = async (req, res) => {
+    try {
+      const { addressId } = req.params;
+      const { 
+        couponCode, 
+        cartId, 
+    
+        tipAmount = 0,
+        promoCode,
+        useLoyaltyPoints = false,
+        loyaltyPointsToRedeem = null
+      } = req.body;
+  const userId = req.user._id;
+  console.log(req.body)
+  console.log(userId,cartId,addressId)
 
-    // Basic validation
-    if (!cartId || !userId || !addressId) {
-      return res.status(400).json({
-        message: "cartId, userId, and addressId are required",
+      // Basic validation
+      if (!cartId || !userId || !addressId) {
+        return res.status(400).json({
+          message: "cartId, userId, and addressId are required",
+          messageType: "failure",
+        });
+      }
+
+      // Find user and their address
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+          messageType: "failure",
+        });
+      }
+
+      // Find the specific address
+      const address = user.addresses.id(addressId);
+      if (!address || !address.location || !address.location.coordinates) {
+        return res.status(404).json({
+          message: "Address not found or invalid location data",
+          messageType: "failure",
+        });
+      }
+
+      // Find cart and validate
+      const cart = await Cart.findOne({ _id: cartId, user: userId });
+      if (!cart) {
+        return res.status(404).json({
+          message: "Cart not found for this user",
+          messageType: "failure",
+        });
+      }
+
+      if (!cart.products || cart.products.length === 0) {
+        return res.status(400).json({
+          message: "Cart is empty",
+          messageType: "failure",
+        });
+      }
+
+      const restaurant = await Restaurant.findById(cart.restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({
+          message: "Restaurant not found",
+          messageType: "failure",
+        });
+      }
+
+      // Prepare coordinates and calculate costs
+      const userCoords = address.location.coordinates;
+      const restaurantCoords = restaurant.location.coordinates;
+      const preSurgeOrderAmount = cart.products.reduce(
+        (total, item) => total + item.price * item.quantity,
+        0
+      );
+
+      // Get applicable offers and surge pricing
+      const offers = await Offer.find({
+        applicableRestaurants: restaurant._id,
+        isActive: true,
+        validFrom: { $lte: new Date() },
+        validTill: { $gte: new Date() },
+      }).lean();
+
+      const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
+      const isSurge = !!surgeObj;
+      const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+
+      // Calculate fees and taxes
+      const deliveryFee = await feeService.calculateDeliveryFee(
+        restaurantCoords,
+        userCoords
+      );
+      const foodTax = await feeService.getActiveTaxes("food");
+
+      // Get loyalty settings if applicable
+      const loyaltySettings = await LoyaltySettings.findOne({ 
+        merchantId: restaurant._id 
+      }).lean();
+
+      // Calculate cost using V2 function
+      const costSummary = await calculateOrderCostV2({
+        cartProducts: cart.products,
+        tipAmount: parseFloat(tipAmount) || 0,
+        couponCode,
+        promoCode,
+        deliveryFee,
+        offers,
+        revenueShare: { type: "percentage", value: 20 }, // Default 20% revenue share
+        taxes: foodTax,
+        isSurge,
+        surgeFeeAmount,
+        merchantId: restaurant._id,
+        userId,
+        useLoyaltyPoints,
+        loyaltyPointsAvailable: user.loyaltyPoints || 0,
+        loyaltySettings,
+        loyaltyPointsToRedeem,
+        PromoCode // Make sure this model is imported
+      });
+
+      // Prepare response data
+      const responseData = {
+        cartTotal: costSummary.cartTotal,
+        deliveryFee: costSummary.deliveryFee,
+        tipAmount: costSummary.tipAmount,
+        taxes: costSummary.taxBreakdown,
+        totalTax: costSummary.totalTaxAmount,
+        surgeFee: costSummary.surgeFee,
+        offerDiscount: costSummary.offerDiscount,
+        couponDiscount: costSummary.couponDiscount,
+        promoDiscount: costSummary.promoCodeInfo.discount,
+        totalDiscount: costSummary.totalDiscount,
+        finalAmount: costSummary.finalAmount,
+        isSurge: costSummary.isSurge,
+        surgeReason: costSummary.surgeReason,
+        appliedOffers: costSummary.offersApplied,
+        promoCodeInfo: costSummary.promoCodeInfo,
+        loyaltyInfo: costSummary.loyaltyPoints
+      };
+
+      return res.status(200).json({
+        message: "Bill summary calculated successfully",
+        messageType: "success",
+        data: responseData,
+      });
+    } catch (err) {
+      console.error("Error in getOrderPriceSummaryByaddressId:", err);
+      res.status(500).json({
+        message: "Server error while calculating order summary",
         messageType: "failure",
+        error: err.message
       });
     }
-
-    // Find user and their address
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-        messageType: "failure",
-      });
-    }
-
-    // Find the specific address
-    const address = user.addresses.id(addressId);
-    if (!address || !address.location || !address.location.coordinates) {
-      return res.status(404).json({
-        message: "Address not found or invalid location data",
-        messageType: "failure",
-      });
-    }
-
-    // Find cart and validate
-    const cart = await Cart.findOne({ _id: cartId, user: userId });
-    if (!cart) {
-      return res.status(404).json({
-        message: "Cart not found for this user",
-        messageType: "failure",
-      });
-    }
-
-    if (!cart.products || cart.products.length === 0) {
-      return res.status(400).json({
-        message: "Cart is empty",
-        messageType: "failure",
-      });
-    }
-
-    const restaurant = await Restaurant.findById(cart.restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({
-        message: "Restaurant not found",
-        messageType: "failure",
-      });
-    }
-
-    // Prepare coordinates and calculate costs
-    const userCoords = address.location.coordinates;
-    const restaurantCoords = restaurant.location.coordinates;
-    const preSurgeOrderAmount = cart.products.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0
-    );
-
-    // Get applicable offers and surge pricing
-    const offers = await Offer.find({
-      applicableRestaurants: restaurant._id,
-      isActive: true,
-      validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() },
-    }).lean();
-
-    const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
-    const isSurge = !!surgeObj;
-    const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
-
-    // Calculate fees and taxes
-    const deliveryFee = await feeService.calculateDeliveryFee(
-      restaurantCoords,
-      userCoords
-    );
-    const foodTax = await feeService.getActiveTaxes("food");
-
-    // Get loyalty settings if applicable
-    const loyaltySettings = await LoyaltySettings.findOne({ 
-      merchantId: restaurant._id 
-    }).lean();
-
-    // Calculate cost using V2 function
-    const costSummary = await calculateOrderCostV2({
-      cartProducts: cart.products,
-      tipAmount: parseFloat(tipAmount) || 0,
-      couponCode,
-      promoCode,
-      deliveryFee,
-      offers,
-      revenueShare: { type: "percentage", value: 20 }, // Default 20% revenue share
-      taxes: foodTax,
-      isSurge,
-      surgeFeeAmount,
-      merchantId: restaurant._id,
-      userId,
-      useLoyaltyPoints,
-      loyaltyPointsAvailable: user.loyaltyPoints || 0,
-      loyaltySettings,
-      loyaltyPointsToRedeem,
-      PromoCode // Make sure this model is imported
-    });
-
-    // Prepare response data
-    const responseData = {
-      cartTotal: costSummary.cartTotal,
-      deliveryFee: costSummary.deliveryFee,
-      tipAmount: costSummary.tipAmount,
-      taxes: costSummary.taxBreakdown,
-      totalTax: costSummary.totalTaxAmount,
-      surgeFee: costSummary.surgeFee,
-      offerDiscount: costSummary.offerDiscount,
-      couponDiscount: costSummary.couponDiscount,
-      promoDiscount: costSummary.promoCodeInfo.discount,
-      totalDiscount: costSummary.totalDiscount,
-      finalAmount: costSummary.finalAmount,
-      isSurge: costSummary.isSurge,
-      surgeReason: costSummary.surgeReason,
-      appliedOffers: costSummary.offersApplied,
-      promoCodeInfo: costSummary.promoCodeInfo,
-      loyaltyInfo: costSummary.loyaltyPoints
-    };
-
-    return res.status(200).json({
-      message: "Bill summary calculated successfully",
-      messageType: "success",
-      data: responseData,
-    });
-  } catch (err) {
-    console.error("Error in getOrderPriceSummaryByaddressId:", err);
-    res.status(500).json({
-      message: "Server error while calculating order summary",
-      messageType: "failure",
-      error: err.message
-    });
-  }
-};
+  };
 
 // exports.getOrderPriceSummaryByaddressId = async (req, res) => {
 //   try {
@@ -2486,6 +2486,20 @@ exports.placeOrderWithAddressId = async (req, res) => {
 
     // Save COD order
     const savedOrder = await newOrder.save();
+      await notificationService.sendOrderNotification({
+      userId: userId,
+      title: "Order Placed Successfully",
+      body: `Your order #${savedOrder._id.toString().slice(-6)} has been received`,
+      orderId: savedOrder._id.toString(),
+      data: {
+        orderStatus: "placed",
+        restaurantName: restaurant.name,
+        estimatedDeliveryTime: "30-45 mins" // You can calculate this
+      },
+      deepLinkUrl: `/orders/${savedOrder._id}`
+    });
+
+
 
     // Emit events
     const io = req.app.get("io");
@@ -2843,6 +2857,23 @@ exports.verifyPayment = async (req, res) => {
     if (order.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
+
+
+
+
+      await notificationService.sendOrderNotification({
+      userId: userId,
+      title: "Payment Successful",
+      body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
+      orderId: order._id.toString(),
+      data: {
+        orderStatus: "payment_completed",
+        amount: order.totalAmount
+      },
+      deepLinkUrl: `/orders/${order._id}`
+    });
+
+
 
     // Trigger task allocation after payment verification
     const allocationResult = await assignTask(orderId);
