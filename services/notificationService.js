@@ -170,6 +170,7 @@ exports.sendOrderNotification = async ({
       console.log('User not found');
       return { success: false, error: 'User not found' };
     }
+    
 
     // 2. Find active mobile device tokens
     const fcmTokens = user.devices
@@ -179,7 +180,8 @@ exports.sendOrderNotification = async ({
         (device.token || device.fcmToken)
       )
       .map(device => device.token || device.fcmToken);
-
+    
+     console.log(fcmTokens)
     if (fcmTokens.length === 0) {
       console.log('No active devices found for user');
       return { success: false, error: 'No active devices' };

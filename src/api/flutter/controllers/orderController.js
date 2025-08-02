@@ -2858,7 +2858,7 @@ exports.verifyPayment = async (req, res) => {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
-
+    console.log(order.customerId)
 
 
       await notificationService.sendOrderNotification({
