@@ -170,7 +170,8 @@ exports.sendOrderNotification = async ({
       console.log('User not found');
       return { success: false, error: 'User not found' };
     }
-    
+
+    console.log('User devices:', user.devices);
 
     // 2. Find active mobile device tokens
     const fcmTokens = user.devices
@@ -180,10 +181,11 @@ exports.sendOrderNotification = async ({
         (device.token || device.fcmToken)
       )
       .map(device => device.token || device.fcmToken);
-    
-     console.log(fcmTokens)
+
+    console.log('FCM Tokens:', fcmTokens);
+
     if (fcmTokens.length === 0) {
-      console.log('No active devices found for user');
+      console.warn(`No active devices found for user ${userId}`);
       return { success: false, error: 'No active devices' };
     }
 
@@ -201,14 +203,12 @@ exports.sendOrderNotification = async ({
         type: notificationType,
         deepLink: deepLinkUrl || `yourapp://orders/${orderId}`
       },
-    
-      
     };
 
     // 4. Send notification
     const response = await admin.messaging().sendEachForMulticast(message);
     console.log(`✅ Notification sent to ${response.successCount} device(s)`);
-    
+
     return {
       success: true,
       response: response
@@ -222,4 +222,3 @@ exports.sendOrderNotification = async ({
     };
   }
 };
-

@@ -2851,29 +2851,30 @@ exports.verifyPayment = async (req, res) => {
       verifiedAt: new Date()
     };
     
-   await order.save();
+    await order.save();
 
     // Clear cart if exists
     if (order.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
-    console.log(order.customerId)
-
-
+    // Send notification after payment verification
+    try {
       await notificationService.sendOrderNotification({
-      userId: userId,
-      title: "Payment Successful",
-      body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
-      orderId: order._id.toString(),
-      data: {
-        orderStatus: "payment_completed",
-        amount: order.totalAmount
-      },
-      deepLinkUrl: `/orders/${order._id}`
-    });
-
-
+        userId: userId,
+        title: "Payment Successful",
+        body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
+        orderId: order._id.toString(),
+        data: {
+          orderStatus: "payment_completed",
+          amount: order.totalAmount
+        },
+        deepLinkUrl: `/orders/${order._id}`
+      });
+    } catch (notificationError) {
+      console.error("Notification error:", notificationError.message);
+      // Optionally, log or retry the notification
+    }
 
     // Trigger task allocation after payment verification
     const allocationResult = await assignTask(orderId);
