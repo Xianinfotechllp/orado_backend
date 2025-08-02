@@ -2503,19 +2503,6 @@ exports.placeOrderWithAddressId = async (req, res) => {
         deepLinkUrl: `/admin/orders/${savedOrder._id}`
       }
     });
-    await notificationService.sendOrderNotification({
-      userId: savedOrder.customerId,
-      title: `🎉 Order Confirmed #${savedOrder._id.toString().slice(-6)}`,
-      body: `Your order from ${restaurant.name} has been placed successfully`,
-      orderId: savedOrder._id.toString(),
-      data: {
-        restaurantId: restaurant._id.toString(),
-        totalAmount: savedOrder.totalAmount,
-        status: savedOrder.orderStatus
-      },
-      deepLinkUrl: `/orders/${savedOrder._id}`,
-      notificationType: 'order_confirmation'
-    });
 
   
     // Assign delivery agent
@@ -2799,7 +2786,7 @@ exports.verifyPayment = async (req, res) => {
     const order = await Order.findOne({
       _id: orderId,
       customerId: userId
-    }).populate('restaurantId', 'name');
+    });
 
     if (!order) {
       return res.status(404).json({ 
@@ -2857,45 +2844,8 @@ exports.verifyPayment = async (req, res) => {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
-    // Send payment success notification to customer
-    await notificationService.sendOrderNotification({
-      userId: order.customerId,
-      title: `✅ Payment Successful`,
-      body: `Your payment of ₹${order.totalAmount} for order #${order._id.toString().slice(-6)} has been processed`,
-      orderId: order._id.toString(),
-      data: {
-        amount: order.totalAmount,
-        restaurantName: order.restaurantId.name,
-        status: 'payment_completed'
-      },
-      notificationType: 'payment_success'
-    });
-
-    // Notify admins about successful payment
-    await notificationService.sendNotificationToAdmins({
-      title: "Payment Verified",
-      body: `Order #${order._id.toString().slice(-6)} payment completed`,
-      data: {
-        orderId: order._id.toString(),
-        amount: order.totalAmount,
-        restaurantId: order.restaurantId._id.toString(),
-        deepLinkUrl: `/admin/orders/${order._id}`
-      }
-    });
-
     // Trigger task allocation after payment verification
     const allocationResult = await assignTask(orderId);
-
-    // Notify customer if agent was assigned
-    if (allocationResult.success) {
-      await notificationService.sendOrderNotification({
-        userId: order.customerId,
-        title: `🛵 Delivery Agent Assigned`,
-        body: `${allocationResult.agentName} is on the way to pick up your order`,
-        orderId: order._id.toString(),
-        notificationType: 'agent_assigned'
-      });
-    }
 
     return res.status(200).json({
       message: "Payment verified and order confirmed.",
@@ -2905,10 +2855,8 @@ exports.verifyPayment = async (req, res) => {
       allocation: {
         status: allocationResult.success ? "success" : "pending",
         agentId: allocationResult.agentId || null,
-        agentName: allocationResult.agentName || null,
         reason: allocationResult.message || null,
-      },
-      notificationSent: true
+      }
     });
 
   } catch (err) {
@@ -2923,22 +2871,6 @@ exports.verifyPayment = async (req, res) => {
           "paymentStatus": "failed"
         }
       });
-
-      // Notify customer about payment failure
-      try {
-        const order = await Order.findById(orderId);
-        if (order) {
-          await notificationService.sendOrderNotification({
-            userId: order.customerId,
-            title: `❌ Payment Failed`,
-            body: `We couldn't process your payment for order #${order._id.toString().slice(-6)}`,
-            orderId: order._id.toString(),
-            notificationType: 'payment_failed'
-          });
-        }
-      } catch (notificationError) {
-        console.error("Failed to send payment failure notification:", notificationError);
-      }
     }
 
     res.status(500).json({
@@ -2948,6 +2880,7 @@ exports.verifyPayment = async (req, res) => {
     });
   }
 };
+
 
 
 
