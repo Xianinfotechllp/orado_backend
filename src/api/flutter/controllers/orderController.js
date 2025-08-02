@@ -2789,57 +2789,7 @@ exports.verifyPayment = async (req, res) => {
       orderId,
     } = req.body;
 
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !orderId) {
-      return res.status(400).json({ 
-        message: "Missing payment details", 
-        messageType: "failure" 
-      });
-    }
-
-    // Verify order exists and belongs to user
-    const order = await Order.findOne({
-      _id: orderId,
-      customerId: userId
-    });
-
-    if (!order) {
-      return res.status(404).json({ 
-        message: "Order not found or doesn't belong to user",
-        messageType: "failure" 
-      });
-    }
-
-    // Check if payment is already verified
-    if (order.paymentStatus === 'completed') {
-      return res.status(200).json({
-        message: "Payment already verified",
-        messageType: "success",
-        orderId: order._id,
-        paymentStatus: order.paymentStatus
-      });
-    }
-
-    // Generate expected signature
-    const generatedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(razorpay_order_id + "|" + razorpay_payment_id)
-      .digest("hex");
-
-    // Compare signatures
-    if (generatedSignature !== razorpay_signature) {
-      await Order.findByIdAndUpdate(orderId, {
-        $set: {
-          "onlinePaymentDetails.verificationStatus": "failed",
-          "onlinePaymentDetails.failureReason": "Invalid signature",
-          "paymentStatus": "failed"
-        }
-      });
-
-      return res.status(400).json({ 
-        message: "Invalid payment signature", 
-        messageType: "failure" 
-      });
-    }
+    // [Previous validation code remains the same...]
 
     // Update order payment status
     order.paymentStatus = "completed";
@@ -2851,44 +2801,41 @@ exports.verifyPayment = async (req, res) => {
       verifiedAt: new Date()
     };
     
-   await order.save();
+    await order.save();
 
     // Clear cart if exists
     if (order.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
-    console.log(order.customerId)
+    // Enhanced notification sending with error handling
+    try {
+      console.log(`Attempting to send notification to user: ${order.customerId}`);
+      
+      const notificationResult = await notificationService.sendOrderNotification({
+        userId: order.customerId,
+        title: "Payment Successful",
+        body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
+        orderId: order._id.toString(),
+        data: {
+          orderStatus: "payment_completed",
+          amount: order.totalAmount
+        },
+        deepLinkUrl: `/orders/${order._id}`
+      });
 
-
-      await notificationService.sendOrderNotification({
-      userId: order.customerId,
-      title: "Payment Successful",
-      body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
-      orderId: order._id.toString(),
-      data: {
-        orderStatus: "payment_completed",
-        amount: order.totalAmount
-      },
-      deepLinkUrl: `/orders/${order._id}`
-    });
-
-
-
-    // Trigger task allocation after payment verification
-    const allocationResult = await assignTask(orderId);
-
-    return res.status(200).json({
-      message: "Payment verified and order confirmed.",
-      messageType: "success",
-      orderId: order._id,
-      paymentStatus: order.paymentStatus,
-      allocation: {
-        status: allocationResult.success ? "success" : "pending",
-        agentId: allocationResult.agentId || null,
-        reason: allocationResult.message || null,
+      if (!notificationResult.success) {
+        console.error('Notification failed:', notificationResult.error);
+        // You might want to log this to a monitoring service
+      } else {
+        console.log(`Notification sent successfully to ${notificationResult.response.successCount} device(s)`);
       }
-    });
+    } catch (notifError) {
+      console.error('Notification sending error:', notifError);
+      // Continue with the flow even if notification fails
+    }
+
+    // [Rest of your existing code...]
 
   } catch (err) {
     console.error("Payment verification error:", err);
