@@ -38,7 +38,6 @@ const { protect, checkRole, checkPermission } = require('../middlewares/authMidd
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
 
-
 const {createOffer,getAllOffers,getRestaurantsWithOffersAggregated} = require("../controllers/offerController");
 const { addTax, getAllTaxes, deleteTax, editTax, toggleTaxStatus,updateDeliveryFeeSettings, getDeliveryFeeSettings} = require("../controllers/admin/taxAndFeeSettingController");
 const {sendNotification} = require('../controllers/admin/notificationControllers');
@@ -295,6 +294,105 @@ router.get('/send-test-notification', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+
+
+router.post("/test-not", async (req, res) => {
+  try {
+    const { userId, testScenario } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    let notificationPayload;
+    
+    // Define different test scenarios
+    switch(testScenario) {
+      case 'order_placed':
+        notificationPayload = {
+          title: 'Test Order Placed',
+          body: 'Your test order has been placed successfully',
+          orderId: 'test_order_123',
+          data: {
+            orderStatus: 'placed',
+            testData: 'This is a test order placement notification'
+          }
+        };
+        break;
+        
+      case 'order_status_update':
+        notificationPayload = {
+          title: 'Test Order Update',
+          body: 'Your test order status has been updated',
+          orderId: 'test_order_123',
+          data: {
+            orderStatus: 'preparing',
+            testData: 'This is a test order status update'
+          }
+        };
+        break;
+        
+      case 'delivery_assignment':
+        notificationPayload = {
+          title: 'Test Delivery Agent',
+          body: 'John D. has been assigned to deliver your order',
+          orderId: 'test_order_123',
+          data: {
+            orderStatus: 'agent_assigned',
+            agentName: 'John D.',
+            agentContact: '+1234567890'
+          }
+        };
+        break;
+        
+      default:
+        notificationPayload = {
+          title: 'Test Notification',
+          body: 'This is a test notification from the server',
+          orderId: 'test_order_123',
+          data: {
+            testData: 'Default test notification payload'
+          }
+        };
+    }
+
+    // Call your notification service
+    const result = await notificationService.sendOrderNotification({
+      userId: userId,
+      ...notificationPayload
+    });
+
+    if (result.success) {
+      return res.status(200).json({
+        success: true,
+        message: 'Test notification sent successfully',
+        details: {
+          devices: result.response.successCount,
+          scenario: testScenario || 'default',
+          payload: notificationPayload
+        }
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to send test notification',
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Test notification error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error during notification test',
+      error: error.message
+    });
+  }
+})
 
 
 

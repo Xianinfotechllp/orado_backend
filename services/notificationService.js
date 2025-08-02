@@ -199,21 +199,8 @@ exports.sendOrderNotification = async ({
         type: notificationType,
         deepLink: deepLinkUrl || `yourapp://orders/${orderId}`
       },
-      apns: {
-        payload: {
-          aps: {
-            'mutable-content': 1,
-            sound: sound
-          }
-        }
-      },
-      android: {
-        priority: 'high',
-        notification: {
-          sound: sound,
-          channel_id: androidChannel
-        }
-      }
+    
+      
     };
 
     // 4. Send notification
