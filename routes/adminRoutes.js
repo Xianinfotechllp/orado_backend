@@ -27,7 +27,7 @@ const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveAp
   getAgentSelfies,getAgentSelfieHistory,getSelfieDetails,
   getAgentCODSummary
 } = require("../controllers/admin/agentControllers")
-
+const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
 
@@ -259,8 +259,16 @@ router.post('/send-push-notification', upload.single("image"),sendPushNotificati
 
 const admin = require('../config/firebaseAdmin');
 const { addAgentEarnigsSetting, getAgentEarningsSettings } = require("../controllers/admin/agentEarnigsettings");
-const fcmToken ='dhntz4297pISXgPjGk9Zw4:APA91bEIqtwOprgR7vEQzTKDfkHz8VLTPvWvYBdbnZ8YPt1SjSrr-sKT-FDlIGKw8DOakhohUyjtokDGfRCgcvTcl5RKY3IV4yUbC83cs6ELik5N206TUUU';
+// const fcmToken ='fuSZmmKPQq66p53WOmBE0n:APA91bFLxmPN6DYQudlk81dmo45EF-jbux16F_E9bHsTQFEnPeq_BXyUZMSeCQCTzCdzxo2XxST_wTXEYrVHnvvBpxAn2dmWqa2NgykT1LSXqw6EGwuDVAA';
 router.get('/send-test-notification', async (req, res) => {
+  
+
+
+
+  const fcmToken = req.query.token
+
+  await notificationService.sendNotificationToAdmins({title:"hello",body:"mew order from amal"})
+  // console.log('Sending notification to', fcmToken);
   const message = {
     token: fcmToken,
     notification: {
@@ -280,8 +288,8 @@ router.get('/send-test-notification', async (req, res) => {
 
   try {
     const response = await admin.messaging().send(message);
-    console.log('✅ Notification sent:', response);
-    res.json({ success: true, message: 'Notification sent', response });
+    console.log('✅ Notification sent:');
+    res.json({ success: true, message: 'Notification sent',response  });
   } catch (error) {
     console.error('❌ Error sending notification:', error);
     res.status(500).json({ success: false, error: error.message });

@@ -21,6 +21,8 @@ const razorpay = require("../config/razorpayInstance");
 const geoService = require("../../../../services/geoServices");
 const LoyalitySettings = require("../../../../models/LoyaltySettingModel");
 const { emitNewOrderToAdmin } = require("../../../../services/orderSocketService");
+const notificationService = require("../../../../services/notificationService")
+
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -2454,8 +2456,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
       await newOrder.save();
 
       // Emit events
-      const io = req.app.get("io");
- 
+
 
       return res.status(200).json({
         message: "Order created. Proceed to payment.",
@@ -2475,7 +2476,18 @@ exports.placeOrderWithAddressId = async (req, res) => {
     // Emit events
     const io = req.app.get("io");
    await emitNewOrderToAdmin(io, savedOrder._id);
-
+await notificationService.sendNotificationToAdmins({
+  title: "New Order Received",
+  body: `New order with ${savedOrder.orderItems.length} items`,
+  data: {
+    orderId: savedOrder._id.toString(),
+    restaurantId: savedOrder.restaurantId.toString(),
+    itemCount: savedOrder.orderItems.length,
+    itemNames: savedOrder.orderItems.map(item => item.name).join(', '),
+    totalAmount: savedOrder.totalAmount,
+    deepLinkUrl: `/admin/orders/${savedOrder._id}`
+  }
+});
     // Assign delivery agent
     try {
       const assignmentResult = await assignTask(savedOrder._id);
@@ -2801,7 +2813,7 @@ exports.verifyPayment = async (req, res) => {
     const allocationResult = await assignTask(orderId);
     console.log("🚚 Allocation Result after payment:", allocationResult);
 
-   return res.status(200).json({
+  return res.status(200).json({
   message: "Payment verified and order confirmed.",
   messageType: "success",
   orderId: order._id,

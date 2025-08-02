@@ -1802,26 +1802,89 @@ exports.getOrdersByCustomerAdmin = async (req, res) => {
 
 exports.saveFcmToken = async (req, res) => {
   try {
-    const { token, platform = 'web' } = req.body;
+    const { token, platform = 'web', deviceId, appVersion, osVersion } = req.body;
     const userId = req.user._id;
+    const userType = req.user.userType; // Get user type from authenticated user
 
+    // Validate required fields
     if (!userId || !token) {
-      return res.status(400).json({ message: 'Missing required fields' });
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    const existing = await DeviceToken.findOne({ token });
+    // Validate platform
+    const validPlatforms = ['android', 'ios', 'web'];
+    if (!validPlatforms.includes(platform)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid platform. Valid platforms: ${validPlatforms.join(', ')}` 
+      });
+    }
 
-    if (!existing) {
-      await DeviceToken.create({ userId, token, platform });
+    // Find user to verify existence
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Prepare device data
+    const deviceData = {
+      token,
+      platform,
+      deviceId: deviceId || null,
+      fcmToken: platform !== 'web' ? token : null, // Store FCM token only for mobile
+      webPushSubscription: platform === 'web' ? token : null, // For web push
+      status: 'active',
+      lastActive: new Date(),
+      appVersion: appVersion || null,
+      osVersion: osVersion || null
+    };
+
+    // Check if device already exists (by deviceId or token)
+    let existingDeviceIndex = -1;
+    
+    if (deviceId) {
+      existingDeviceIndex = user.devices.findIndex(d => d.deviceId === deviceId);
+    }
+    
+    if (existingDeviceIndex === -1) {
+      existingDeviceIndex = user.devices.findIndex(d => d.token === token);
+    }
+
+    // Update or add device
+    if (existingDeviceIndex >= 0) {
+      // Update existing device
+      user.devices[existingDeviceIndex] = {
+        ...user.devices[existingDeviceIndex],
+        ...deviceData
+      };
     } else {
-      // Optionally update userId/platform in case token got reassigned
-      await DeviceToken.updateOne({ token }, { userId, platform });
+      // Add new device
+      user.devices.push(deviceData);
     }
 
-    return res.status(200).json({ message: 'FCM token saved' });
+    // For admins/superadmins, ensure they don't exceed max devices
+    // if (['admin', 'superAdmin'].includes(userType) && user.devices.length > 10) {
+    //   // Keep only the 10 most recently active devices
+    //   user.devices = user.devices
+    //     .sort((a, b) => b.lastActive - a.lastActive)
+    //     .slice(0, 10);
+    // }
+
+    await user.save();
+
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Device token saved successfully',
+      deviceCount: user.devices.length
+    });
+
   } catch (error) {
     console.error('Error saving FCM token:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
