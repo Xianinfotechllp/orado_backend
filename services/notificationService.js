@@ -149,3 +149,88 @@ exports.sendAdminsNotification = async ({ title, body, data = {}, deepLinkUrl })
 
 
 
+
+
+// Notification Service for Orders with consistent parameter style
+exports.sendOrderNotification = async ({ 
+  userId, 
+  title, 
+  body, 
+  orderId, 
+  data = {}, 
+  deepLinkUrl,
+  sound = 'default',
+  androidChannel = 'order_notifications',
+  notificationType = 'order_update'
+}) => {
+  try {
+    // 1. Get user's FCM token from database
+    const user = await User.findById(userId).select('devices');
+    if (!user) {
+      console.log('User not found');
+      return { success: false, error: 'User not found' };
+    }
+
+    // 2. Find active mobile device tokens
+    const fcmTokens = user.devices
+      .filter(device => 
+        device.status === 'active' && 
+        ['android', 'ios'].includes(device.platform) && 
+        (device.token || device.fcmToken)
+      )
+      .map(device => device.token || device.fcmToken);
+
+    if (fcmTokens.length === 0) {
+      console.log('No active devices found for user');
+      return { success: false, error: 'No active devices' };
+    }
+
+    // 3. Prepare notification message
+    const message = {
+      tokens: fcmTokens,
+      notification: {
+        title: title,
+        body: body,
+      },
+      data: {
+        ...data, // Spread any additional data
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        orderId: orderId,
+        type: notificationType,
+        deepLink: deepLinkUrl || `yourapp://orders/${orderId}`
+      },
+      apns: {
+        payload: {
+          aps: {
+            'mutable-content': 1,
+            sound: sound
+          }
+        }
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          sound: sound,
+          channel_id: androidChannel
+        }
+      }
+    };
+
+    // 4. Send notification
+    const response = await admin.messaging().sendEachForMulticast(message);
+    console.log(`✅ Notification sent to ${response.successCount} device(s)`);
+    
+    return {
+      success: true,
+      response: response
+    };
+
+  } catch (error) {
+    console.error('❌ Notification failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
