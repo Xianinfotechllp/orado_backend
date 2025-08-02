@@ -2505,11 +2505,24 @@ exports.placeOrderWithAddressId = async (req, res) => {
     const io = req.app.get("io");
     await emitNewOrderToAdmin(io, savedOrder._id);
     
-    await notificationService.sendNotificationToAdmins({
-      title: "New Order Received",
-      body: `New order with items`,
+const orderItemsList = savedOrder.orderItems.map(item => 
+  `${item.quantity} ${item.name} (₹${item.price} each)`
+).join(', ');
 
-    });
+const totalAmount = savedOrder.orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
+const orderNumber = savedOrder._id.toString().slice(-6).toUpperCase();
+
+await notificationService.sendNotificationToAdmins({
+  title: `New Order #${orderNumber} - ₹${totalAmount}`,
+  body: `New order received. Order ${orderNumber}: ${orderItemsList}. Total: ₹${totalAmount}`,
+  data: {
+    orderId: savedOrder._id.toString(),
+    restaurantName: restaurant.name,
+    totalAmount: totalAmount,
+    orderItems: savedOrder.orderItems,
+    currency: "INR"
+  }
+});
 
   
     // Assign delivery agent
