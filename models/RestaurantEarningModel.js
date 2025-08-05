@@ -80,6 +80,11 @@ offerDiscount: {
   payoutDate: {
     type: Date,
     default: null
+  },
+  earningStatus: {
+    type: String,
+    enum: ['pending', 'finalized'],
+    default: 'pending'
   }
 
 }, {

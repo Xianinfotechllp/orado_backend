@@ -5,7 +5,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "worker": "node workers/agenda-worker.js",
+    "dev": "concurrently \"nodemon server.js\" \"nodemon workers/agenda-worker.js\""
   },
   "repository": {
     "type": "git",
@@ -20,6 +21,7 @@
   "description": "",
   "dependencies": {
     "@turf/turf": "^7.2.0",
+    "agenda": "^5.0.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.6.1",
@@ -42,6 +44,7 @@
     "morgan": "^1.10.1",
     "multer": "^1.4.5-lts.2",
     "node-cron": "^4.2.1",
+    "node-schedule": "^2.1.1",
     "nodemailer": "^7.0.3",
     "nodemon": "^3.1.10",
     "primereact": "^10.9.6",
@@ -53,5 +56,8 @@
     "twilio": "^5.6.1",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
   }
 }

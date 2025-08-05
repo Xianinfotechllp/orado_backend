@@ -1,8 +1,8 @@
 const User = require("../models/userModel");
 const Agent = require("../models/agentModel");
 const Session = require("../models/session");
-const Order = require("../models/orderModel")
-const Permission = require('../models/restaurantPermissionModel');
+const Order = require("../models/orderModel");
+const Permission = require("../models/restaurantPermissionModel");
 const Restaurant = require("../models/restaurantModel");
 const ChangeRequest = require("../models/changeRequest");
 const Product = require("../models/productModel");
@@ -10,19 +10,22 @@ const Category = require("../models/categoryModel");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { sendSms } = require("../utils/sendSms")
-const permissionsList = require('../utils/adminPermissions')
-const logAccess = require('../utils/logAccess')
-const AccessLog = require('../models/accessLogModel')
+const { sendSms } = require("../utils/sendSms");
+const permissionsList = require("../utils/adminPermissions");
+const logAccess = require("../utils/logAccess");
+const AccessLog = require("../models/accessLogModel");
 const { isValidObjectId } = require("mongoose");
-const {uploadOnCloudinary} = require("../utils/cloudinary")
-const fs = require('fs');
-const firebase = require('../config/firebaseAdmin');
+const { uploadOnCloudinary } = require("../utils/cloudinary");
+const fs = require("fs");
+const firebase = require("../config/firebaseAdmin");
 const DeviceToken = require("../models/deviceTokenModel");
-const path = require('path');
+const path = require("path");
+const schedule = require("node-schedule");
 
- exports.adminLogin = async (req, res) => {
-  const { email, password } = req.body; 
+const agenda = require("../config/agenda");
+
+exports.adminLogin = async (req, res) => {
+  const { email, password } = req.body;
 
   try {
     // 1. Find user
@@ -39,8 +42,7 @@ const path = require('path');
 
     // 3. Compare password
     const isMatch = await bcrypt.compare(password, user.password);
-    
-    
+
     if (!isMatch) {
       console.log("Password Match:", isMatch);
       return res.status(401).json({ message: "Invalid email or password" });
@@ -55,14 +57,16 @@ const path = require('path');
 
     // Limit to 3 active sessions
     const MAX_SESSIONS = 3;
-    const existingSessions = await Session.find({ userId: user._id }).sort({ createdAt: 1 });
+    const existingSessions = await Session.find({ userId: user._id }).sort({
+      createdAt: 1,
+    });
 
     if (existingSessions.length >= MAX_SESSIONS) {
       const oldestSession = existingSessions[0];
       await Session.findByIdAndDelete(oldestSession._id); // Kick the oldest session out
     }
 
-    // Get device + IP info 
+    // Get device + IP info
     const userAgent = req.headers["user-agent"] || "Unknown Device";
     const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
 
@@ -82,7 +86,7 @@ const path = require('path');
         name: user.name,
         email: user.email,
         userType: user.userType,
-        adminPermissions:user.adminPermissions
+        adminPermissions: user.adminPermissions,
       },
     });
   } catch (error) {
@@ -108,10 +112,7 @@ exports.logoutAll = async (req, res) => {
   res.json({ message: "Logged out from all sessions" });
 };
 
-
-
 // Creating admin / updating and deleting
-
 
 // Create Admin
 exports.createAdmin = async (req, res) => {
@@ -119,7 +120,10 @@ exports.createAdmin = async (req, res) => {
     const { name, email, phone, password, permissions } = req.body;
 
     // Permissions  check
-    if (!Array.isArray(permissions) || !permissions.every(p => permissionsList.includes(p))) {
+    if (
+      !Array.isArray(permissions) ||
+      !permissions.every((p) => permissionsList.includes(p))
+    ) {
       return res.status(400).json({ message: "Invalid permissions provided." });
     }
 
@@ -138,7 +142,7 @@ exports.createAdmin = async (req, res) => {
 
     // For logging this
     await logAccess({
-      userId: req.user._id, 
+      userId: req.user._id,
       action: "admin.create",
       description: `Created a new admin ${admin.name}`,
       req,
@@ -183,7 +187,10 @@ exports.updateAdminPermissions = async (req, res) => {
     const { adminId } = req.params;
     const { permissions } = req.body;
 
-    if (!Array.isArray(permissions) || !permissions.every(p => permissionsList.includes(p))) {
+    if (
+      !Array.isArray(permissions) ||
+      !permissions.every((p) => permissionsList.includes(p))
+    ) {
       return res.status(400).json({ message: "Invalid permissions provided." });
     }
 
@@ -203,7 +210,9 @@ exports.updateAdminPermissions = async (req, res) => {
       description: `Updated these admin permissions ${admin.adminPermissions} for ${admin.name}`,
       req,
     });
-    res.status(200).json({ message: "Permissions updated successfully", permissions });
+    res
+      .status(200)
+      .json({ message: "Permissions updated successfully", permissions });
   } catch (error) {
     console.error("Error updating permissions:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -227,12 +236,13 @@ exports.getAllAdmins = async (req, res) => {
   }
 };
 
-
 // get requests for agent approval
 
 exports.getPendingAgentRequests = async (req, res) => {
   try {
-    const pendingRequests = await User.find({ agentApplicationStatus: "pending" })
+    const pendingRequests = await User.find({
+      agentApplicationStatus: "pending",
+    })
       .sort({ createdAt: -1 }) // Newest first
       .select("-password -resetPasswordToken -resetPasswordExpires") // Exclude sensitive info
       .lean();
@@ -257,14 +267,18 @@ exports.approveAgentApplication = async (req, res) => {
     const { action } = req.body; // Should be "approve" or "reject"
 
     if (!["approve", "reject"].includes(action)) {
-      return res.status(400).json({ message: "Invalid action. Use 'approve' or 'reject'." });
+      return res
+        .status(400)
+        .json({ message: "Invalid action. Use 'approve' or 'reject'." });
     }
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     if (user.agentApplicationStatus !== "pending") {
-      return res.status(400).json({ message: "No pending application for this user." });
+      return res
+        .status(400)
+        .json({ message: "No pending application for this user." });
     }
 
     let agentId = null;
@@ -282,7 +296,7 @@ exports.approveAgentApplication = async (req, res) => {
         },
         bankDetailsProvided: false,
         bankAccountDetails: null,
-        isApproved: true
+        isApproved: true,
       });
 
       await newAgent.save();
@@ -307,31 +321,31 @@ exports.approveAgentApplication = async (req, res) => {
     });
 
     // Send SMS
-    const message = `Hello ${user.name}, your agent application has been ${user.agentApplicationStatus.toUpperCase()}.`;
+    const message = `Hello ${
+      user.name
+    }, your agent application has been ${user.agentApplicationStatus.toUpperCase()}.`;
     if (user.phone) {
       await sendSms(user.phone, message);
     }
 
     res.status(200).json({
       message: `Agent application has been ${action} and user notified.`,
-      ...(action === "approve" && { agentId, bankDetailsProvided: false })
+      ...(action === "approve" && { agentId, bankDetailsProvided: false }),
     });
-
   } catch (error) {
     console.error("Agent approval error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-
-
 // get pending restaurant requests
-
 
 exports.getPendingRestaurantApprovals = async (req, res) => {
   try {
     // Fetch restaurants where kycStatus is 'pending'
-    const pendingRestaurants = await Restaurant.find({ approvalStatus: "pending" })
+    const pendingRestaurants = await Restaurant.find({
+      approvalStatus: "pending",
+    });
     res.status(200).json({
       message: "Pending restaurant approval requests fetched successfully.",
       total: pendingRestaurants.length,
@@ -354,7 +368,9 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
 
     // Validate action
     if (!["approved", "rejected"].includes(action)) {
-      return res.status(400).json({ message: "Invalid action. Must be 'approved' or 'rejected'." });
+      return res
+        .status(400)
+        .json({ message: "Invalid action. Must be 'approved' or 'rejected'." });
     }
 
     const restaurant = await Restaurant.findById(restaurantId);
@@ -364,10 +380,16 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
     }
 
     if (restaurant.kycStatus !== "pending") {
-      return res.status(400).json({ message: `Restaurant is already ${restaurant.kycStatus}.` });
+      return res
+        .status(400)
+        .json({ message: `Restaurant is already ${restaurant.kycStatus}.` });
     }
     if (restaurant.approvalStatus !== "pending") {
-      return res.status(400).json({ message: `Restaurant is already ${restaurant.approvalStatus}.` });
+      return res
+        .status(400)
+        .json({
+          message: `Restaurant is already ${restaurant.approvalStatus}.`,
+        });
     }
 
     // Update status
@@ -375,7 +397,7 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
     restaurant.approvalStatus = action;
     if (action === "rejected") {
       restaurant.kycRejectionReason = reason || "Not specified";
-      restaurant.approvalRejectionReason = reason || "Not specified"
+      restaurant.approvalRejectionReason = reason || "Not specified";
     } else {
       restaurant.kycRejectionReason = undefined; // clear any previous rejection reason
     }
@@ -389,8 +411,9 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
     //   description: `${action} restaurant registration for restaurant named ${restaurant.name} with id ${restaurantId}`,
     //   req,
     // });
-    const message = `Hello ${restaurant.name}, your restaurant application has been ${restaurant.approvalStatus.toUpperCase()}.`;
-   
+    const message = `Hello ${
+      restaurant.name
+    }, your restaurant application has been ${restaurant.approvalStatus.toUpperCase()}.`;
 
     res.status(200).json({
       message: `Restaurant KYC ${action} successfully.`,
@@ -398,12 +421,11 @@ exports.updateRestaurantApprovalStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating KYC status:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
-
-
 
 // Get permissions for a specific restaurant
 exports.getPermissions = async (req, res) => {
@@ -411,32 +433,32 @@ exports.getPermissions = async (req, res) => {
     const { restaurantId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ error: 'Invalid restaurant ID' });
+      return res.status(400).json({ error: "Invalid restaurant ID" });
     }
 
     const permissionDoc = await ChangeRequest.findOne({ restaurantId });
     if (!permissionDoc) {
-      return res.status(404).json({ message: 'Permissions not found for this restaurant' });
+      return res
+        .status(404)
+        .json({ message: "Permissions not found for this restaurant" });
     }
 
     res.json(permissionDoc);
   } catch (err) {
-    console.error('Error fetching permissions:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching permissions:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
-
-
 
 exports.toggleRestaurantPermission = async (req, res) => {
   try {
     const { restaurantId, permissionKey, value } = req.body;
 
     // Validate input
-    if (!restaurantId || !permissionKey || typeof value !== 'boolean') {
+    if (!restaurantId || !permissionKey || typeof value !== "boolean") {
       return res.status(400).json({
         success: false,
-        message: 'restaurantId, permissionKey and boolean value are required.',
+        message: "restaurantId, permissionKey and boolean value are required.",
       });
     }
 
@@ -445,7 +467,7 @@ exports.toggleRestaurantPermission = async (req, res) => {
     if (!restaurant) {
       return res.status(404).json({
         success: false,
-        message: 'Restaurant not found.',
+        message: "Restaurant not found.",
       });
     }
 
@@ -454,12 +476,14 @@ exports.toggleRestaurantPermission = async (req, res) => {
     if (!permissionDoc) {
       permissionDoc = await Permission.create({
         restaurantId,
-        permissions: {} // will auto-default to schema defaults
+        permissions: {}, // will auto-default to schema defaults
       });
     }
 
     // Check if permissionKey is valid
-    if (!Object.keys(permissionDoc.permissions.toObject()).includes(permissionKey)) {
+    if (
+      !Object.keys(permissionDoc.permissions.toObject()).includes(permissionKey)
+    ) {
       return res.status(400).json({
         success: false,
         message: `Invalid permission key: ${permissionKey}`,
@@ -473,25 +497,16 @@ exports.toggleRestaurantPermission = async (req, res) => {
     res.status(200).json({
       success: true,
       message: `Permission ${permissionKey} updated successfully.`,
-      data: permissionDoc.permissions
+      data: permissionDoc.permissions,
     });
-
   } catch (error) {
-    console.error('Toggle permission error:', error);
+    console.error("Toggle permission error:", error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error.'
+      message: "Internal server error.",
     });
   }
 };
-
-
-
-
-
-
-
-
 
 // Update permissions for a specific restaurant
 exports.updatePermissions = async (req, res) => {
@@ -499,28 +514,39 @@ exports.updatePermissions = async (req, res) => {
     const { restaurantId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ error: 'Invalid restaurant ID' });
+      return res.status(400).json({ error: "Invalid restaurant ID" });
     }
-    const restaurant = await Restaurant.findById(restaurantId)
+    const restaurant = await Restaurant.findById(restaurantId);
     // Validate restaurant existence before updating permissions
     const restaurantExists = await Restaurant.exists({ _id: restaurantId });
     if (!restaurantExists) {
-      return res.status(404).json({ error: 'Restaurant not found' });
+      return res.status(404).json({ error: "Restaurant not found" });
     }
 
     // Only these keys can be updated
-    const allowedKeys = ['canManageMenu', 'canAcceptOrder', 'canRejectOrder', 'canManageOffers', 'canViewReports'];
+    const allowedKeys = [
+      "canManageMenu",
+      "canAcceptOrder",
+      "canRejectOrder",
+      "canManageOffers",
+      "canViewReports",
+    ];
 
     // Filter only allowed keys from req.body.permissions
     const updatedPermissions = {};
     for (const key of allowedKeys) {
-      if (req.body.permissions && typeof req.body.permissions[key] === 'boolean') {
+      if (
+        req.body.permissions &&
+        typeof req.body.permissions[key] === "boolean"
+      ) {
         updatedPermissions[key] = req.body.permissions[key];
       }
     }
 
     if (Object.keys(updatedPermissions).length === 0) {
-      return res.status(400).json({ error: 'No valid permissions provided to update' });
+      return res
+        .status(400)
+        .json({ error: "No valid permissions provided to update" });
     }
 
     // Upsert permissions doc (create if doesn't exist)
@@ -538,28 +564,30 @@ exports.updatePermissions = async (req, res) => {
       req,
     });
     res.json({
-      message: 'Permissions updated successfully',
-      permissions: permissionDoc.permissions
+      message: "Permissions updated successfully",
+      permissions: permissionDoc.permissions,
     });
   } catch (err) {
-    console.error('Error updating permissions:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error updating permissions:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
-
 
 // Get all pending change requests (for admin dashboard)
 exports.getPendingChangeRequests = async (req, res) => {
   try {
-    const pendingRequests = await ChangeRequest.find({ status: 'PENDING', type: 'MENU_CHANGE' })
-      .populate('restaurantId', 'name')
-      .populate('requestedBy', 'name email')
+    const pendingRequests = await ChangeRequest.find({
+      status: "PENDING",
+      type: "MENU_CHANGE",
+    })
+      .populate("restaurantId", "name")
+      .populate("requestedBy", "name email")
       .sort({ createdAt: -1 });
 
     res.json({ requests: pendingRequests });
   } catch (err) {
-    console.error('Error fetching pending requests:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching pending requests:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -569,80 +597,101 @@ exports.reviewChangeRequest = async (req, res) => {
     const { requestId } = req.params;
     const { action } = req.body; // should be 'APPROVE' or 'REJECT'
 
-    if (!['APPROVE', 'REJECT'].includes(action)) {
-      return res.status(400).json({ error: 'Invalid action. Must be APPROVE or REJECT' });
+    if (!["APPROVE", "REJECT"].includes(action)) {
+      return res
+        .status(400)
+        .json({ error: "Invalid action. Must be APPROVE or REJECT" });
     }
 
     const changeRequest = await ChangeRequest.findById(requestId);
-    if (!changeRequest) return res.status(404).json({ error: 'Change request not found' });
-    if (changeRequest.status !== 'PENDING') return res.status(400).json({ error: 'Request already reviewed' });
+    if (!changeRequest)
+      return res.status(404).json({ error: "Change request not found" });
+    if (changeRequest.status !== "PENDING")
+      return res.status(400).json({ error: "Request already reviewed" });
 
     // Set review metadata
-    changeRequest.status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    changeRequest.status = action === "APPROVE" ? "APPROVED" : "REJECTED";
     changeRequest.reviewedBy = req.user._id;
     changeRequest.reviewedAt = new Date();
 
-    if (action === 'APPROVE') {
+    if (action === "APPROVE") {
       const { data } = changeRequest;
       const restaurantId = changeRequest.restaurantId;
 
       switch (data.action) {
-        case 'CREATE_PRODUCT':
+        case "CREATE_PRODUCT":
           {
             // Create product from payload
             const { payload } = data;
             // Optional: Validate category belongs to restaurant again
-            const category = await Category.findOne({ _id: payload.categoryId, restaurantId });
+            const category = await Category.findOne({
+              _id: payload.categoryId,
+              restaurantId,
+            });
             if (!category) {
-              return res.status(400).json({ error: 'Invalid category for this restaurant' });
+              return res
+                .status(400)
+                .json({ error: "Invalid category for this restaurant" });
             }
             const newProduct = new Product({
               restaurantId,
               ...payload,
-              name: payload.name.trim()
+              name: payload.name.trim(),
             });
             await newProduct.save();
           }
           break;
 
-        case 'UPDATE_PRODUCT':
+        case "UPDATE_PRODUCT":
           {
             const { productId, payload } = data;
             if (!mongoose.Types.ObjectId.isValid(productId)) {
-              return res.status(400).json({ error: 'Invalid product ID in request data' });
+              return res
+                .status(400)
+                .json({ error: "Invalid product ID in request data" });
             }
             const product = await Product.findById(productId);
             if (!product) {
-              return res.status(404).json({ error: 'Product to update not found' });
+              return res
+                .status(404)
+                .json({ error: "Product to update not found" });
             }
             Object.assign(product, payload);
             await product.save();
           }
           break;
 
-        case 'DELETE_PRODUCT':
+        case "DELETE_PRODUCT":
           {
             const { productId } = data;
             if (!mongoose.Types.ObjectId.isValid(productId)) {
-              return res.status(400).json({ error: 'Invalid product ID in request data' });
+              return res
+                .status(400)
+                .json({ error: "Invalid product ID in request data" });
             }
             const product = await Product.findById(productId);
             if (!product) {
-              return res.status(404).json({ error: 'Product to delete not found' });
+              return res
+                .status(404)
+                .json({ error: "Product to delete not found" });
             }
             await product.remove();
           }
           break;
 
-        case 'TOGGLE_PRODUCT_ACTIVE':
+        case "TOGGLE_PRODUCT_ACTIVE":
           {
             const { productId, currentStatus } = data;
             if (!mongoose.Types.ObjectId.isValid(productId)) {
-              return res.status(400).json({ error: 'Invalid product ID in request data' });
+              return res
+                .status(400)
+                .json({ error: "Invalid product ID in request data" });
             }
             const product = await Product.findById(productId);
             if (!product) {
-              return res.status(404).json({ error: 'Product not found for toggle' });
+              return res
+                .status(404)
+                .json({ error: "Product not found for toggle" });
             }
             product.active = !currentStatus;
             await product.save();
@@ -650,7 +699,9 @@ exports.reviewChangeRequest = async (req, res) => {
           break;
 
         default:
-          return res.status(400).json({ error: 'Unknown action type in change request' });
+          return res
+            .status(400)
+            .json({ error: "Unknown action type in change request" });
       }
     }
 
@@ -666,14 +717,13 @@ exports.reviewChangeRequest = async (req, res) => {
 
     res.json({
       message: `Request has been ${changeRequest.status.toLowerCase()}`,
-      request: changeRequest
+      request: changeRequest,
     });
   } catch (err) {
-    console.error('Error reviewing change request:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error reviewing change request:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
-
 
 // get all agent permission requests
 exports.getAllAgentPermissionRequests = async (req, res) => {
@@ -689,11 +739,11 @@ exports.getAllAgentPermissionRequests = async (req, res) => {
         pendingRequests.push({
           agentId: agent._id,
           fullName: agent.fullName,
-          permission: req.permissionType,  // use permissionType here
+          permission: req.permissionType, // use permissionType here
           requestedAt: req.requestedAt,
-          status: req.status,               // add any other info you want here
+          status: req.status, // add any other info you want here
           responseDate: req.responseDate,
-          adminComment: req.adminComment
+          adminComment: req.adminComment,
         });
       }
     });
@@ -702,10 +752,9 @@ exports.getAllAgentPermissionRequests = async (req, res) => {
   res.status(200).json({ requests: pendingRequests });
 };
 
-
 exports.handleAgentPermissionRequest = async (req, res) => {
   const { agentId, permission, decision, reason } = req.body;
-  const adminId = req.user.id; 
+  const adminId = req.user.id;
 
   const agent = await Agent.findById(agentId);
   if (!agent) return res.status(404).json({ error: "Agent not found." });
@@ -715,7 +764,9 @@ exports.handleAgentPermissionRequest = async (req, res) => {
   );
 
   if (!request) {
-    return res.status(400).json({ error: "No pending request for this permission." });
+    return res
+      .status(400)
+      .json({ error: "No pending request for this permission." });
   }
 
   request.status = decision;
@@ -729,17 +780,16 @@ exports.handleAgentPermissionRequest = async (req, res) => {
   }
 
   // For logging this
-    await logAccess({
-      userId: req.user._id,
-      action: "agent.permissions",
-      description: `${request.status} agent request for ${permission} for agent with name ${agent.fullName}`,
-      req,
-    });
+  await logAccess({
+    userId: req.user._id,
+    action: "agent.permissions",
+    description: `${request.status} agent request for ${permission} for agent with name ${agent.fullName}`,
+    req,
+  });
   await agent.save();
 
   res.status(200).json({ message: `Request ${decision}` });
 };
-
 
 exports.getAllAccessLogs = async (req, res) => {
   try {
@@ -754,7 +804,7 @@ exports.getAllAccessLogs = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .lean(),
-      AccessLog.countDocuments()
+      AccessLog.countDocuments(),
     ]);
 
     res.status(200).json({
@@ -771,7 +821,6 @@ exports.getAllAccessLogs = async (req, res) => {
   }
 };
 
-
 // Get access logs for the logged-in admin
 exports.getMyLogs = async (req, res) => {
   try {
@@ -785,7 +834,7 @@ exports.getMyLogs = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
-      AccessLog.countDocuments({ userId })
+      AccessLog.countDocuments({ userId }),
     ]);
 
     res.status(200).json({
@@ -802,9 +851,6 @@ exports.getMyLogs = async (req, res) => {
   }
 };
 
-
-
-
 // ✅ Get restaurant details by ID for Admin
 exports.getRestaurantById = async (req, res) => {
   try {
@@ -818,7 +864,7 @@ exports.getRestaurantById = async (req, res) => {
       });
     }
 
-    const restaurant = await Restaurant.findById(restaurantId)
+    const restaurant = await Restaurant.findById(restaurantId);
 
     if (!restaurant) {
       return res.status(404).json({
@@ -832,9 +878,11 @@ exports.getRestaurantById = async (req, res) => {
       message: "Restaurant details fetched successfully",
       data: restaurant,
     });
-
   } catch (err) {
-    console.error(`❌ Error fetching restaurant (ID: ${req.params.restaurantId}):`, err);
+    console.error(
+      `❌ Error fetching restaurant (ID: ${req.params.restaurantId}):`,
+      err
+    );
     res.status(500).json({
       success: false,
       message: "An error occurred while fetching restaurant details",
@@ -843,29 +891,20 @@ exports.getRestaurantById = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
 exports.updatePermissionsRestuarants = async (req, res) => {
   try {
-       
     const { restaurantId, permissions } = req.body;
- 
 
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
-      return res.status(400).json({ message: 'Invalid restaurant ID' });
+      return res.status(400).json({ message: "Invalid restaurant ID" });
     }
 
     const validPermissions = [
-      'canManageMenu',
-      'canAcceptOrder',
-      'canRejectOrder',
-      'canManageOffers',
-      'canViewReports'
+      "canManageMenu",
+      "canAcceptOrder",
+      "canRejectOrder",
+      "canManageOffers",
+      "canViewReports",
     ];
 
     const invalidKeys = Object.keys(permissions).filter(
@@ -873,18 +912,21 @@ exports.updatePermissionsRestuarants = async (req, res) => {
     );
 
     if (invalidKeys.length > 0) {
-      return res.status(400).json({ message: `Invalid permission keys: ${invalidKeys.join(', ')}` });
+      return res
+        .status(400)
+        .json({
+          message: `Invalid permission keys: ${invalidKeys.join(", ")}`,
+        });
     }
 
     let permissionDoc = await Permission.findOne({ restaurantId });
- 
 
     if (!permissionDoc) {
       permissionDoc = await Permission.create({
         restaurantId,
-        permissions
+        permissions,
       });
-      // console.log("Created new permission doc: ", permissionDoc); 
+      // console.log("Created new permission doc: ", permissionDoc);
     } else {
       Object.keys(permissions).forEach((key) => {
         permissionDoc.permissions[key] = permissions[key];
@@ -894,61 +936,54 @@ exports.updatePermissionsRestuarants = async (req, res) => {
     }
 
     res.status(200).json({
-      message: 'Permissions updated successfully',
-      permissions: permissionDoc.permissions
+      message: "Permissions updated successfully",
+      permissions: permissionDoc.permissions,
     });
-
   } catch (error) {
     console.error("Error while updating permissions: ", error);
-    res.status(500).json({ message: 'Server Error', error });
+    res.status(500).json({ message: "Server Error", error });
   }
 };
 
-
-
-
 exports.getRestaurantsWithPermissions = async (req, res) => {
   try {
-      console.log("correct api call")
+    console.log("correct api call");
     // Fetch all restaurants
     const restaurants = await Restaurant.find();
 
     // Fetch permissions for each restaurant and attach
     const restaurantList = await Promise.all(
       restaurants.map(async (restaurant) => {
-        const permissionDoc = await Permission.findOne({ restaurantId: restaurant._id });
+        const permissionDoc = await Permission.findOne({
+          restaurantId: restaurant._id,
+        });
 
         return {
           _id: restaurant._id,
           name: restaurant.name,
           email: restaurant.email, // if exists
-          permissions: permissionDoc ? permissionDoc.permissions : {
-            canManageMenu: false,
-            canAcceptOrder: false,
-            canRejectOrder: false,
-            canManageOffers: false,
-            canViewReports: true
-          }
+          permissions: permissionDoc
+            ? permissionDoc.permissions
+            : {
+                canManageMenu: false,
+                canAcceptOrder: false,
+                canRejectOrder: false,
+                canManageOffers: false,
+                canViewReports: true,
+              },
         };
       })
     );
-  
-    
-    
 
     res.status(200).json({
-      message: 'Restaurant list with permissions fetched successfully',
-      data: restaurantList
+      message: "Restaurant list with permissions fetched successfully",
+      data: restaurantList,
     });
-
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server Error', error });
+    res.status(500).json({ message: "Server Error", error });
   }
 };
-
-
-
 
 exports.createCategory = async (req, res) => {
   try {
@@ -1025,17 +1060,15 @@ exports.createCategory = async (req, res) => {
   }
 };
 
-
-
-
-
 exports.updateRestaurant = async (req, res) => {
   try {
-    if (!req.body) return res.status(400).json({ message: 'Request body is missing.' });
+    if (!req.body)
+      return res.status(400).json({ message: "Request body is missing." });
 
     const { restaurantId } = req.params;
     const restaurant = await Restaurant.findById(restaurantId);
-    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
+    if (!restaurant)
+      return res.status(404).json({ message: "Restaurant not found." });
 
     const {
       name,
@@ -1048,7 +1081,7 @@ exports.updateRestaurant = async (req, res) => {
       minOrderAmount,
       paymentMethods,
       isActive,
-      status
+      status,
     } = req.body;
 
     // Update basic fields if they exist
@@ -1080,11 +1113,11 @@ exports.updateRestaurant = async (req, res) => {
 
     if (req.files && req.files.length > 0) {
       const uploads = await Promise.all(
-        req.files.map(file => uploadOnCloudinary(file.path))
+        req.files.map((file) => uploadOnCloudinary(file.path))
       );
       const newImageUrls = uploads
-        .filter(result => result && result.secure_url)
-        .map(result => result.secure_url);
+        .filter((result) => result && result.secure_url)
+        .map((result) => result.secure_url);
 
       // Replace images
       restaurant.images = newImageUrls;
@@ -1092,94 +1125,85 @@ exports.updateRestaurant = async (req, res) => {
 
     await restaurant.save();
     res.status(200).json({
-      message: 'Restaurant updated successfully.',
-      restaurant
+      message: "Restaurant updated successfully.",
+      restaurant,
     });
-
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error.', error });
+    res.status(500).json({ message: "Server error.", error });
   }
 };
 
-
-
-
 exports.getRestaurantCategory = async (req, res) => {
   try {
-    const { restaurantId } = req.params; 
-     console.log(restaurantId)
+    const { restaurantId } = req.params;
+    console.log(restaurantId);
     // Validate the restaurantId
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid restaurant ID"
+        message: "Invalid restaurant ID",
       });
     }
 
     // Find all active categories for the given restaurant
     const categories = await Category.find({
-      restaurantId: restaurantId
-     
-    }) // Excluding the version key
-
-  
+      restaurantId: restaurantId,
+    }); // Excluding the version key
 
     res.status(200).json({
       success: true,
       count: categories.length,
-      data: categories
+      data: categories,
     });
-
   } catch (error) {
     console.error("Error fetching restaurant categories:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-
-
 exports.createCategory = async (req, res) => {
   try {
-   const {restaurantId} = req.params
-        
+    const { restaurantId } = req.params;
+
     const { name, description = "", autoOnOff = false } = req.body;
     // 1. Validate Inputs
     if (!restaurantId || !name?.trim()) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Restaurant ID and name are required." 
+      return res.status(400).json({
+        success: false,
+        message: "Restaurant ID and name are required.",
       });
     }
 
     if (!isValidObjectId(restaurantId)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid Restaurant ID." 
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Restaurant ID.",
       });
     }
 
     // 2. Check for Duplicate Category
     const existingCategory = await Category.findOne({
       restaurantId,
-      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+      name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
     });
 
     if (existingCategory) {
       // Clean up uploaded files if duplicate found
       if (req.files?.length) {
-        await Promise.all(req.files.map(file => 
-          fs.promises.unlink(file.path).catch(console.error)
-        ));
+        await Promise.all(
+          req.files.map((file) =>
+            fs.promises.unlink(file.path).catch(console.error)
+          )
+        );
       }
-      return res.status(409).json({ 
-        success: false, 
-        message: "Category name already exists." 
+      return res.status(409).json({
+        success: false,
+        message: "Category name already exists.",
       });
     }
 
@@ -1188,11 +1212,11 @@ exports.createCategory = async (req, res) => {
     if (req.files?.length) {
       // Upload each file to Cloudinary
       const uploadResults = await Promise.all(
-        req.files.map(file => 
-          uploadOnCloudinary(file.path, 'restaurant_categories')
+        req.files.map((file) =>
+          uploadOnCloudinary(file.path, "restaurant_categories")
         )
       );
-      
+
       // Extract secure URLs from successful uploads
       for (const result of uploadResults) {
         if (result?.secure_url) {
@@ -1218,19 +1242,20 @@ exports.createCategory = async (req, res) => {
       message: "Category created successfully with images!",
       data: categoryData,
     });
-
   } catch (error) {
     console.error("🚨 Create Category Error:", error);
 
     // Clean up any uploaded files on error
     if (req.files?.length) {
-      await Promise.all(req.files.map(file => 
-        fs.promises.unlink(file.path).catch(console.error)
-      ));
+      await Promise.all(
+        req.files.map((file) =>
+          fs.promises.unlink(file.path).catch(console.error)
+        )
+      );
     }
 
     // Handle specific errors
-    if (error.code === 'LIMIT_FILE_SIZE') {
+    if (error.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
         success: false,
         message: "File size too large. Maximum 5MB per image.",
@@ -1240,12 +1265,10 @@ exports.createCategory = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
-
-
 
 exports.updateCategory = async (req, res) => {
   try {
@@ -1253,16 +1276,21 @@ exports.updateCategory = async (req, res) => {
 
     // Validate categoryId
     if (!mongoose.Types.ObjectId.isValid(categoryId)) {
-      return res.status(400).json({ success: false, message: "Invalid categoryId format" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid categoryId format" });
     }
 
     // Find existing category
     const category = await Category.findById(categoryId);
     if (!category) {
-      return res.status(404).json({ success: false, message: "Category not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Category not found" });
     }
 
-    const { name, description, active, autoOnOff, replaceImageIndex } = req.body;
+    const { name, description, active, autoOnOff, replaceImageIndex } =
+      req.body;
 
     // Update fields if provided
     if (name) category.name = name.trim();
@@ -1274,7 +1302,10 @@ exports.updateCategory = async (req, res) => {
     if (req.files && req.files.length > 0) {
       if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
         // Replace single image at given index
-        const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_categories');
+        const uploadResult = await uploadOnCloudinary(
+          req.files[0].path,
+          "restaurant_categories"
+        );
         if (uploadResult?.secure_url) {
           const idx = parseInt(replaceImageIndex);
           if (idx >= 0 && idx < category.images.length) {
@@ -1288,7 +1319,10 @@ exports.updateCategory = async (req, res) => {
         category.images = []; // Clear old images
 
         for (const file of req.files) {
-          const uploadResult = await uploadOnCloudinary(file.path, 'restaurant_categories');
+          const uploadResult = await uploadOnCloudinary(
+            file.path,
+            "restaurant_categories"
+          );
           if (uploadResult?.secure_url) {
             category.images.push(uploadResult.secure_url);
           }
@@ -1301,23 +1335,24 @@ exports.updateCategory = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Category updated successfully",
-      data: category
+      data: category,
     });
-
   } catch (error) {
     console.error("Error updating category:", error);
 
     // Cleanup uploaded files on error
     if (req.files?.length) {
-      await Promise.all(req.files.map(file =>
-        fs.promises.unlink(file.path).catch(console.error)
-      ));
+      await Promise.all(
+        req.files.map((file) =>
+          fs.promises.unlink(file.path).catch(console.error)
+        )
+      );
     }
 
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -1328,13 +1363,17 @@ exports.deleteCategory = async (req, res) => {
 
     // Validate categoryId
     if (!mongoose.Types.ObjectId.isValid(categoryId)) {
-      return res.status(400).json({ success: false, message: "Invalid categoryId format" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid categoryId format" });
     }
 
     // Find existing category
     const category = await Category.findById(categoryId);
     if (!category) {
-      return res.status(404).json({ success: false, message: "Category not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Category not found" });
     }
 
     // Delete category
@@ -1342,21 +1381,17 @@ exports.deleteCategory = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Category deleted successfully"
+      message: "Category deleted successfully",
     });
-
   } catch (error) {
     console.error("Error deleting category:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
-
-
-
 
 exports.createProduct = async (req, res) => {
   try {
@@ -1380,7 +1415,7 @@ exports.createProduct = async (req, res) => {
       costPrice,
       preparationTime,
       isRecurring = false,
-      availability = { type: "always" }
+      availability = { type: "always" },
     } = req.body;
 
     const { restaurantId } = req.params;
@@ -1389,24 +1424,29 @@ exports.createProduct = async (req, res) => {
     if (!name || !price || !categoryId || !restaurantId || !foodType) {
       return res.status(400).json({
         success: false,
-        message: "name, price, categoryId, restaurantId and foodType are required fields"
+        message:
+          "name, price, categoryId, restaurantId and foodType are required fields",
       });
     }
 
     // Validate ObjectIds
     if (!mongoose.isValidObjectId(restaurantId)) {
-      return res.status(400).json({ success: false, message: "Invalid restaurant ID format" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid restaurant ID format" });
     }
 
     if (!mongoose.isValidObjectId(categoryId)) {
-      return res.status(400).json({ success: false, message: "Invalid category ID format" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid category ID format" });
     }
 
     // Validate foodType
     if (!["veg", "non-veg"].includes(foodType)) {
       return res.status(400).json({
         success: false,
-        message: 'Food type must be either "veg" or "non-veg"'
+        message: 'Food type must be either "veg" or "non-veg"',
       });
     }
 
@@ -1414,12 +1454,14 @@ exports.createProduct = async (req, res) => {
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
       const uploadResults = await Promise.all(
-        req.files.map(file => uploadOnCloudinary(file.path, "restaurant_products"))
+        req.files.map((file) =>
+          uploadOnCloudinary(file.path, "restaurant_products")
+        )
       );
 
       imageUrls = uploadResults
-        .filter(result => result?.secure_url)
-        .map(result => result.secure_url);
+        .filter((result) => result?.secure_url)
+        .map((result) => result.secure_url);
     }
 
     // Create product
@@ -1444,7 +1486,7 @@ exports.createProduct = async (req, res) => {
       costPrice: costPrice ? parseFloat(costPrice) : undefined,
       preparationTime: preparationTime ? parseInt(preparationTime) : undefined,
       isRecurring,
-      availability
+      availability,
     });
 
     const response = newProduct.toObject();
@@ -1453,82 +1495,77 @@ exports.createProduct = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Product created successfully",
-      data: response
+      data: response,
     });
-
   } catch (error) {
     console.error("Error creating product:", error);
 
     // Clean up uploaded files if error
     if (req.files?.length) {
-      await Promise.all(req.files.map(file =>
-        fs.promises.unlink(file.path).catch(console.error)
-      ));
+      await Promise.all(
+        req.files.map((file) =>
+          fs.promises.unlink(file.path).catch(console.error)
+        )
+      );
     }
 
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
         message: "Validation error",
-        errors: Object.values(error.errors).map(err => err.message)
+        errors: Object.values(error.errors).map((err) => err.message),
       });
     }
 
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-
 exports.getCategoryProducts = async (req, res) => {
   try {
     const { restaurantId, categoryId } = req.params;
-    const { status, search } = req.query; // optional query params 
-    console.log( restaurantId, categoryId,status, search)
+    const { status, search } = req.query; // optional query params
+    console.log(restaurantId, categoryId, status, search);
     // Validate IDs
     if (!isValidObjectId(restaurantId) || !isValidObjectId(categoryId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid restaurant or category ID'
+        message: "Invalid restaurant or category ID",
       });
     }
 
     const query = {
       restaurantId,
-      categoryId
+      categoryId,
     };
 
     // Filter by approval status if provided
     if (status) query.approvalStatus = status; // 'approved' | 'pending' | 'rejected'
 
     // Search by name if provided
-    if (search) query.name = { $regex: search, $options: 'i' };
+    if (search) query.name = { $regex: search, $options: "i" };
 
     // Find products matching filters
-    const products = await Product.find(query)
-      .sort({ name: 1 });
+    const products = await Product.find(query).sort({ name: 1 });
 
     res.status(200).json({
       success: true,
       count: products.length,
-      data: products
+      data: products,
     });
-
   } catch (error) {
-    console.error('Error fetching category products:', error);
+    console.error("Error fetching category products:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch products',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: "Failed to fetch products",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
-
-
-
 
 exports.updateProduct = async (req, res) => {
   try {
@@ -1537,11 +1574,24 @@ exports.updateProduct = async (req, res) => {
     // Find product
     const product = await Product.findById(productId);
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
 
     const {
-      name, description, price, categoryId, foodType, addOns, attributes, unit, stock, reorderLevel, revenueShare, replaceImageIndex
+      name,
+      description,
+      price,
+      categoryId,
+      foodType,
+      addOns,
+      attributes,
+      unit,
+      stock,
+      reorderLevel,
+      revenueShare,
+      replaceImageIndex,
     } = req.body;
 
     // Update fields if provided
@@ -1561,7 +1611,10 @@ exports.updateProduct = async (req, res) => {
     if (req.files && req.files.length > 0) {
       if (replaceImageIndex !== undefined && !isNaN(replaceImageIndex)) {
         // Replace single image at given index
-        const uploadResult = await uploadOnCloudinary(req.files[0].path, 'restaurant_products');
+        const uploadResult = await uploadOnCloudinary(
+          req.files[0].path,
+          "restaurant_products"
+        );
         if (uploadResult?.secure_url) {
           const idx = parseInt(replaceImageIndex);
           if (idx >= 0 && idx < product.images.length) {
@@ -1575,7 +1628,10 @@ exports.updateProduct = async (req, res) => {
         product.images = []; // Clear old images
 
         for (const file of req.files) {
-          const uploadResult = await uploadOnCloudinary(file.path, 'restaurant_products');
+          const uploadResult = await uploadOnCloudinary(
+            file.path,
+            "restaurant_products"
+          );
           if (uploadResult?.secure_url) {
             product.images.push(uploadResult.secure_url);
           }
@@ -1587,28 +1643,28 @@ exports.updateProduct = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Product updated successfully',
-      data: product
+      message: "Product updated successfully",
+      data: product,
     });
-
   } catch (error) {
-    console.error('Error updating product:', error);
+    console.error("Error updating product:", error);
 
     // Cleanup uploaded files on error
     if (req.files?.length) {
-      await Promise.all(req.files.map(file =>
-        fs.promises.unlink(file.path).catch(console.error)
-      ));
+      await Promise.all(
+        req.files.map((file) =>
+          fs.promises.unlink(file.path).catch(console.error)
+        )
+      );
     }
 
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
-
 
 exports.getApprovedRestaurants = async (req, res) => {
   try {
@@ -1619,34 +1675,34 @@ exports.getApprovedRestaurants = async (req, res) => {
       city,
       minRating,
       sortBy,
-      sortOrder = 'asc',
+      sortOrder = "asc",
       page = 1,
-      limit = 10
+      limit = 10,
     } = req.query;
 
     // Build the filter object
     const filter = {
-      approvalStatus: 'approved',
-      active: true
+      approvalStatus: "approved",
+      active: true,
     };
 
     // Add search filter if provided
     if (search) {
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { 'address.city': { $regex: search, $options: 'i' } },
-        { merchantSearchName: { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { "address.city": { $regex: search, $options: "i" } },
+        { merchantSearchName: { $regex: search, $options: "i" } },
       ];
     }
 
     // Add foodType filter if provided
-    if (foodType && ['veg', 'non-veg', 'both'].includes(foodType)) {
+    if (foodType && ["veg", "non-veg", "both"].includes(foodType)) {
       filter.foodType = foodType;
     }
 
     // Add city filter if provided
     if (city) {
-      filter['address.city'] = { $regex: city, $options: 'i' };
+      filter["address.city"] = { $regex: city, $options: "i" };
     }
 
     // Add rating filter if provided
@@ -1657,9 +1713,9 @@ exports.getApprovedRestaurants = async (req, res) => {
     // Build sort object
     let sort = {};
     if (sortBy) {
-      const validSortFields = ['name', 'rating', 'createdAt'];
+      const validSortFields = ["name", "rating", "createdAt"];
       if (validSortFields.includes(sortBy)) {
-        sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+        sort[sortBy] = sortOrder === "desc" ? -1 : 1;
       }
     } else {
       // Default sort by createdAt descending
@@ -1675,9 +1731,11 @@ exports.getApprovedRestaurants = async (req, res) => {
       .sort(sort)
       .skip(startIndex)
       .limit(limit)
-      .select('-kyc -kycDocuments -kycStatus -kycRejectionReason -pointsHistory -serviceAreas -permissions')
-      .populate('categories', 'name')
-      .populate('products', 'name price');
+      .select(
+        "-kyc -kycDocuments -kycStatus -kycRejectionReason -pointsHistory -serviceAreas -permissions"
+      )
+      .populate("categories", "name")
+      .populate("products", "name price");
 
     // Prepare response
     const response = {
@@ -1686,41 +1744,41 @@ exports.getApprovedRestaurants = async (req, res) => {
       total,
       page: Number(page),
       pages: Math.ceil(total / limit),
-      data: restaurants
+      data: restaurants,
     };
 
     res.status(200).json(response);
   } catch (error) {
-    console.error('Error fetching restaurants:', error);
+    console.error("Error fetching restaurants:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: "Server error",
+      error: error.message,
     });
   }
 };
 
-
 // get Admin Profile By Id
 exports.getAdminProfileById = async (req, res) => {
   try {
-    const adminId = req.user._id; 
+    const adminId = req.user._id;
 
     const admin = await User.findById(adminId).select(
-      'name email phone userType adminPermissions isSuperAdmin'
+      "name email phone userType adminPermissions isSuperAdmin"
     );
 
-    if (!admin || !['admin', 'superAdmin'].includes(admin.userType)) {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    if (!admin || !["admin", "superAdmin"].includes(admin.userType)) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Not authorized." });
     }
 
     res.status(200).json({ success: true, data: admin });
   } catch (error) {
-    console.error('Error fetching admin profile:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
+    console.error("Error fetching admin profile:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
-
 
 // update admin profile
 exports.updateAdminProfile = async (req, res) => {
@@ -1730,8 +1788,10 @@ exports.updateAdminProfile = async (req, res) => {
 
     const admin = await User.findById(adminId);
 
-    if (!admin || !['admin', 'superAdmin'].includes(admin.userType)) {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    if (!admin || !["admin", "superAdmin"].includes(admin.userType)) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Not authorized." });
     }
 
     if (name) admin.name = name;
@@ -1740,13 +1800,14 @@ exports.updateAdminProfile = async (req, res) => {
 
     await admin.save();
 
-    res.status(200).json({ success: true, message: 'Profile updated successfully.' });
+    res
+      .status(200)
+      .json({ success: true, message: "Profile updated successfully." });
   } catch (error) {
-    console.error('Error updating admin profile:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
+    console.error("Error updating admin profile:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
-
 
 // update admin password
 
@@ -1757,26 +1818,31 @@ exports.updateAdminPassword = async (req, res) => {
 
     const admin = await User.findById(adminId);
 
-    if (!admin || !['admin', 'superAdmin'].includes(admin.userType)) {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    if (!admin || !["admin", "superAdmin"].includes(admin.userType)) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Not authorized." });
     }
 
     const isMatch = await bcrypt.compare(oldPassword, admin.password);
     if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Old password is incorrect.' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Old password is incorrect." });
     }
 
     const salt = await bcrypt.genSalt(10);
     admin.password = await bcrypt.hash(newPassword, salt);
     await admin.save();
 
-    res.status(200).json({ success: true, message: 'Password updated successfully.' });
+    res
+      .status(200)
+      .json({ success: true, message: "Password updated successfully." });
   } catch (error) {
-    console.error('Error updating password:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
+    console.error("Error updating password:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
-
 
 exports.getOrdersByCustomerAdmin = async (req, res) => {
   try {
@@ -1794,36 +1860,49 @@ exports.getOrdersByCustomerAdmin = async (req, res) => {
     res.json({ success: true, data: orders });
   } catch (err) {
     console.error("Error fetching orders by customer:", err);
-    res.status(500).json({ success: false, error: "Failed to fetch customer orders" });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch customer orders" });
   }
 };
 
-
-
 exports.saveFcmToken = async (req, res) => {
   try {
-    const { token, platform = 'web', deviceId, appVersion, osVersion } = req.body;
+    const {
+      token,
+      platform = "web",
+      deviceId,
+      appVersion,
+      osVersion,
+    } = req.body;
     const userId = req.user._id;
+    console.log(req.body);
     const userType = req.user.userType; // Get user type from authenticated user
 
     // Validate required fields
     if (!userId || !token) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing required fields" });
     }
 
     // Validate platform
-    const validPlatforms = ['android', 'ios', 'web'];
+    const validPlatforms = ["android", "ios", "web"];
     if (!validPlatforms.includes(platform)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Invalid platform. Valid platforms: ${validPlatforms.join(', ')}` 
+      return res.status(400).json({
+        success: false,
+        message: `Invalid platform. Valid platforms: ${validPlatforms.join(
+          ", "
+        )}`,
       });
     }
 
     // Find user to verify existence
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     // Prepare device data
@@ -1831,63 +1910,63 @@ exports.saveFcmToken = async (req, res) => {
       token,
       platform,
       deviceId: deviceId || null,
-      fcmToken: platform !== 'web' ? token : null, // Store FCM token only for mobile
-      webPushSubscription: platform === 'web' ? token : null, // For web push
-      status: 'active',
+      fcmToken: platform !== "web" ? token : null, // Store FCM token only for mobile
+      webPushSubscription: platform === "web" ? token : null, // For web push
+      status: "active",
       lastActive: new Date(),
       appVersion: appVersion || null,
-      osVersion: osVersion || null
+      osVersion: osVersion || null,
     };
 
-    // Check if device already exists (by deviceId or token)
-    let existingDeviceIndex = -1;
-    
-    if (deviceId) {
-      existingDeviceIndex = user.devices.findIndex(d => d.deviceId === deviceId);
-    }
-    
-    if (existingDeviceIndex === -1) {
-      existingDeviceIndex = user.devices.findIndex(d => d.token === token);
-    }
+    // Check if the token already exists in the user's devices
+    const duplicateTokenIndex = user.devices.findIndex(
+      (d) => d.token === token
+    );
 
-    // Update or add device
-    if (existingDeviceIndex >= 0) {
-      // Update existing device
-      user.devices[existingDeviceIndex] = {
-        ...user.devices[existingDeviceIndex],
-        ...deviceData
+    if (duplicateTokenIndex >= 0) {
+      // Update the existing device with the same token
+      user.devices[duplicateTokenIndex] = {
+        ...user.devices[duplicateTokenIndex],
+        ...deviceData,
       };
     } else {
-      // Add new device
-      user.devices.push(deviceData);
+      // Check if the device already exists by deviceId
+      let existingDeviceIndex = -1;
+      if (deviceId) {
+        existingDeviceIndex = user.devices.findIndex(
+          (d) => d.deviceId === deviceId
+        );
+      }
+
+      if (existingDeviceIndex >= 0) {
+        // Update the existing device with the same deviceId
+        user.devices[existingDeviceIndex] = {
+          ...user.devices[existingDeviceIndex],
+          ...deviceData,
+        };
+      } else {
+        // Add new device
+        user.devices.push(deviceData);
+      }
     }
 
-    // For admins/superadmins, ensure they don't exceed max devices
-    // if (['admin', 'superAdmin'].includes(userType) && user.devices.length > 10) {
-    //   // Keep only the 10 most recently active devices
-    //   user.devices = user.devices
-    //     .sort((a, b) => b.lastActive - a.lastActive)
-    //     .slice(0, 10);
-    // }
-
+    // Save the user with updated devices
     await user.save();
 
-    return res.status(200).json({ 
-      success: true, 
-      message: 'Device token saved successfully',
-      deviceCount: user.devices.length
+    return res.status(200).json({
+      success: true,
+      message: "Device token saved successfully",
+      deviceCount: user.devices.length,
     });
-
   } catch (error) {
-    console.error('Error saving FCM token:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    console.error("Error saving FCM token:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
-
 
 exports.sendPushNotification = async (req, res) => {
   try {
@@ -1896,7 +1975,10 @@ exports.sendPushNotification = async (req, res) => {
 
     // ✅ If image file is attached
     if (req.file) {
-      const uploadResult = await uploadOnCloudinary(req.file.path, "orado_notifications");
+      const uploadResult = await uploadOnCloudinary(
+        req.file.path,
+        "orado_notifications"
+      );
       if (uploadResult?.secure_url) {
         imageUrl = uploadResult.secure_url;
       }
@@ -1907,13 +1989,13 @@ exports.sendPushNotification = async (req, res) => {
     if (!validUserTypes.includes(userType)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid user type. Valid types: ${validUserTypes.join(", ")}`
+        message: `Invalid user type. Valid types: ${validUserTypes.join(", ")}`,
       });
     }
 
     // ✅ Select model
     let Model;
-    console.log(userType)
+    console.log(userType);
     switch (userType) {
       case "customer":
         Model = User;
@@ -1925,19 +2007,18 @@ exports.sendPushNotification = async (req, res) => {
         Model = Restaurant;
         break;
     }
-     console.log(userIds)
     const users = await Model.find({ _id: { $in: userIds } }).lean();
- 
-    const tokens = users.flatMap(user => {
+
+    const tokens = users.flatMap((user) => {
       // For agents - get tokens from fcmTokens array
       if (userType === "agent" && Array.isArray(user.fcmTokens)) {
-        return user.fcmTokens.map(t => t.token).filter(Boolean);
+        return user.fcmTokens.map((t) => t.token).filter(Boolean);
       }
       // For customers and restaurants - get tokens from devices array
       else if (Array.isArray(user.devices)) {
         return user.devices
-          .filter(d => d.status === "active" && d.token)
-          .map(d => d.token)
+          .filter((d) => d.status === "active" && d.token)
+          .map((d) => d.token)
           .filter(Boolean);
       }
       return [];
@@ -1946,7 +2027,7 @@ exports.sendPushNotification = async (req, res) => {
     if (tokens.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "No valid FCM tokens found for the specified users."
+        message: "No valid FCM tokens found for the specified users.",
       });
     }
 
@@ -1956,33 +2037,58 @@ exports.sendPushNotification = async (req, res) => {
       notification: {
         title,
         body,
-        ...(imageUrl && { image: imageUrl })
+        ...(imageUrl && { image: imageUrl }),
       },
       data: {
         click_action: "FLUTTER_NOTIFICATION_CLICK",
         ...(deepLinkUrl && { deepLinkUrl }),
-        ...data
+        ...data,
       },
       apns: {
         payload: {
           aps: {
             sound: "default",
-            mutableContent: true
-          }
+            mutableContent: true,
+          },
         },
         fcm_options: {
-          ...(imageUrl && { image: imageUrl })
-        }
+          ...(imageUrl && { image: imageUrl }),
+        },
       },
       android: {
         priority: "high",
         notification: {
           sound: "default",
           channel_id: "high_importance_channel",
-          ...(imageUrl && { image: imageUrl })
-        }
-      }
+          ...(imageUrl && { image: imageUrl }),
+        },
+      },
     };
+
+       if (req.body.scheduledAt) {
+      // Convert string to Date object
+      const scheduledAt = new Date(req.body.scheduledAt);
+      
+      // Validate future date
+      if (scheduledAt <= new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: "Scheduled time must be in the future"
+        });
+      }
+
+
+      const result = await agenda.schedule(new Date(scheduledAt), "send", {
+      message})
+
+
+      return res.status(200).json({
+        success: true,
+        message: "Notification scheduled successfully",
+        // jobId: result.jobId,
+        // scheduledAt: result.scheduledAt
+      });
+    }
 
     const response = await firebase.messaging().sendEachForMulticast(message);
 
@@ -1993,27 +2099,14 @@ exports.sendPushNotification = async (req, res) => {
       failedCount: response.failureCount,
       failedTokens: response.responses
         .map((resp, idx) => (!resp.success ? tokens[idx] : null))
-        .filter(Boolean)
+        .filter(Boolean),
     });
-
   } catch (err) {
     console.error("Notification error:", err);
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      error: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-

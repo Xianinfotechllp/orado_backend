@@ -3,7 +3,7 @@ const Agent = require("../../models/agentModel")
 const Restaurant = require("../../models/restaurantModel")
 
 const notificationService = require("../../services/notificationService"); // Import the notification service
-
+const { calculateRestaurantEarnings } = require("../../services/earningService");
 const mongoose = require("mongoose")
 exports.getActiveOrdersStats = async (req, res) => {
   try {
@@ -153,6 +153,14 @@ exports.getOrderDetails = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
+
+
+  const earningsInfo = await calculateRestaurantEarnings({
+  restaurantId: order.restaurantId._id,
+  storeType: order.restaurantId.storeType || "restaurant", // assuming this field exists
+  orderAmounts:{subtotal:order.subtotal,tax:order.tax,finalAmount:order.totalAmount}
+});
+
     // clean up sensitive / unnecessary fields
     const sanitizedOrder = {
       _id: order._id,
@@ -175,6 +183,7 @@ exports.getOrderDetails = async (req, res) => {
         phone: order.customerId.phone,
         addresses: order.customerId.addresses,  // if needed
       },
+    
 
       restaurant: {
         _id: order.restaurantId._id,
@@ -200,6 +209,8 @@ exports.getOrderDetails = async (req, res) => {
         image: item.image,
         productId: item.productId?._id,
       })),
+       earningsInfo ,
+
 
       // if needed
       offerName: order.offerName,

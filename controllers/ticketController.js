@@ -1,5 +1,5 @@
 const Ticket = require('../models/ticketModel');
-
+const notificationService = require("../services/notificationService")
 // User creates a ticket
 exports.createTicket = async (req, res) => {
   try {
@@ -138,12 +138,22 @@ exports.addTicketReply = async (req, res) => {
       createdAt: new Date()
     });
 
+
+
     // Update ticket status if admin is replying
     if (sender === 'admin') {
       ticket.status = 'in_progress';
     }
 
     await ticket.save();
+
+
+    await notificationService.sendOrderNotification({
+
+      userId:ticket.user,
+      title:"Response to you ticket",
+      body:"Orado respnset to you ticket"
+    })
 
     res.status(201).json({
       message: "Reply added successfully",

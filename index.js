@@ -17,6 +17,7 @@ app.use(morgan('dev')); // Logs in console while you develop or ho
 // Middlewares
 // app.use(express.json());
 
+
 // Allowed frontend origins for REST API
 const allowedOrigins = [
   "http://localhost:5174",

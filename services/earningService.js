@@ -3,7 +3,7 @@ const Order =  require("../models/orderModel")
 const RestaurantEarning = require("../models/RestaurantEarningModel")
 const Product = require("../models/productModel")
 const Restaurant = require("../models/restaurantModel")
-
+const MerchantCommissionSetting = require('../models/merchantCommissionSettingModel');
 
 exports.addAgentEarnings = async ({ agentId, orderId, amount, type, remarks = null }) => {
   try {
@@ -122,3 +122,69 @@ exports.createRestaurantEarning = async (order) => {
     throw error;
   }
 };
+
+
+
+
+
+
+exports.calculateRestaurantEarnings = async ({ restaurantId, storeType, orderAmounts }) => {
+  const { subtotal, tax, finalAmount } = orderAmounts;
+
+  // Step 1: Try to get merchant-specific commission config
+  let commissionConfig = await MerchantCommissionSetting.findOne({
+    restaurantId
+  });
+
+  // Step 2: Fallback to default config
+  if (!commissionConfig) {
+    commissionConfig = await MerchantCommissionSetting.findOne({
+      isDefault: true
+    });
+  }
+
+  if (!commissionConfig) {
+    throw new Error('Commission configuration not found for this store type.');
+  }
+
+  const { commissionType, commissionValue, commissionBase } = commissionConfig;
+
+  // Step 3: Choose base amount
+  let baseAmount = 0;
+  switch (commissionBase) {
+    case 'subtotal+tax':
+      baseAmount = subtotal + tax;
+      break;
+    case 'finalAmount':
+      baseAmount = finalAmount;
+      break;
+    case 'subtotal':
+    default:
+      baseAmount = subtotal;
+      break;
+  }
+
+  // Step 4: Calculate commission
+  let commissionAmount = 0;
+  if (commissionType === 'percentage') {
+    commissionAmount = (baseAmount * commissionValue) / 100;
+  } else if (commissionType === 'fixed') {
+    commissionAmount = commissionValue;
+  }
+
+  // Step 5: Calculate merchant earnings
+  const merchantEarning = finalAmount - commissionAmount;
+
+  return {
+    commissionAmount,
+    merchantEarning,
+    usedCommissionConfig: {
+      commissionType,
+      commissionValue,
+      commissionBase,
+    },
+  };
+};
+
+
+
