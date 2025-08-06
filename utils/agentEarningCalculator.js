@@ -52,3 +52,5 @@ function calculateEarningsBreakdown({
     totalEarning,
   };
 }
+
+module.exports = calculateEarningsBreakdown;
