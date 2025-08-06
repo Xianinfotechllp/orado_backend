@@ -504,6 +504,8 @@ exports.getRestaurantMenu = async (req, res) => {
         const products = await Product.find({
           restaurantId,
           categoryId: category._id,
+          active:true
+        
         }).select('-revenueShare -costPrice -profitMargin');
 
         return {

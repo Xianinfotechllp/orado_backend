@@ -27,7 +27,7 @@ function deg2rad(deg) {
 exports.getNearbyRestaurants = async (req, res) => {
   try {
     const { latitude, longitude, distance = 15000 } = req.query;
- console.log("api call")
+
     // validation blocks (same as yours)...
 
     const lat = parseFloat(latitude);
@@ -38,7 +38,7 @@ exports.getNearbyRestaurants = async (req, res) => {
       location: {
         $near: {
           $geometry: { type: "Point", coordinates: [lng, lat] },
-          $maxDistance: dist,
+          $maxDistance: distance,
         },
       },
       active: true,
