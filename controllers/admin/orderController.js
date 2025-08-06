@@ -3,7 +3,7 @@ const Agent = require("../../models/agentModel")
 const Restaurant = require("../../models/restaurantModel")
 
 const notificationService = require("../../services/notificationService"); // Import the notification service
-const { calculateRestaurantEarnings } = require("../../services/earningService");
+const { calculateRestaurantEarnings, createRestaurantEarning } = require("../../services/earningService");
 const mongoose = require("mongoose")
 exports.getActiveOrdersStats = async (req, res) => {
   try {
@@ -261,47 +261,86 @@ exports.getAllOrderLocationsForMap = async (req, res) => {
   }
 };
 
-
-
 exports.getAgentOrderDispatchStatuses = async (req, res) => {
   try {
-    const orders = await Order.find({})
+    // Filter for new orders (pending or awaiting agent assignment)
+    const query = {
+      orderStatus: { 
+        $in: ['pending', 'pending_agent_acceptance', 'awaiting_agent_assignment'] 
+      }
+    };
+
+    const orders = await Order.find(query)
       .populate("customerId", "name phone email")
       .populate("restaurantId", "name address location")
-      .populate("assignedAgent", "fullName phoneNumber agentStatus")  // populate agentStatus too
-      .sort({ createdAt: -1 });
+      .populate("assignedAgent", "fullName phoneNumber agentStatus")
+      .sort({ createdAt: -1 })
 
-    const formattedOrders = orders.map(order => ({
-      orderId: order._id,
-      orderTime: order.createdAt,
-       orderStatus: order.orderStatus,
-      agentAssignmentStatus: order.agentAssignmentStatus || "Unassigned",
-      assignedAgent: order.assignedAgent ? order.assignedAgent.fullName : "Unassigned",
-      agentPhone: order.assignedAgent ? order.assignedAgent.phoneNumber : "-",
-      agentCurrentStatus: order.assignedAgent?.agentStatus?.currentStatus || "OFFLINE",
-      agentAvailability: order.assignedAgent?.agentStatus?.availability || "Unavailable",
-      restaurantName: order.restaurantId ? order.restaurantId.name : "-",
-       restaurantAddress:order.restaurantId ? order.restaurantId.address : "",
-       restaurantLocation: order.restaurantId ? order.restaurantId.location : null,
-      customerName: order.customerId ? order.customerId.name : "-",
-      customerPhone: order.customerId ? order.customerId.phone : "-",
-      deliveryLocation: order.deliveryLocation?.coordinates || [],
-      deliveryAddress: order.deliveryAddress?.street || "-",
-      totalAmount: order.totalAmount || 0,
-    }));
+    const formattedOrders = orders.map(order => {
+      // Derive agentAssignmentStatus
+      let agentAssignmentStatus = "Unassigned";
+
+      if (order.assignedAgent) {
+        agentAssignmentStatus = "Assigned";
+      } else if (order.agentCandidates?.length > 0) {
+        const hasAccepted = order.agentCandidates.some(c => c.status === 'accepted');
+        const allRejectedOrTimedOut = order.agentCandidates.every(c =>
+          ['rejected', 'timed_out'].includes(c.status)
+        );
+        const hasPending = order.agentCandidates.some(c => c.status === 'pending');
+
+        if (hasAccepted) {
+          agentAssignmentStatus = "Accepted";
+        } else if (hasPending) {
+          agentAssignmentStatus = "Pending";
+        } else if (allRejectedOrTimedOut) {
+          agentAssignmentStatus = "Rejected";
+        } else {
+          agentAssignmentStatus = "In Progress";
+        }
+      }
+
+      return {
+        orderId: order._id,
+        orderTime: order.createdAt,
+        orderStatus: order.orderStatus,
+        agentAssignmentStatus,
+        assignedAgent: order.assignedAgent ? order.assignedAgent.fullName : "Unassigned",
+        agentPhone: order.assignedAgent ? order.assignedAgent.phoneNumber : "-",
+        agentCurrentStatus: order.assignedAgent?.agentStatus?.currentStatus || "OFFLINE",
+        agentAvailability: order.assignedAgent?.agentStatus?.availability || "Unavailable",
+        restaurantName: order.restaurantId?.name || "-",
+        restaurantAddress: order.restaurantId?.address || "",
+        restaurantLocation: order.restaurantId?.location || null,
+        customerName: order.customerId?.name || "-",
+        customerPhone: order.customerId?.phone || "-",
+        deliveryLocation: order.deliveryLocation?.coordinates || [],
+        deliveryAddress: order.deliveryAddress?.street || "-",
+        totalAmount: order.totalAmount || 0,
+      };
+    });
 
     res.status(200).json({
       messageType: "success",
       data: formattedOrders,
+      count: formattedOrders.length,
+      newOrdersCount: formattedOrders.filter(o => 
+        o.orderStatus === 'pending' || 
+        o.orderStatus === 'awaiting_agent_assignment'
+      ).length
     });
   } catch (error) {
     console.error("Error fetching dispatch statuses:", error);
     res.status(500).json({
       messageType: "failure",
       message: "Failed to fetch agent dispatch statuses",
+      error: error.message
     });
   }
 };
+
+
+
 
 
 
@@ -395,6 +434,15 @@ exports.updateOrderStatus = async (req, res) => {
               timestamp: new Date(),
             }
           );
+
+           try {
+    await createRestaurantEarning(order);
+  } catch (earningErr) {
+    console.error("❌ Failed to create restaurant earning:", earningErr.message);
+    // Optional: log this somewhere or send an alert to admin
+  }
+
+
         }
       }
 

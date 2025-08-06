@@ -1,0 +1,10 @@
+config:
+  target: "https://orado-backend.onrender.com"  # or your deployed URL
+  phases:
+    - duration: 60       # 60 seconds
+      arrivalRate: 50    # 50 users per second
+
+scenarios:
+  - flow:
+      - get:
+          url: "/commission/settings"

@@ -75,53 +75,53 @@ exports.addRestaurantEarnings = async (orderId) => {
 
   return earningRecord;
 };
-exports.createRestaurantEarning = async (order) => {
-  try {
-    const restaurant = await Restaurant.findById(order.restaurantId);
-    if (!restaurant) throw new Error("Restaurant not found for earning calculation.");
+// exports.createRestaurantEarning = async (order) => {
+//   try {
+//     const restaurant = await Restaurant.findById(order.restaurantId);
+//     if (!restaurant) throw new Error("Restaurant not found for earning calculation.");
 
-    const commission = restaurant.commission || { type: "percentage", value: 20 };
-    const { type: commissionType, value: commissionValue } = commission;
+//     const commission = restaurant.commission || { type: "percentage", value: 20 };
+//     const { type: commissionType, value: commissionValue } = commission;
 
-    // Base for commission: cartTotal after offer discount
-    const commissionBase = order.cartTotal - (order.offerDiscount || 0);
+//     // Base for commission: cartTotal after offer discount
+//     const commissionBase = order.cartTotal - (order.offerDiscount || 0);
 
-    let commissionAmount = 0;
-    if (commissionType === "percentage") {
-      commissionAmount = (commissionBase * commissionValue) / 100;
-    } else if (commissionType === "fixed") {
-      commissionAmount = commissionValue;
-    }
+//     let commissionAmount = 0;
+//     if (commissionType === "percentage") {
+//       commissionAmount = (commissionBase * commissionValue) / 100;
+//     } else if (commissionType === "fixed") {
+//       commissionAmount = commissionValue;
+//     }
 
-    // Net earning = discounted cart total - commission
-    const restaurantNetEarning = commissionBase - commissionAmount;
+//     // Net earning = discounted cart total - commission
+//     const restaurantNetEarning = commissionBase - commissionAmount;
 
-    const newEarning = new RestaurantEarning({
-      restaurantId: order.restaurantId,
-      orderId: order._id,
-      cartTotal: order.cartTotal,              // ✅ cartTotal here
-      offerDiscount: order.offerDiscount || 0,
-      offerId: order.offerId || null,
-      offerName: order.offerName || null,
-      totalOrderAmount: order.totalAmount,
-      commissionAmount,
-      commissionType,
-      commissionValue,
-      restaurantNetEarning,
-      date: order.createdAt || new Date(),
-      remarks: null
-    });
+//     const newEarning = new RestaurantEarning({
+//       restaurantId: order.restaurantId,
+//       orderId: order._id,
+//       cartTotal: order.cartTotal,              // ✅ cartTotal here
+//       offerDiscount: order.offerDiscount || 0,
+//       offerId: order.offerId || null,
+//       offerName: order.offerName || null,
+//       totalOrderAmount: order.totalAmount,
+//       commissionAmount,
+//       commissionType,
+//       commissionValue,
+//       restaurantNetEarning,
+//       date: order.createdAt || new Date(),
+//       remarks: null
+//     });
 
-    await newEarning.save();
-    console.log(`✅ Restaurant earning record created for order ${order._id}`);
+//     await newEarning.save();
+//     console.log(`✅ Restaurant earning record created for order ${order._id}`);
 
-    return newEarning;
+//     return newEarning;
 
-  } catch (error) {
-    console.error("❌ Error creating restaurant earning:", error);
-    throw error;
-  }
-};
+//   } catch (error) {
+//     console.error("❌ Error creating restaurant earning:", error);
+//     throw error;
+//   }
+// };
 
 
 
@@ -188,3 +188,52 @@ exports.calculateRestaurantEarnings = async ({ restaurantId, storeType, orderAmo
 
 
 
+
+
+
+exports.createRestaurantEarning = async (order) => {
+  try {
+    const restaurant = await Restaurant.findById(order.restaurantId);
+    if (!restaurant) throw new Error("Restaurant not found for earning calculation.");
+
+    const { subtotal, tax, totalAmount: finalAmount } = order;
+
+    // Use centralized commission config logic
+    const earningData = await exports.calculateRestaurantEarnings({
+      restaurantId: order.restaurantId,
+      storeType: restaurant.storeType || null,
+      orderAmounts: {
+        subtotal,
+        tax,
+        finalAmount
+      }
+    });
+
+    const newEarning = new RestaurantEarning({
+      restaurantId: order.restaurantId,
+      orderId: order._id,
+      cartTotal: subtotal,
+      offerDiscount: order.offerDiscount || 0,
+      offerId: order.offerId || null,
+      offerName: order.offerName || null,
+      totalOrderAmount: finalAmount,
+      commissionAmount: earningData.commissionAmount,
+      commissionType: earningData.usedCommissionConfig.commissionType,
+      commissionValue: earningData.usedCommissionConfig.commissionValue,
+      restaurantNetEarning: earningData.merchantEarning,
+      date: order.createdAt || new Date(),
+      payoutStatus: 'pending',
+      earningStatus: order.status === 'delivered' ? 'finalized' : 'pending',
+      remarks: null
+    });
+
+    await newEarning.save();
+    console.log(`✅ Restaurant earning record created for order ${order._id}`);
+
+    return newEarning;
+
+  } catch (error) {
+    console.error("❌ Error creating restaurant earning:", error);
+    throw error;
+  }
+};

@@ -17,6 +17,5 @@ router.patch("/cities/:id", updateCity);
 
 
 router.get("/cities/:cityId/delivery-fee-setting", getCityDeliveryFeeSetting);
-router.put("/cities/:cityId/delivery-fee-setting", updateCityDeliveryFeeSetting)
-
+router.put("/cities/:cityId/delivery-fee-setting", updateCityDeliveryFeeSetting);
 module.exports = router

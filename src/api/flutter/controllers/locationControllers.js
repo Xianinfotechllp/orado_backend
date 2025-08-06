@@ -26,7 +26,7 @@ function deg2rad(deg) {
 
 exports.getNearbyRestaurants = async (req, res) => {
   try {
-    const { latitude, longitude, distance = 5000 } = req.query;
+    const { latitude, longitude, distance = 15000 } = req.query;
  console.log("api call")
     // validation blocks (same as yours)...
 

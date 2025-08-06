@@ -2,6 +2,7 @@
 const Order = require("../models/orderModel")
 const MerchantCommissionSetting = require("../models/merchantCommissionSettingModel");
 const mongoose = require('mongoose');
+const RestaurantEarnigs = require("../models/RestaurantEarningModel")
 exports.createOrUpdateCommissionSetting = async (req, res) => {
   try {
     const {
@@ -251,6 +252,84 @@ exports.getCommissionSummary = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Server error", error: err.message });
+  }
+};
+
+
+
+
+exports.getRestaurantCommissionsAdmin = async (req, res) => {
+  try {
+    const {
+      restaurantId,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    const filter = {};
+
+    // Filter by restaurant if provided
+    if (restaurantId && mongoose.Types.ObjectId.isValid(restaurantId)) {
+      filter.restaurantId = restaurantId;
+    }
+
+    // Filter by date range if provided
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) {
+        filter.date.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.date.$lte = end;
+      }
+    }
+
+    // Fetch paginated results with restaurant info
+    const commissions = await RestaurantEarnigs.paginate(filter, {
+      page,
+      limit,
+      sort: { createdAt: -1 },
+      populate: { path: 'restaurantId', select: 'name' }
+    });
+
+    // Total summary (for report cards)
+    const summaryAggregation = await RestaurantEarnigs.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalCommission: { $sum: '$commissionAmount' },
+          totalEarnings: { $sum: '$restaurantNetEarning' },
+          totalOrders: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const summary = summaryAggregation[0] || {
+      totalCommission: 0,
+      totalEarnings: 0,
+      totalOrders: 0
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: commissions.docs,
+      total: commissions.totalDocs,
+      pages: commissions.totalPages,
+      currentPage: commissions.page,
+      summary
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching commissions:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while fetching commissions'
+    });
   }
 };
 

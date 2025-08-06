@@ -207,6 +207,21 @@ exports.manualAssignAgent = async (req, res) => {
       ],
     };
 
+
+const restaurantName = order.restaurantId?.name || "a restaurant";
+const customerName = order.customerId?.name || "a customer";
+const deliveryAddress = order.deliveryAddress?.street || "an address";
+const notificationTitle = `New Order Assignment`;
+const notificationBody = `You've been assigned to deliver from ${restaurantName} to ${deliveryAddress}. Order total: ₹${order.totalAmount || 0}`;
+
+   await sendNotificationToAgent({
+    agentId,
+    title: notificationTitle,
+    body: notificationBody,
+  data: { 
+  },
+  });
+
     io.to(`agent_${agent._id}`).emit("orderAssigned", payload);
     console.log("📦 Order assigned and emitted to agent:", agent._id);
 
