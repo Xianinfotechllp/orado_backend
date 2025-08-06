@@ -1129,7 +1129,7 @@ if (
 
 console.log(applicableSurges)
 
-   const earningsBreakdown = calculateEarningsBreakdown({
+  const earningsBreakdown = calculateEarningsBreakdown({
   distanceKm: distance,
   config: earingConfig,
   surgeZones: applicableSurges, // 👈 pass here

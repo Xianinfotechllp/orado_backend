@@ -7,7 +7,8 @@ const admin = require('../config/firebaseAdmin');
 const sendNotificationToAgent = async ({ agentId, title, body, data = {} }) => {
   const agent = await Agent.findById(agentId);
   if (!agent || !agent.fcmTokens || agent.fcmTokens.length === 0) {
-    throw new Error('No FCM tokens found for this agent');
+    console.warn(`⚠️ No FCM tokens for agent ${agentId}`);
+    return { status: 'no_tokens' };
   }
 
   const messages = agent.fcmTokens.map(tokenObj => ({
@@ -32,5 +33,6 @@ const sendNotificationToAgent = async ({ agentId, title, body, data = {} }) => {
 
   return responses;
 };
+
 
 module.exports = sendNotificationToAgent

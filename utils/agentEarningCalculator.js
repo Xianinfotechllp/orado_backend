@@ -1,14 +1,3 @@
-/**
- * Calculates agent earnings breakdown with surge logic.
- * 
- * Applies surge only on the base fee (Option 1).
- *
- * @param {Object} options
- * @param {Number} options.distanceKm - Total distance of the delivery
- * @param {Object} options.config - Fee config { baseFee, baseKm, perKmFee }
- * @param {Array} options.surgeZones - Array of matched surge zones [{ name, surgeType, surgeValue }]
- * @returns {Object} - Detailed breakdown of earnings
- */
 function calculateEarningsBreakdown({
   distanceKm = 0,
   config = {},
@@ -17,8 +6,11 @@ function calculateEarningsBreakdown({
   const {
     baseFee = 0,
     baseKm = 0,
-    perKmFee = 0,
+    peakHourBonus = 0,
+    rainBonus = 0,
   } = config;
+
+  const perKmFee = config.perKmFeeBeyondBase ?? 0;
 
   const distanceBeyondBase = Math.max(0, distanceKm - baseKm);
   const extraDistanceEarning = distanceBeyondBase * perKmFee;
@@ -33,7 +25,7 @@ function calculateEarningsBreakdown({
       surgeFee = zone.surgeValue;
     } else if (zone.surgeType === "percentage") {
       const multiplier = zone.surgeValue / 100;
-      surgeFee = baseFee * multiplier; // ✅ Only base fee is multiplied
+      surgeFee = baseFee * multiplier;
     }
 
     surgeAmount += surgeFee;
@@ -51,14 +43,12 @@ function calculateEarningsBreakdown({
   return {
     baseFee,
     baseKm,
+    perKmFee,
     distanceKm,
     distanceBeyondBase,
-    perKmFee,
     extraDistanceEarning,
     surgeAmount,
-    totalEarning,
     surgeDetails,
+    totalEarning,
   };
 }
-
-module.exports = calculateEarningsBreakdown;

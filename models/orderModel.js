@@ -133,6 +133,29 @@ allocationMethod: {
   enum: ['manual', 'one_by_one', 'nearest', 'fifo', 'broadcast'],
   default: 'one_by_one',
 },
+
+allocationRetries: {
+  type: Number,
+  default: 0 // How many agents tried so far
+},
+
+
+allocationStartedAt: Date,
+allocationEndedAt: Date,
+allocationFailedAt: Date,
+allocationAutoCancelledAt: Date,
+
+
+
+
+
+
+
+
+
+
+
+
 assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
 agentCandidates: [agentCandidateSchema],
 agentAssignedAt: Date,

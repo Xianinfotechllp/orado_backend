@@ -2,6 +2,7 @@
   const Agent = require("../models/agentModel");
   const Order = require("../models/orderModel");
   const Restaurant = require("../models/restaurantModel");
+const agenda = require("../config/agenda");
    const sendNotificationToAgent = require('../utils/sendNotificationToAgent')
   /**
    * Assign an agent to an order based on the current allocation method
@@ -159,6 +160,15 @@ const assignOneByOne = async (orderId) => {
   },
 });
   console.log(`📨 First agent (${firstAgent.fullName}) notified for order ${orderId}`);
+
+  await agenda.schedule("in 20 seconds", "checkAgentResponseTimeout", {
+  orderId: order._id.toString(),
+  agentId: firstAgent._id.toString(),
+});
+
+console.log(`⏳ Timeout job scheduled for Agent ${firstAgent.fullName} on Order ${order._id}`);
+
+
   return {
     status: "first_agent_notified",
     agentId: firstAgent._id,
