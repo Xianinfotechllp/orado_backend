@@ -932,7 +932,7 @@ exports.getAssignedOrders = async (req, res) => {
           agentCandidates: {
             $elemMatch: {
               agent: agentId,
-              status: { $in: ["pending", "accepted"] },
+              status: { $in: ["pending", "accepted","notified"] },
             },
           },
         },

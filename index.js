@@ -158,23 +158,40 @@ io.on("connection", (socket) => {
       }
     });
 
-    socket.on("agent:location", (data) => {
-    const { agentId, lat, lng ,deviceInfo} = data;
-    console.log(`Agent ${agentId} location update:`, data);
-    // Optionally: Save to Redis GEOSET
+   socket.on("agent:location", async (data) => {
+  const { agentId, lat, lng, deviceInfo } = data;
 
+  if (
+    !mongoose.Types.ObjectId.isValid(agentId) ||
+    typeof lat !== "number" ||
+    typeof lng !== "number"
+  ) {
+    return socket.emit("error", { message: "Invalid agent location data" });
+  }
 
-    // Broadcast to admin dashboards or dispatchers
-    socket.broadcast.emit("admin:updateLocation", {
-      agentId,
-      lat,
-      lng,
-      deviceInfo
-    });
+  console.log(`📍 Agent ${agentId} location update:`, { lat, lng });
 
-    // Update agent lastSeen for availability timeout logic
-    redis.set(`agent_last_seen:${agentId}`, Date.now(), "EX", 60);
+  // Step 1: Save to Redis for availability + fallback
+  await redis.set(`agent_last_seen:${agentId}`, Date.now(), "EX", 60);
+  await redis.set(
+    `agent_location:${agentId}`,
+    JSON.stringify({ lat, lng }),
+    "EX",
+    60
+  );
+
+  // Step 2 (optional): Store in Redis GEOSET for advanced queries later
+  // await redis.geoadd("agents_geo", lng, lat, agentId); // Uncomment if you want to use Redis Geo features
+
+  // Step 3: Notify admins live
+  io.to("admin_group").emit("admin:updateLocation", {
+    agentId,
+    lat,
+    lng,
+    deviceInfo,
   });
+});
+
 
 
 

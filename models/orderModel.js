@@ -10,7 +10,7 @@ agent: {
 },
 status: {
   type: String,
-  enum: ['waiting', 'pending', 'accepted', 'rejected', 'timed_out'],
+  enum: ['waiting', 'pending', 'notified','accepted', 'rejected', 'timed_out'],
   default: 'waiting',
 },
 assignedAt: Date,
@@ -130,7 +130,7 @@ deliveryAddress: {
 // Agent assignment
 allocationMethod: {
   type: String,
-  enum: ['manual', 'one_by_one', 'nearest', 'fifo', 'broadcast'],
+  enum: ['manual', 'one_by_one', 'nearest', 'fifo', 'broadcast',"send_to_all"],
   default: 'one_by_one',
 },
 

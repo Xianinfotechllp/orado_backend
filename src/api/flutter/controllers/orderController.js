@@ -15,7 +15,8 @@ const { getApplicableSurgeFee } = require("../services/surgeCalculator");
 const feeService = require("../services/feeService")
 const Permission = require("../../../../models/restaurantPermissionModel")
 const Offer = require("../../../../models/offerModel")
-const {assignTask} = require("../services/allocationService")
+
+const {assingTask} = require("../../../../services/allocationService")
 const crypto = require("crypto");
 const razorpay = require("../config/razorpayInstance");
 const geoService = require("../../../../services/geoServices");
