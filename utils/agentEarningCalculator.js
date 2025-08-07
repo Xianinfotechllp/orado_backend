@@ -6,14 +6,14 @@ function calculateEarningsBreakdown({
   const {
     baseFee = 0,
     baseKm = 0,
+    perKmFeeBeyondBase = 0,
     peakHourBonus = 0,
     rainBonus = 0,
   } = config;
 
-  const perKmFee = config.perKmFeeBeyondBase ?? 0;
-
+  // Calculate how much distance is beyond the base included distance
   const distanceBeyondBase = Math.max(0, distanceKm - baseKm);
-  const extraDistanceEarning = distanceBeyondBase * perKmFee;
+  const extraDistanceEarning = distanceBeyondBase * perKmFeeBeyondBase;
 
   let surgeAmount = 0;
   const surgeDetails = [];
@@ -24,8 +24,7 @@ function calculateEarningsBreakdown({
     if (zone.surgeType === "fixed") {
       surgeFee = zone.surgeValue;
     } else if (zone.surgeType === "percentage") {
-      const multiplier = zone.surgeValue / 100;
-      surgeFee = baseFee * multiplier;
+      surgeFee = baseFee * (zone.surgeValue / 100);
     }
 
     surgeAmount += surgeFee;
@@ -38,17 +37,19 @@ function calculateEarningsBreakdown({
     });
   }
 
-  const totalEarning = baseFee + extraDistanceEarning + surgeAmount;
+  const totalEarning = baseFee + extraDistanceEarning + surgeAmount + peakHourBonus ;
 
   return {
     baseFee,
     baseKm,
-    perKmFee,
+    perKmFee: perKmFeeBeyondBase,
     distanceKm,
     distanceBeyondBase,
     extraDistanceEarning,
     surgeAmount,
     surgeDetails,
+    peakHourBonus,
+    rainBonus,
     totalEarning,
   };
 }

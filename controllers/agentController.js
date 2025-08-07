@@ -8,8 +8,12 @@ const Restaurant = require("../models/restaurantModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
-const EarnigsSettings = require("../models/AgentEarningSettingModel");
+const axios = require('axios')
+const AgentEarningSettings = require("../models/AgentEarningSettingModel");
 const AgentIncentiveProgress = require("../models/agentIncentiveProgress")
+
+
+const geolib = require('geolib');
 const {
   addAgentEarnings,
   addRestaurantEarnings,
@@ -1087,64 +1091,105 @@ exports.getAssignedOrderDetails = async (req, res) => {
       .populate("customerId", "name phone email")
       .populate("orderItems.productId");
 
-
-      console.log(order,"sdsdf")
-
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
-    const earingConfig = await EarnigsSettings.findOne({ mode: "global" });
-    console.log("Earnings Config:", earingConfig);
-    let distance = 0;
+
+    const earningsConfig = await AgentEarningSettings.findOne({ mode: "global" });
+    if (!earningsConfig) {
+      return res.status(500).json({ message: "Earnings configuration not found." });
+    }
+
+    console.log("⚙️ Earnings Config:", earningsConfig);
+
+    let distanceKm = 0;
+    let mapboxDistace = 0
+
+    // 📏 Distance Calculation
     if (
-      order.restaurantId?.location?.coordinates &&
-      order.deliveryLocation?.coordinates
+      Array.isArray(order.restaurantId?.location?.coordinates) &&
+      Array.isArray(order.deliveryLocation?.coordinates)
     ) {
-      distance = haversineDistance(
-        order.restaurantId.location.coordinates,
-        order.deliveryLocation.coordinates
-      );
-      console.log("📏 Distance (km):", distance);
+      const fromCoords = order.restaurantId.location.coordinates; // [lon, lat]
+      const toCoords = order.deliveryLocation.coordinates;         // [lon, lat]
+
+  async function getDrivingDistance(fromCoords, toCoords) {
+  const accessToken = 'pk.eyJ1IjoiYW1hcm5hZGg2NSIsImEiOiJjbWJ3NmlhcXgwdTh1MmlzMWNuNnNvYmZ3In0.kXrgLZhaz0cmbuCvyxOd6w';
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?geometries=geojson&access_token=${accessToken}`;
+
+  try {
+    const response = await axios.get(url);
+    const distanceMeters = response.data.routes[0].distance;
+    const distanceKm = distanceMeters / 1000;
+    console.log("🚗 Driving Distance (km):", distanceKm.toFixed(2));
+    return distanceKm;
+  } catch (error) {
+    console.error("❌ Error fetching driving distance from Mapbox:", error.message);
+    return null;
+  }
+}
+
+
+
+
+
+
+      const from = {
+        latitude: fromCoords[1],
+        longitude: fromCoords[0],
+      };
+      const to = {
+        latitude: toCoords[1],
+        longitude: toCoords[0],
+      };
+
+      const distanceInMeters = geolib.getDistance(from, to);
+      distanceKm = distanceInMeters / 1000;
+
+      console.log("📏 Distance (meters):", distanceInMeters);
+       mapboxDistace = await getDrivingDistance(order.restaurantId.location.coordinates,order.deliveryLocation.coordinates)
+      console.log("mapbox distave coount",mapboxDistace)
+      console.log("📏 Distance (km):", distanceKm.toFixed(2));
     } else {
       console.warn("❌ Missing location data for distance calculation.");
     }
 
-
+    // ⚡ Surge Zones (if applicable)
     let applicableSurges = [];
-if (
-  order.restaurantId?.location?.coordinates &&
-  order.deliveryLocation?.coordinates
-) {
-  const fromCoords = order.restaurantId.location.coordinates;
-  const toCoords = order.deliveryLocation.coordinates;
+    if (
+      Array.isArray(order.restaurantId?.location?.coordinates) &&
+      Array.isArray(order.deliveryLocation?.coordinates)
+    ) {
+      try {
+        applicableSurges = await findApplicableSurgeZones({
+          fromCoords: order.restaurantId.location.coordinates,
+          toCoords: order.deliveryLocation.coordinates,
+          time: new Date(),
+        });
+        console.log("🚨 Applicable Surges:", applicableSurges);
+      } catch (err) {
+        console.warn("⚠️ Failed to fetch surge zones:", err.message);
+      }
+    }
 
-  // Calculate surge zones
-  applicableSurges = await findApplicableSurgeZones({
-    fromCoords,
-    toCoords,
-    time: new Date(), // optional, defaults inside function
-  });
+    // 💰 Earnings Calculation
+    const earningsBreakdown = calculateEarningsBreakdown({
+      distanceKm:mapboxDistace,
+      config: earningsConfig.toObject(),
+      surgeZones: applicableSurges,
+    });
 
-}
+    console.log("💰 Earnings Breakdown:", earningsBreakdown);
 
-console.log(applicableSurges)
-
-  const earningsBreakdown = calculateEarningsBreakdown({
-  distanceKm: distance,
-  config: earingConfig,
-  surgeZones: applicableSurges, // 👈 pass here
-});
-
-    console.log("💰 earings ",earningsBreakdown) 
-
-
-    const formattedOrder = formatOrder(order, agentId); // 👈 use utility
+    // 📦 Format Order Response
+    const formattedOrder = formatOrder(order, agentId);
 
     return res.status(200).json({
       status: "success",
       order: formattedOrder,
       earningsBreakdown,
     });
+
   } catch (error) {
     console.error("❌ Error in getAssignedOrderDetails:", error);
     return res.status(500).json({

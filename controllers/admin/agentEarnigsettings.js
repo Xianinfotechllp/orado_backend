@@ -12,7 +12,7 @@ exports.addAgentEarnigsSetting = async (req, res) => {
     if (mode === 'city' && !cityId) {
       return res.status(400).json({ error: "City ID is required for city-specific settings." });
     }
-
+  
     // For global mode: Replace existing setting (if any)
     if (mode === 'global') {
       const updatedSetting = await AgentEarningSetting.findOneAndUpdate(
@@ -21,9 +21,9 @@ exports.addAgentEarnigsSetting = async (req, res) => {
           $set: {
             baseFee: baseFee || 20,
             baseKm: baseKm || 2,
-            perKmFeeBeyondBase: perKmFeeBeyondBase || 10,
-            peakHourBonus: peakHourBonus || 20,
-            rainBonus: rainBonus || 15,
+            perKmFeeBeyondBase: perKmFeeBeyondBase || 0,
+            peakHourBonus: peakHourBonus || 0,
+            rainBonus: rainBonus || 0,
           }
         },
         { 
