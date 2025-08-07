@@ -1,7 +1,7 @@
 const Order = require("../../models/orderModel")
 const Agent = require("../../models/agentModel")
 const Restaurant = require("../../models/restaurantModel")
-
+const moment = require('moment')
 const notificationService = require("../../services/notificationService"); // Import the notification service
 const { calculateRestaurantEarnings, createRestaurantEarning } = require("../../services/earningService");
 const mongoose = require("mongoose")
@@ -511,5 +511,94 @@ exports.updateOrderStatus = async (req, res) => {
   } catch (err) {
     console.error('Error updating order status:', err);
     return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.getOrderLocationsByPeriod = async (req, res) => {
+  try {
+    const { period, from, to } = req.query;
+
+    let startDate, endDate;
+
+    // 1️⃣ Date range selection
+    switch (period) {
+      case "today":
+        startDate = moment().startOf("day").toDate();
+        endDate = moment().endOf("day").toDate();
+        break;
+
+      case "this_week":
+        startDate = moment().startOf("isoWeek").toDate();
+        endDate = moment().endOf("isoWeek").toDate();
+        break;
+
+      case "this_month":
+        startDate = moment().startOf("month").toDate();
+        endDate = moment().endOf("month").toDate();
+        break;
+
+      case "custom":
+        if (!from || !to) {
+          return res.status(400).json({ message: "Custom range requires 'from' and 'to' dates." });
+        }
+        startDate = new Date(from);
+        endDate = new Date(to);
+        break;
+
+      default:
+        return res.status(400).json({ message: "Invalid period specified." });
+    }
+
+    // 2️⃣ Fetch matching orders with delivery + pickup locations
+    const orders = await Order.find({
+      orderTime: { $gte: startDate, $lte: endDate },
+      "deliveryLocation.coordinates": { $exists: true, $ne: [] },
+    })
+      .select("deliveryLocation deliveryAddress restaurantId") // fetch necessary fields only
+      .populate("restaurantId", "location name") // assuming restaurant has location
+      .lean();
+
+    // 3️⃣ Format response: convert coordinates to { lat, lng }
+    const mapped = orders.map(order => {
+      const [lng, lat] = order.deliveryLocation?.coordinates || [];
+
+      return {
+        dropLocation: {
+          coordinates: { lat, lng },
+          address: order.deliveryAddress || null,
+        },
+        pickupLocation: order.restaurantId?.location?.coordinates?.length === 2
+          ? {
+              lat: order.restaurantId.location.coordinates[1],
+              lng: order.restaurantId.location.coordinates[0],
+            }
+          : null,
+        restaurantName: order.restaurantId?.name || null,
+      };
+    });
+
+    return res.status(200).json({
+      messageType: "success",
+      period,
+      count: mapped.length,
+      data: mapped,
+    });
+
+  } catch (error) {
+    console.error("❌ Error fetching order locations:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };

@@ -33,7 +33,7 @@ const { getUserStats } = require("../controllers/admin/userController");
 
 const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
 
-const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails,updateOrderStatus} = require("../controllers/admin/orderController")
+const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails,updateOrderStatus, getOrderLocationsByPeriod} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
@@ -413,5 +413,10 @@ router.post('/agent-earnings/settings',addAgentEarnigsSetting)
 router.get('/agent-earnings/settings',getAgentEarningsSettings)
 //cod llimt of agetns
 router.get("/agent-cod-summray",getAgentCODSummary)
+
+
+
+// improve code for show lociont in map
+router.get("/orders/locations",getOrderLocationsByPeriod)
 module.exports = router;
 

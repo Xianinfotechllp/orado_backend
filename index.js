@@ -182,9 +182,9 @@ io.on("connection", (socket) => {
 
   // Step 2 (optional): Store in Redis GEOSET for advanced queries later
   // await redis.geoadd("agents_geo", lng, lat, agentId); // Uncomment if you want to use Redis Geo features
-
+   
   // Step 3: Notify admins live
-  io.to("admin_group").emit("admin:updateLocation", {
+ socket.broadcast.emit("admin:updateLocation", {
     agentId,
     lat,
     lng,
