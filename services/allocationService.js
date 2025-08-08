@@ -271,63 +271,77 @@ const assignRoundRobin = async (orderId, config) => {
   return { status: "assigned", agent: selectedAgent };
 };
 
+
 exports.notifyNextPendingAgent = async (order) => {
-  // Find next candidate with status 'queued' or 'waiting' (not yet notified)
-  const nextCandidate = order.agentCandidates.find(c => c.status === "queued" || c.status === "waiting");
-  
-  if (!nextCandidate) {
-    console.log("❌ No more agents left to notify.");
-    return { status: "no_more_candidates" };
-  }
-
-  // Clear isCurrentCandidate flag from any previously current candidate
-  order.agentCandidates.forEach(candidate => {
-    if (candidate.isCurrentCandidate) {
-      candidate.isCurrentCandidate = false;
-    }
-  });
-
-  // Notify the next candidate
-  nextCandidate.status = "pending"; // waiting for response now
-  nextCandidate.assignedAt = new Date();
-  nextCandidate.notifiedAt = new Date();
-  nextCandidate.isCurrentCandidate = true;
-
-  await order.save();
-
-  const nextAgent = await Agent.findById(nextCandidate.agent);
-  if (!nextAgent) {
-    console.log("⚠️ Pending agent not found in DB.");
-    return { status: "agent_not_found" };
-  }
-
   try {
+    // Re-fetch fresh order from DB to avoid stale document issues
+    const freshOrder = await Order.findById(order._id);
+
+    if (!freshOrder) {
+      console.log(`❌ Order ${order._id} not found when notifying next agent.`);
+      return { status: "order_not_found" };
+    }
+
+    // Find next candidate with status 'queued' or 'waiting' (not yet notified)
+    const nextCandidate = freshOrder.agentCandidates.find(c => c.status === "queued" || c.status === "waiting");
+
+    if (!nextCandidate) {
+      console.log("❌ No more agents left to notify.");
+      return { status: "no_more_candidates" };
+    }
+
+    // Clear isCurrentCandidate flag from any previously current candidate
+    freshOrder.agentCandidates.forEach(candidate => {
+      if (candidate.isCurrentCandidate) {
+        candidate.isCurrentCandidate = false;
+      }
+    });
+
+    // Update next candidate to pending and set timestamps
+    nextCandidate.status = "pending"; // waiting for response now
+    nextCandidate.assignedAt = new Date();
+    nextCandidate.notifiedAt = new Date();
+    nextCandidate.isCurrentCandidate = true;
+
+    // Save freshOrder with updates
+    await freshOrder.save();
+
+    // Fetch agent details for notification
+    const nextAgent = await Agent.findById(nextCandidate.agent);
+    if (!nextAgent) {
+      console.log("⚠️ Pending agent not found in DB.");
+      return { status: "agent_not_found" };
+    }
+
+    // Send notification to agent
     await sendNotificationToAgent({
       agentId: nextAgent._id,
       title: "📦 New Delivery Task",
       body: `You have a new delivery request.`,
       data: {
-        orderId: order._id.toString(),
+        orderId: freshOrder._id.toString(),
         type: "order_allocation",
       },
     });
 
-    console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${order._id}`);
+    console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${freshOrder._id}`);
 
     // Schedule timeout job for this agent
     await agenda.schedule("in 20 seconds", "checkAgentResponseTimeout", {
-      orderId: order._id.toString(),
+      orderId: freshOrder._id.toString(),
       agentId: nextAgent._id.toString(),
     });
 
-    console.log(`⏳ Timeout job scheduled for Agent ${nextAgent.fullName} on Order ${order._id}`);
+    console.log(`⏳ Timeout job scheduled for Agent ${nextAgent.fullName} on Order ${freshOrder._id}`);
 
     return { status: "next_agent_notified", agentId: nextAgent._id };
+
   } catch (err) {
-    console.error("🚨 Error sending notification to agent:", err.message);
-    return { status: "notification_failed", error: err.message };
+    console.error("🚨 Error in notifyNextPendingAgent:", err);
+    return { status: "notification_failed", error: err.message || err.toString() };
   }
 };
+
 
 
 
