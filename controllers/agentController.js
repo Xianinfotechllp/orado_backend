@@ -1136,9 +1136,6 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
     }
 
     const order = await Order.findById(orderId);
-
-    console.log(order);
-
     if (!order) {
       return res.status(404).json({
         status: "error",
@@ -1146,60 +1143,97 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       });
     }
 
-    // ✅ Enforce one-by-one flow
-    const nextPending = order.agentCandidates.find(
-      (c) => c.status === "pending"
+    // ✅ Find the candidate corresponding to this agent
+    const candidateIndex = order.agentCandidates.findIndex(
+      (c) => c.agent.toString() === agentId.toString()
     );
-    if (!nextPending || nextPending.agent.toString() !== agentId.toString()) {
+
+    if (candidateIndex === -1) {
+      return res.status(403).json({
+        status: "error",
+        message: "You are not a candidate for this order",
+      });
+    }
+
+    const candidate = order.agentCandidates[candidateIndex];
+
+    // Enforce one-by-one flow - only the current 'sent' or 'pending' candidate can respond
+    if (!["sent", "pending"].includes(candidate.status) || !candidate.isCurrentCandidate) {
       return res.status(403).json({
         status: "error",
         message: "You are not the active candidate for this order",
       });
     }
 
-    const candidateIndex = order.agentCandidates.findIndex(
-      (c) => c.agent.toString() === agentId.toString()
-    );
+    // Check if already responded
+    if (candidate.respondedAt) {
+      return res.status(400).json({
+        status: "error",
+        message: "You have already responded to this assignment",
+      });
+    }
+
+    // Record response time & mark responded
+    candidate.respondedAt = new Date();
+    candidate.responseTime = candidate.respondedAt - candidate.notifiedAt;
+    candidate.isCurrentCandidate = false;
 
     if (action === "accept") {
-      order.agentCandidates[candidateIndex].status = "accepted";
-      order.agentCandidates[candidateIndex].respondedAt = new Date();
+      candidate.status = "accepted";
+
+      // Assign the order officially to the agent
       order.assignedAgent = agentId;
       order.agentAssignmentStatus = "accepted_by_agent";
       order.agentAcceptedAt = new Date();
+
+      // Optionally: Clear any pending candidates or mark them rejected/skipped?
+      order.agentCandidates.forEach((c, idx) => {
+        if (idx !== candidateIndex && ["queued", "sent", "pending"].includes(c.status)) {
+          c.status = "skipped";
+          c.isCurrentCandidate = false;
+        }
+      });
+
       await order.save();
-    }
 
-    // 🔁 If rejected, trigger next candidate allocation here if needed
-    if (action === "reject") {
-      order.agentCandidates[candidateIndex].status = "rejected";
-      order.agentCandidates[candidateIndex].respondedAt = new Date();
+      return res.status(200).json({
+        status: "success",
+        message: "Order accepted successfully",
+      });
+    } else {
+      // Reject flow
+      candidate.status = "rejected";
+      candidate.rejectionReason = reason || "No reason provided";
 
+      order.agentAssignmentStatus = "awaiting_agent_acceptance";
+
+      // Add to rejection history (if you track it)
+      order.rejectionHistory = order.rejectionHistory || [];
       order.rejectionHistory.push({
         agentId,
         rejectedAt: new Date(),
-        reason: reason || "Not specified",
+        reason: candidate.rejectionReason,
       });
-      order.agentAssignmentStatus = "rejected_by_agent";
 
       await order.save();
 
-      // 🔁 Notify next agent (waiting ➝ pending)
+      // Notify next candidate
       await notifyNextPendingAgent(order);
-    }
 
-    return res.status(200).json({
-      status: "success",
-      message: `Order ${action}ed successfully`,
-    });
+      return res.status(200).json({
+        status: "success",
+        message: "Order rejected successfully",
+      });
+    }
   } catch (error) {
-    console.error("❌ Error in agentAcceptOrRejectCandidateOrder:", error);
+    console.error("❌ Error in agentAcceptOrRejectOrder:", error);
     return res.status(500).json({
       status: "error",
       message: "Internal server error",
     });
   }
 };
+
 
 exports.getAssignedOrderDetails = async (req, res) => {
   try {

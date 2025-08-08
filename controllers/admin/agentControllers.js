@@ -6,92 +6,92 @@ const AgentNotification = require('../../models/AgentNotificationModel');
 const admin = require('../../config/firebaseAdmin'); 
 const sendNotificationToAgent = require('../../utils/sendNotificationToAgent')
 const AgentDeviceInfo = require("../../models/AgentDeviceInfoModel")
-// exports.getAllList = async (req, res) => {
-//   try {
-//     // First get all agents with basic info
-//     const agents = await Agent.find()
-//       .select("fullName phoneNumber agentStatus.status agentStatus.availabilityStatus location")
-//       .lean(); // Convert to plain JS objects
-
-//     // Get all device info in one query for efficiency
-//     const deviceInfos = await AgentDeviceInfo.find({
-//       agent: { $in: agents.map(a => a._id) }
-//     }).lean();
-
-//     // Create a map of agentId -> deviceInfo for quick lookup
-//     const deviceInfoMap = deviceInfos.reduce((map, info) => {
-//       map[info.agent.toString()] = {
-//         os: info.os,
-//         osVersion: info.osVersion,
-//         appVersion: info.appVersion,
-//         model: info.model,
-//         batteryLevel: info.batteryLevel,
-//         networkType: info.networkType,
-//         timezone: info.timezone,
-//         locationEnabled: info.locationEnabled,
-//         isRooted: info.isRooted,
-//         updatedAt: info.updatedAt
-//       };
-//       return map;
-//     }, {});
-
-//     // Format the final response
-//     const formattedAgents = agents.map((agent) => {
-//       let derivedStatus = 'Inactive';
-
-//       if (agent.agentStatus.status === 'AVAILABLE') {
-//         derivedStatus = 'Free';
-//       } else if (
-//         [
-//           'ORDER_ASSIGNED',
-//           'ORDER_ACCEPTED',
-//           'ARRIVED_AT_RESTAURANT',
-//           'PICKED_UP',
-//           'ON_THE_WAY',
-//           'AT_CUSTOMER_LOCATION'
-//         ].includes(agent.agentStatus.status)
-//       ) {
-//         derivedStatus = 'Busy';
-//       }
-
-//       const coordinates = agent.location?.coordinates || [0, 0];
-//       const accuracy = agent.location?.accuracy || 0;
-
-//       return {
-//         id: agent._id,
-//         name: agent.fullName,
-//         phone: agent.phoneNumber,
-//         status: derivedStatus,
-//         currentStatus: agent.agentStatus.status,
-//         location: {
-//           lat: coordinates[1],
-//           lng: coordinates[0],
-//           accuracy: accuracy,
-//         },
-//         deviceInfo: deviceInfoMap[agent._id.toString()] || null
-//       };
-//     });
-
-//     res.status(200).json({
-//       messageType: 'success',
-//       data: formattedAgents,
-//     });
-
-//   } catch (error) {
-//     console.error('Error fetching agent list:', error);
-//     res.status(500).json({
-//       messageType: 'failure',
-//       message: 'Failed to fetch agents',
-//     });
-//   }
-// };
-
-
-
-
-
-
 exports.getAllList = async (req, res) => {
+  try {
+    // First get all agents with basic info
+    const agents = await Agent.find()
+      .select("fullName phoneNumber agentStatus.status agentStatus.availabilityStatus location")
+      .lean(); // Convert to plain JS objects
+
+    // Get all device info in one query for efficiency
+    const deviceInfos = await AgentDeviceInfo.find({
+      agent: { $in: agents.map(a => a._id) }
+    }).lean();
+
+    // Create a map of agentId -> deviceInfo for quick lookup
+    const deviceInfoMap = deviceInfos.reduce((map, info) => {
+      map[info.agent.toString()] = {
+        os: info.os,
+        osVersion: info.osVersion,
+        appVersion: info.appVersion,
+        model: info.model,
+        batteryLevel: info.batteryLevel,
+        networkType: info.networkType,
+        timezone: info.timezone,
+        locationEnabled: info.locationEnabled,
+        isRooted: info.isRooted,
+        updatedAt: info.updatedAt
+      };
+      return map;
+    }, {});
+
+    // Format the final response
+    const formattedAgents = agents.map((agent) => {
+      let derivedStatus = 'Inactive';
+
+      if (agent.agentStatus.status === 'AVAILABLE') {
+        derivedStatus = 'Free';
+      } else if (
+        [
+          'ORDER_ASSIGNED',
+          'ORDER_ACCEPTED',
+          'ARRIVED_AT_RESTAURANT',
+          'PICKED_UP',
+          'ON_THE_WAY',
+          'AT_CUSTOMER_LOCATION'
+        ].includes(agent.agentStatus.status)
+      ) {
+        derivedStatus = 'Busy';
+      }
+
+      const coordinates = agent.location?.coordinates || [0, 0];
+      const accuracy = agent.location?.accuracy || 0;
+
+      return {
+        id: agent._id,
+        name: agent.fullName,
+        phone: agent.phoneNumber,
+        status: derivedStatus,
+        currentStatus: agent.agentStatus.status,
+        location: {
+          lat: coordinates[1],
+          lng: coordinates[0],
+          accuracy: accuracy,
+        },
+        deviceInfo: deviceInfoMap[agent._id.toString()] || null
+      };
+    });
+
+    res.status(200).json({
+      messageType: 'success',
+      data: formattedAgents,
+    });
+
+  } catch (error) {
+    console.error('Error fetching agent list:', error);
+    res.status(500).json({
+      messageType: 'failure',
+      message: 'Failed to fetch agents',
+    });
+  }
+};
+
+
+
+
+
+
+exports.getAllListStatus = async (req, res) => {
   try {
     // Get all agents with basic info
     const agents = await Agent.find()

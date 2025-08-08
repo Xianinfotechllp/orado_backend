@@ -525,13 +525,11 @@ exports.updateOrderStatus = async (req, res) => {
 
 
 
-
 exports.getOrderLocationsByPeriod = async (req, res) => {
   try {
     const { period, from, to } = req.query;
     let startDate, endDate;
 
-    // Date range selection
     switch (period) {
       case "today":
         startDate = moment().startOf("day").toDate();
@@ -556,7 +554,6 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         return res.status(400).json({ message: "Invalid period specified." });
     }
 
-    // Fetch matching orders
     const orders = await Order.find({
       orderTime: { $gte: startDate, $lte: endDate },
       "deliveryLocation.coordinates": { $exists: true, $ne: [] },
@@ -564,15 +561,50 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
       .select(`
         deliveryLocation deliveryAddress restaurantId orderItems
         assignedAgent agentAssignmentStatus orderStatus orderTime grandTotal
-        paymentMethod paymentStatus allocationMethod
+        paymentMethod paymentStatus allocationMethod agentCandidates
       `)
       .populate("restaurantId", "location name")
       .populate("assignedAgent", "fullName phoneNumber profilePicture")
+      .populate("agentCandidates.agent", "fullName phoneNumber profilePicture") // populate candidates
       .lean();
 
-    // Map response
     const mapped = orders.map(order => {
       const [lng, lat] = order.deliveryLocation?.coordinates || [];
+
+      // Prepare agent candidates progress summary
+      const candidateSummary = {
+        total: order.agentCandidates?.length || 0,
+        notified: 0,
+        pending: 0,
+        accepted: 0,
+        rejected: 0,
+        timed_out: 0,
+        currentCandidate: null,
+        candidates: [],
+      };
+
+      if (order.agentCandidates?.length) {
+        order.agentCandidates.forEach(c => {
+          candidateSummary[c.status] = (candidateSummary[c.status] || 0) + 1;
+          if (c.isCurrentCandidate) candidateSummary.currentCandidate = {
+            agentId: c.agent._id,
+            fullName: c.agent.fullName,
+            status: c.status,
+            notifiedAt: c.notifiedAt,
+            assignedAt: c.assignedAt,
+          };
+          candidateSummary.candidates.push({
+            agentId: c.agent._id,
+            fullName: c.agent.fullName,
+            status: c.status,
+            assignedAt: c.assignedAt,
+            notifiedAt: c.notifiedAt,
+            respondedAt: c.respondedAt,
+            rejectionReason: c.rejectionReason || null,
+            isCurrentCandidate: c.isCurrentCandidate,
+          });
+        });
+      }
 
       return {
         _id: order._id,
@@ -595,7 +627,8 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         allocationMethod: order.allocationMethod,
-        items: order.orderItems
+        allocationProgress: candidateSummary,  // <-- added this
+        items: order.orderItems,
       };
     });
 

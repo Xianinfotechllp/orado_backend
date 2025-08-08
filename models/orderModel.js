@@ -2,21 +2,74 @@ const mongoose = require('mongoose');
 const mongoosePaginate = require("mongoose-paginate-v2");
 
 // Agent candidate sub-schema
-const agentCandidateSchema = new mongoose.Schema({
-agent: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: 'Agent',
-  required: true,
-},
-status: {
-  type: String,
-  enum: ['waiting', 'pending', 'notified','accepted', 'rejected', 'timed_out'],
-  default: 'waiting',
-},
-assignedAt: Date,
-respondedAt: Date,
-});
+const agentCandidateSchema = new mongoose.Schema(
+  {
+    agent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Agent",
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: [
+        "queued",          // Added to candidate list but not contacted yet
+        "sent",            // Notification sent to this agent (one-by-one/FIFO)
+        "broadcasted",     // Notification sent as part of batch/send-to-all/pool
+        "pending",         // Waiting for agent response (after notified)
+        "accepted",        // Agent accepted the assignment
+        "rejected",        // Agent rejected assignment
+        "timed_out",       // Agent did not respond within timeout period
+        "skipped",         // Agent skipped (unavailable or filtered out)
+        "auto_assigned",   // System automatically assigned this agent
+        "failed",          // Could not assign this agent due to error
+        "completed",       // Task completed by this agent
+        "cancelled"        // Assignment cancelled (before completion)
+      ],
+      default: "queued",
+    },
 
+    attemptNumber: {
+      type: Number,
+      required: true,
+      default: 1,
+    },
+
+    assignedAt: {
+      type: Date,
+      default: Date.now,
+      comment: "When agent was assigned as candidate",
+    },
+
+    notifiedAt: {
+      type: Date,
+      comment: "When notification was sent to agent",
+    },
+
+    respondedAt: {
+      type: Date,
+      comment: "When agent responded (accepted/rejected)",
+    },
+
+    responseTime: {
+      type: Number, // milliseconds
+      default: null,
+      comment: "Time taken by agent to respond",
+    },
+
+    rejectionReason: {
+      type: String,
+      default: null,
+      comment: "Optional reason for rejection provided by agent",
+    },
+
+    isCurrentCandidate: {
+      type: Boolean,
+      default: false,
+      comment: "True if currently waiting for this agent's response",
+    },
+  },
+  { timestamps: true }
+);
 // Order schema
 const orderSchema = new mongoose.Schema({
 customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

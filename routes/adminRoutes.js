@@ -25,7 +25,8 @@ const {getAllMerchants} = require("../controllers/admin/merchantContollers")
 const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea } = require("../controllers/admin/surgeController")
 const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveApplication, rejectApplication,
   getAgentSelfies,getAgentSelfieHistory,getSelfieDetails,
-  getAgentCODSummary
+  getAgentCODSummary,
+  getAllListStatus
 } = require("../controllers/admin/agentControllers")
 const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
@@ -198,6 +199,8 @@ router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)
 
 
 router.get("/agent/list",getAllList)
+router.get("/agent/list-status",getAllListStatus)
+
 router.post("/agent/send-notification",sendNotificationToAgent)
 // alowcation controller for agent 
 router.post("/agent/manual-assign",manualAssignAgent)

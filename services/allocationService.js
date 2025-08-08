@@ -138,11 +138,13 @@ const assignOneByOne = async (orderId) => {
   const now = new Date();
 
   const candidates = nearbyAgents.map((agent, index) => ({
-    agent: agent._id,
-    status: index === 0 ? "pending" : "waiting",
-    assignedAt: index === 0 ? now : null,
-    respondedAt: null,
-  }));
+  agent: agent._id,
+  status: index === 0 ? "sent" : "queued",  // first is notified (sent), others queued
+  assignedAt: new Date(),
+  notifiedAt: index === 0 ? new Date() : null,
+  respondedAt: null,
+  isCurrentCandidate: index === 0,
+}));
 
   order.agentCandidates = candidates;
   order.agentAssignmentStatus = "awaiting_agent_acceptance";
@@ -269,19 +271,31 @@ const assignRoundRobin = async (orderId, config) => {
   return { status: "assigned", agent: selectedAgent };
 };
 
-  exports.notifyNextPendingAgent = async (order) => {
-  const nextWaiting = order.agentCandidates.find((c) => c.status === "waiting");
-  if (!nextWaiting) {
+exports.notifyNextPendingAgent = async (order) => {
+  // Find next candidate with status 'queued' or 'waiting' (not yet notified)
+  const nextCandidate = order.agentCandidates.find(c => c.status === "queued" || c.status === "waiting");
+  
+  if (!nextCandidate) {
     console.log("❌ No more agents left to notify.");
     return { status: "no_more_candidates" };
   }
 
-  nextWaiting.status = "pending";
-  nextWaiting.assignedAt = new Date();
+  // Clear isCurrentCandidate flag from any previously current candidate
+  order.agentCandidates.forEach(candidate => {
+    if (candidate.isCurrentCandidate) {
+      candidate.isCurrentCandidate = false;
+    }
+  });
+
+  // Notify the next candidate
+  nextCandidate.status = "pending"; // waiting for response now
+  nextCandidate.assignedAt = new Date();
+  nextCandidate.notifiedAt = new Date();
+  nextCandidate.isCurrentCandidate = true;
 
   await order.save();
 
-  const nextAgent = await Agent.findById(nextWaiting.agent);
+  const nextAgent = await Agent.findById(nextCandidate.agent);
   if (!nextAgent) {
     console.log("⚠️ Pending agent not found in DB.");
     return { status: "agent_not_found" };
@@ -300,7 +314,7 @@ const assignRoundRobin = async (orderId, config) => {
 
     console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${order._id}`);
 
-    // ✅ Schedule timeout for this agent
+    // Schedule timeout job for this agent
     await agenda.schedule("in 20 seconds", "checkAgentResponseTimeout", {
       orderId: order._id.toString(),
       agentId: nextAgent._id.toString(),
@@ -314,6 +328,7 @@ const assignRoundRobin = async (orderId, config) => {
     return { status: "notification_failed", error: err.message };
   }
 };
+
 
 
 
