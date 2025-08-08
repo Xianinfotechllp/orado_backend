@@ -170,10 +170,10 @@ const assignOneByOne = async (orderId) => {
     `📨 First agent (${firstAgent.fullName}) notified for order ${orderId}`
   );
 
-  await agenda.schedule("in 20 seconds", "checkAgentResponseTimeout", {
-    orderId: order._id.toString(),
-    agentId: firstAgent._id.toString(),
-  });
+  await agenda.schedule("in 2 minutes", "checkAgentResponseTimeout", {
+  orderId: order._id.toString(),
+  agentId: firstAgent._id.toString(),
+});
 
   console.log(
     `⏳ Timeout job scheduled for Agent ${firstAgent.fullName} on Order ${order._id}`
@@ -327,11 +327,10 @@ exports.notifyNextPendingAgent = async (order) => {
     console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${freshOrder._id}`);
 
     // Schedule timeout job for this agent
-    await agenda.schedule("in 20 seconds", "checkAgentResponseTimeout", {
-      orderId: freshOrder._id.toString(),
-      agentId: nextAgent._id.toString(),
-    });
-
+    await agenda.schedule("in 2 minutes", "checkAgentResponseTimeout", {
+  orderId: order._id.toString(),
+  agentId: firstAgent._id.toString(),
+});
     console.log(`⏳ Timeout job scheduled for Agent ${nextAgent.fullName} on Order ${freshOrder._id}`);
 
     return { status: "next_agent_notified", agentId: nextAgent._id };
