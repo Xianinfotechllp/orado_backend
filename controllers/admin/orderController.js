@@ -5,6 +5,9 @@ const moment = require('moment')
 const notificationService = require("../../services/notificationService"); // Import the notification service
 const { calculateRestaurantEarnings, createRestaurantEarning } = require("../../services/earningService");
 const mongoose = require("mongoose")
+
+
+const AllocationSettings = require("../../models/AllocationSettingsModel");
 exports.getActiveOrdersStats = async (req, res) => {
   try {
     // Get current date and date from one week ago
@@ -530,6 +533,7 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
     const { period, from, to } = req.query;
     let startDate, endDate;
 
+    // Determine date range based on period param
     switch (period) {
       case "today":
         startDate = moment().startOf("day").toDate();
@@ -554,6 +558,13 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         return res.status(400).json({ message: "Invalid period specified." });
     }
 
+    // Fetch allocation settings once
+    const allocationSettings = await AllocationSettings.findOne({});
+    if (!allocationSettings) {
+      console.warn("⚠️ AllocationSettings not found, using default expiry");
+    }
+
+    // Fetch orders with necessary fields and populate references
     const orders = await Order.find({
       orderTime: { $gte: startDate, $lte: endDate },
       "deliveryLocation.coordinates": { $exists: true, $ne: [] },
@@ -565,13 +576,31 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
       `)
       .populate("restaurantId", "location name")
       .populate("assignedAgent", "fullName phoneNumber profilePicture")
-      .populate("agentCandidates.agent", "fullName phoneNumber profilePicture") // populate candidates
+      .populate("agentCandidates.agent", "fullName phoneNumber profilePicture")
       .lean();
 
+    // Map orders to response format with allocation progress and expiresIn
     const mapped = orders.map(order => {
       const [lng, lat] = order.deliveryLocation?.coordinates || [];
 
-      // Prepare agent candidates progress summary
+      // Determine request expiry seconds based on allocation method config
+      let expirySec = 120; // fallback 2 minutes
+      switch (order.allocationMethod) {
+        case "one_by_one":
+          expirySec = allocationSettings?.oneByOneSettings?.requestExpirySec || expirySec;
+          break;
+        case "send_to_all":
+          expirySec = allocationSettings?.sendToAllSettings?.requestExpirySec || expirySec;
+          break;
+        case "fifo":
+          expirySec = allocationSettings?.fifoSettings?.requestTimeSec || expirySec;
+          break;
+        // Add more allocation methods here if needed
+        default:
+          expirySec = 120;
+      }
+
+      // Build agent candidates summary
       const candidateSummary = {
         total: order.agentCandidates?.length || 0,
         notified: 0,
@@ -586,13 +615,28 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
       if (order.agentCandidates?.length) {
         order.agentCandidates.forEach(c => {
           candidateSummary[c.status] = (candidateSummary[c.status] || 0) + 1;
-          if (c.isCurrentCandidate) candidateSummary.currentCandidate = {
-            agentId: c.agent._id,
-            fullName: c.agent.fullName,
-            status: c.status,
-            notifiedAt: c.notifiedAt,
-            assignedAt: c.assignedAt,
-          };
+
+          if (c.isCurrentCandidate) {
+            // Calculate how many seconds left before expiry
+            let expiresIn = null;
+            if (c.notifiedAt) {
+              const notifiedAtMs = new Date(c.notifiedAt).getTime();
+              const nowMs = Date.now();
+              const elapsedMs = nowMs - notifiedAtMs;
+              const remainingMs = expirySec * 1000 - elapsedMs;
+              expiresIn = remainingMs > 0 ? Math.floor(remainingMs / 1000) : 0;
+            }
+
+            candidateSummary.currentCandidate = {
+              agentId: c.agent._id,
+              fullName: c.agent.fullName,
+              status: c.status,
+              notifiedAt: c.notifiedAt,
+              assignedAt: c.assignedAt,
+              expiresIn, // seconds left to respond
+            };
+          }
+
           candidateSummary.candidates.push({
             agentId: c.agent._id,
             fullName: c.agent.fullName,
@@ -612,12 +656,13 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
           coordinates: { lat, lng },
           address: order.deliveryAddress || null,
         },
-        pickupLocation: order.restaurantId?.location?.coordinates?.length === 2
-          ? {
-              lat: order.restaurantId.location.coordinates[1],
-              lng: order.restaurantId.location.coordinates[0],
-            }
-          : null,
+        pickupLocation:
+          order.restaurantId?.location?.coordinates?.length === 2
+            ? {
+                lat: order.restaurantId.location.coordinates[1],
+                lng: order.restaurantId.location.coordinates[0],
+              }
+            : null,
         restaurantName: order.restaurantId?.name || null,
         assignedAgent: order.assignedAgent || null,
         agentAssignmentStatus: order.agentAssignmentStatus,
@@ -627,7 +672,7 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         allocationMethod: order.allocationMethod,
-        allocationProgress: candidateSummary,  // <-- added this
+        allocationProgress: candidateSummary,
         items: order.orderItems,
       };
     });
@@ -638,7 +683,6 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
       count: mapped.length,
       data: mapped,
     });
-
   } catch (error) {
     console.error("❌ Error fetching order locations:", error);
     return res.status(500).json({ message: "Internal server error" });
