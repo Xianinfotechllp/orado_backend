@@ -522,6 +522,113 @@ exports.agentUpdatesOrderStatus = async (req, res) => {
 
 //
 
+// exports.toggleAvailability = async (req, res) => {
+//   try {
+//     const { agentId } = req.params;
+//     const { status, location } = req.body;
+//     const io = req.app.get("io");
+
+//     if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
+//       return res.status(400).json({ message: "Invalid availability status" });
+//     }
+
+//     // ✅ Convert location
+//     let geoLocation;
+//     if (location?.lat && location?.lng) {
+//       geoLocation = {
+//         type: "Point",
+//         coordinates: [location.lng, location.lat],
+//         accuracy: location.accuracy || 0,
+//       };
+//     } else if (
+//       location?.type === "Point" &&
+//       Array.isArray(location.coordinates) &&
+//       location.coordinates.length === 2
+//     ) {
+//       geoLocation = {
+//         type: "Point",
+//         coordinates: location.coordinates,
+//         accuracy: location.accuracy || 0,
+//       };
+//     } else {
+//       return res.status(400).json({
+//         message: "Invalid location. Provide either { lat, lng } or GeoJSON.",
+//       });
+//     }
+
+//     // ✅ Update Agent
+//     const updateData = {
+//       "agentStatus.availabilityStatus": status,
+//       "agentStatus.status": status === "AVAILABLE" ? "AVAILABLE" : "OFFLINE",
+//       location: geoLocation,
+//       updatedAt: new Date(),
+//     };
+
+//     const updatedAgent = await Agent.findByIdAndUpdate(agentId, updateData, {
+//       new: true,
+//     });
+
+//     if (!updatedAgent) {
+//       return res.status(404).json({ message: "Agent not found" });
+//     }
+
+//     await sendNotificationToAdmins({
+//       title: "Agent Availability Update",
+//       body: `Agent ${
+//         updatedAgent.fullName || updatedAgent.phoneNumber
+//       } is now ${status}`,
+//       data: {
+//         agentId: updatedAgent._id.toString(),
+//         type: "AGENT_AVAILABILITY_CHANGE",
+//         status,
+//       },
+//     });
+
+//     if (io) {
+//       // Emit to all admins in the admin_group room
+//       io.to("admin_group").emit("admin:agentStatusUpdate", {
+//         agentId: updatedAgent._id,
+//         status: status === "AVAILABLE" ? "AVAILABLE" : "OFFLINE",
+//         location: geoLocation,
+//         agentInfo: {
+//           name: updatedAgent.fullName || `Agent ${updatedAgent._id.toString().slice(0, 4)}`,
+//           phone: updatedAgent.phoneNumber
+//         },
+//         timestamp: new Date()
+//       });
+
+//       // Also emit to the specific agent's room if needed
+//       io.to(`agent_${agentId}`).emit("agent:statusUpdate", {
+//         status: status === "AVAILABLE" ? "AVAILABLE" : "OFFLINE",
+//         location: geoLocation
+//       });
+
+//       if (status === "AVAILABLE") {
+//         // Emit to all admins that this agent is now available
+//         io.emit("agentAvailable", {
+//           agentId: updatedAgent._id,
+//           location: updatedAgent.location,
+//         });
+//       }
+//     }
+
+//     return res.status(200).json({
+//       message: "Agent status updated",
+//       data: {
+//         id: updatedAgent._id,
+//         status: updatedAgent.agentStatus,
+//         location: updatedAgent.location,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error toggling agent availability:", error);
+//     return res
+//       .status(500)
+//       .json({ error: "Server error while updating status" });
+//   }
+// };
+
+
 exports.toggleAvailability = async (req, res) => {
   try {
     const { agentId } = req.params;
@@ -584,11 +691,20 @@ exports.toggleAvailability = async (req, res) => {
       },
     });
 
-    if (status === "AVAILABLE" && io) {
-      io.emit("agentAvailable", {
-        agentId: updatedAgent._id,
-        location: updatedAgent.location,
+    if (io) {
+      // Emit to admin_group room regardless of status (both AVAILABLE and UNAVAILABLE)
+      io.to("admin_group").emit("admin:agentAvailabilityUpdate", {
+ agentId: updatedAgent._id,
+  availabilityStatus: status
       });
+
+      // Keep the existing agentAvailable emission for backward compatibility
+      if (status === "AVAILABLE") {
+        io.emit("agentAvailable", {
+          agentId: updatedAgent._id,
+          location: updatedAgent.location,
+        });
+      }
     }
 
     return res.status(200).json({
@@ -606,6 +722,14 @@ exports.toggleAvailability = async (req, res) => {
       .json({ error: "Server error while updating status" });
   }
 };
+
+
+
+
+
+
+
+
 
 exports.getAgentAvailabilityStatus = async (req, res) => {
   try {

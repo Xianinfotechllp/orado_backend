@@ -526,30 +526,25 @@ exports.updateOrderStatus = async (req, res) => {
 
 
 
-
 exports.getOrderLocationsByPeriod = async (req, res) => {
   try {
     const { period, from, to } = req.query;
-
     let startDate, endDate;
 
-    // 1️⃣ Date range selection
+    // Date range selection
     switch (period) {
       case "today":
         startDate = moment().startOf("day").toDate();
         endDate = moment().endOf("day").toDate();
         break;
-
       case "this_week":
         startDate = moment().startOf("isoWeek").toDate();
         endDate = moment().endOf("isoWeek").toDate();
         break;
-
       case "this_month":
         startDate = moment().startOf("month").toDate();
         endDate = moment().endOf("month").toDate();
         break;
-
       case "custom":
         if (!from || !to) {
           return res.status(400).json({ message: "Custom range requires 'from' and 'to' dates." });
@@ -557,25 +552,30 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         startDate = new Date(from);
         endDate = new Date(to);
         break;
-
       default:
         return res.status(400).json({ message: "Invalid period specified." });
     }
 
-    // 2️⃣ Fetch matching orders with delivery + pickup locations
+    // Fetch matching orders
     const orders = await Order.find({
       orderTime: { $gte: startDate, $lte: endDate },
       "deliveryLocation.coordinates": { $exists: true, $ne: [] },
     })
-      .select("deliveryLocation deliveryAddress restaurantId") // fetch necessary fields only
-      .populate("restaurantId", "location name") // assuming restaurant has location
+      .select(`
+        deliveryLocation deliveryAddress restaurantId orderItems
+        assignedAgent agentAssignmentStatus orderStatus orderTime grandTotal
+        paymentMethod paymentStatus allocationMethod
+      `)
+      .populate("restaurantId", "location name")
+      .populate("assignedAgent", "fullName phoneNumber profilePicture")
       .lean();
 
-    // 3️⃣ Format response: convert coordinates to { lat, lng }
+    // Map response
     const mapped = orders.map(order => {
       const [lng, lat] = order.deliveryLocation?.coordinates || [];
 
       return {
+        _id: order._id,
         dropLocation: {
           coordinates: { lat, lng },
           address: order.deliveryAddress || null,
@@ -587,6 +587,15 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
             }
           : null,
         restaurantName: order.restaurantId?.name || null,
+        assignedAgent: order.assignedAgent || null,
+        agentAssignmentStatus: order.agentAssignmentStatus,
+        orderStatus: order.orderStatus,
+        orderTime: order.orderTime,
+        totalAmount: order.grandTotal,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        allocationMethod: order.allocationMethod,
+        items: order.orderItems
       };
     });
 
