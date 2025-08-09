@@ -74,16 +74,24 @@ availableAfterTime: {
     type: Number,
     default: 0
   },
-   attributes: [
-    {
-      name: { type: String, required: true },  
-      price: { type: Number, required: true },
-      stock: { type: Number, default: 0 },
-      calories: Number,
-      isAvailable: { type: Boolean, default: true },
-      description: { type: String, default: null }
-    }
-  ],
+ attributes: [
+  {
+    name: { type: String, required: true }, // e.g. "Apple 1kg" or "500g"
+    quantity: { type: Number, required: true }, // e.g. 1, 0.5, 500
+    unit: { 
+      type: String, 
+      enum: ['kg', 'g', 'ltr', 'ml', 'piece'], 
+      required: true 
+    }, // type of unit
+    price: { type: Number, required: true },
+    stock: { type: Number, default: 0 }, // stock per variant
+    reorderLevel: { type: Number, default: 0 }, // alert level per variant
+    calories: Number,
+    isAvailable: { type: Boolean, default: true },
+    description: { type: String, default: null }
+  }
+],
+
   unit: {
     type: String,
     default: 'piece'

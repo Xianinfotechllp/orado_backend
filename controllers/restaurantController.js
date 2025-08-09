@@ -1111,11 +1111,15 @@ exports.deleteServiceAreas = async (req, res) => {
   }
 };
 
+
+
+
+  
+
 exports.getRestaurantMenu = async (req, res) => {
   const { restaurantId } = req.params;
-  console.log("hi");
+
   try {
-    // Validate restaurantId
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
         message: "Invalid restaurantId format",
@@ -1124,7 +1128,6 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Fetch all active categories for this restaurant
     const categories = await Category.find({ restaurantId, active: true });
 
     if (!categories.length) {
@@ -1135,14 +1138,48 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Fetch all products for each category (no pagination)
+    // Current time in AM/PM format
+    const currentTime = moment().format("hh:mm A");
+
     const menu = await Promise.all(
       categories.map(async (category) => {
-        const products = await Product.find({
+        let products = await Product.find({
           restaurantId,
           categoryId: category._id,
-          active: true,
+          active: true
         }).select("-revenueShare -costPrice -profitMargin");
+
+        products = products.map(p => {
+          let isAvailable = true;
+          let reason = null;
+
+          // Convert availableAfterTime (if set) to AM/PM format for comparison
+          let productAvailableTime = p.availableAfterTime 
+            ? moment(p.availableAfterTime, ["HH:mm", "hh:mm A"]).format("hh:mm A")
+            : null;
+
+          if (p.enableInventory && p.stock <= 0) {
+            isAvailable = false;
+            reason = "Out of stock";
+          } else if (p.availability === "out-of-stock") {
+            isAvailable = false;
+            reason = "Temporarily unavailable";
+          } else if (p.availability === "time-based") {
+            if (!p.availableAfterTime) {
+              isAvailable = false;
+              reason = "Availability time not set";
+            } else if (moment(currentTime, "hh:mm A").isBefore(moment(productAvailableTime, "hh:mm A"))) {
+              isAvailable = false;
+              reason = `Available after ${productAvailableTime}`;
+            }
+          }
+
+          return {
+            ...p.toObject(),
+            isAvailable,
+            unavailableReason: reason
+          };
+        });
 
         return {
           categoryId: category._id,
@@ -1160,6 +1197,7 @@ exports.getRestaurantMenu = async (req, res) => {
       messageType: "success",
       data: menu,
     });
+
   } catch (error) {
     console.error("Error fetching menu:", error);
     res.status(500).json({
@@ -1169,6 +1207,7 @@ exports.getRestaurantMenu = async (req, res) => {
     });
   }
 };
+
 
 // get all restauants
 

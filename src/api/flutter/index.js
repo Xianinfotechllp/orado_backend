@@ -83,4 +83,11 @@ router.get("/test/categories", (req, res) => {
   res.status(200).json(dummyCategories);
 });
 
+router.get("/",(req,res) =>
+{
+
+  res.send("ping")
+  
+})
+
 module.exports = router;

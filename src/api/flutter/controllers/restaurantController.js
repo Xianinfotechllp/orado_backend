@@ -2,6 +2,7 @@ const Restaurant = require("../../../../models/restaurantModel")
 const Category = require("../../../../models/categoryModel")
 const Product = require("../../../../models//productModel")
 const mongoose = require("mongoose");
+const moment = require('moment');
 
 const { formatMinutesToReadable } = require("../utils/timeFormatter");
 exports.createRestaurant = async (req, res) => {
@@ -468,12 +469,11 @@ exports.addServiceArea = async (req, res) => {
 exports.getRestaurantMenu = async (req, res) => {
   const { restaurantId } = req.params;
   const {
-    categoryLimit = 5,  // number of categories per page
-    categoryPage = 1    // current page of categories
+    categoryLimit = 5,
+    categoryPage = 1
   } = req.query;
 
   try {
-    // Validate restaurantId
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
         message: 'Invalid restaurantId format',
@@ -482,7 +482,6 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Count total active categories for the restaurant
     const totalCategories = await Category.countDocuments({ restaurantId, active: true });
 
     if (totalCategories === 0) {
@@ -493,24 +492,34 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Fetch categories with pagination (skip and limit)
     const categories = await Category.find({ restaurantId, active: true })
       .skip((parseInt(categoryPage) - 1) * parseInt(categoryLimit))
       .limit(parseInt(categoryLimit));
 
-    // Fetch all products for each category (no product pagination)
+    const currentTime = moment().format('HH:mm'); // 24-hour format
+
     const menu = await Promise.all(
       categories.map(async (category) => {
-        const products = await Product.find({
+        let products = await Product.find({
           restaurantId,
           categoryId: category._id,
-          active:true,
-           $or: [
-    { enableInventory: false }, // Inventory tracking disabled → always show
-    { enableInventory: true, stock: { $gt: 0 } } // Inventory enabled → must have stock
-  ]
-        
+          active: true,
+          $or: [
+            { enableInventory: false },
+            { enableInventory: true, stock: { $gt: 0 } }
+          ]
         }).select('-revenueShare -costPrice -profitMargin');
+
+        // 🔹 Filter products by availability rules
+        products = products.filter(p => {
+          if (p.availability === 'always') return true;
+          if (p.availability === 'out-of-stock') return false;
+          if (p.availability === 'time-based') {
+            if (!p.availableAfterTime) return false;
+            return currentTime >= p.availableAfterTime;
+          }
+          return false;
+        });
 
         return {
           categoryId: category._id,
