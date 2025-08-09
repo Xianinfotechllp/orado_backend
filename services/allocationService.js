@@ -135,16 +135,20 @@ const assignOneByOne = async (orderId) => {
     return { status: "unassigned", reason: "No agents nearby" };
   }
 
+  // Fetch allocation settings for one_by_one
+  const allocationSettings = await AllocationSettings.findOne({});
+  const expirySec = allocationSettings?.oneByOneSettings?.requestExpirySec || 120; // fallback 2 minutes
+
   const now = new Date();
 
   const candidates = nearbyAgents.map((agent, index) => ({
-  agent: agent._id,
-  status: index === 0 ? "sent" : "queued",  // first is notified (sent), others queued
-  assignedAt: new Date(),
-  notifiedAt: index === 0 ? new Date() : null,
-  respondedAt: null,
-  isCurrentCandidate: index === 0,
-}));
+    agent: agent._id,
+    status: index === 0 ? "sent" : "queued",  // first is notified (sent), others queued
+    assignedAt: now,
+    notifiedAt: index === 0 ? now : null,
+    respondedAt: null,
+    isCurrentCandidate: index === 0,
+  }));
 
   order.agentCandidates = candidates;
   order.agentAssignmentStatus = "awaiting_agent_acceptance";
@@ -152,8 +156,6 @@ const assignOneByOne = async (orderId) => {
   await order.save();
 
   const firstAgent = nearbyAgents[0];
-  // await notifyAgent(firstAgent, order);
-  console.log("notify ange first ", firstAgent._id);
 
   await sendNotificationToAgent({
     agentId: firstAgent._id,
@@ -166,18 +168,16 @@ const assignOneByOne = async (orderId) => {
       address: order.deliveryAddress?.formatted || "",
     },
   });
-  console.log(
-    `📨 First agent (${firstAgent.fullName}) notified for order ${orderId}`
-  );
 
-  await agenda.schedule("in 2 minutes", "checkAgentResponseTimeout", {
-  orderId: order._id.toString(),
-  agentId: firstAgent._id.toString(),
-});
+  console.log(`📨 First agent (${firstAgent.fullName}) notified for order ${orderId}`);
 
-  console.log(
-    `⏳ Timeout job scheduled for Agent ${firstAgent.fullName} on Order ${order._id}`
-  );
+  // Schedule timeout dynamically using expirySec
+  await agenda.schedule(`in ${expirySec} seconds`, "checkAgentResponseTimeout", {
+    orderId: order._id.toString(),
+    agentId: firstAgent._id.toString(),
+  });
+
+  console.log(`⏳ Timeout job scheduled for Agent ${firstAgent.fullName} on Order ${order._id} with expiry ${expirySec} seconds`);
 
   return {
     status: "first_agent_notified",
@@ -283,7 +283,9 @@ exports.notifyNextPendingAgent = async (order) => {
     }
 
     // Find next candidate with status 'queued' or 'waiting' (not yet notified)
-    const nextCandidate = freshOrder.agentCandidates.find(c => c.status === "queued" || c.status === "waiting");
+    const nextCandidate = freshOrder.agentCandidates.find(
+      (c) => c.status === "queued" || c.status === "waiting"
+    );
 
     if (!nextCandidate) {
       console.log("❌ No more agents left to notify.");
@@ -291,7 +293,7 @@ exports.notifyNextPendingAgent = async (order) => {
     }
 
     // Clear isCurrentCandidate flag from any previously current candidate
-    freshOrder.agentCandidates.forEach(candidate => {
+    freshOrder.agentCandidates.forEach((candidate) => {
       if (candidate.isCurrentCandidate) {
         candidate.isCurrentCandidate = false;
       }
@@ -326,21 +328,40 @@ exports.notifyNextPendingAgent = async (order) => {
 
     console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${freshOrder._id}`);
 
-    // Schedule timeout job for this agent
- await agenda.schedule("in 2 minutes", "checkAgentResponseTimeout", {
-  orderId: freshOrder._id.toString(),
-  agentId: nextAgent._id.toString(),
-});
-    console.log(`⏳ Timeout job scheduled for Agent ${nextAgent.fullName} on Order ${freshOrder._id}`);
+    // Fetch allocation settings to get expiry time dynamically
+    const allocationSettings = await AllocationSettings.findOne({});
+
+    let expirySec = 120; // default fallback 2 mins
+
+    switch (freshOrder.allocationMethod) {
+      case "one_by_one":
+        expirySec = allocationSettings?.oneByOneSettings?.requestExpirySec || expirySec;
+        break;
+      case "send_to_all":
+        expirySec = allocationSettings?.sendToAllSettings?.requestExpirySec || expirySec;
+        break;
+      case "fifo":
+        expirySec = allocationSettings?.fifoSettings?.requestTimeSec || expirySec;
+        break;
+      // Add other methods if needed
+      default:
+        expirySec = 120;
+    }
+
+    // Schedule timeout job dynamically using expirySec
+    await agenda.schedule(`in ${expirySec} seconds`, "checkAgentResponseTimeout", {
+      orderId: freshOrder._id.toString(),
+      agentId: nextAgent._id.toString(),
+    });
+
+    console.log(`⏳ Timeout job scheduled for Agent ${nextAgent.fullName} on Order ${freshOrder._id} with expiry ${expirySec} seconds`);
 
     return { status: "next_agent_notified", agentId: nextAgent._id };
-
   } catch (err) {
     console.error("🚨 Error in notifyNextPendingAgent:", err);
     return { status: "notification_failed", error: err.message || err.toString() };
   }
 };
-
 
 
 

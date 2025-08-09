@@ -23,7 +23,7 @@ const geoService = require("../../../../services/geoServices");
 const LoyalitySettings = require("../../../../models/LoyaltySettingModel");
 const { emitNewOrderToAdmin } = require("../../../../services/orderSocketService");
 const notificationService = require("../../../../services/notificationService")
-
+const {reduceStockForOrder} = require("../../../../services/inventoryService")
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -2484,9 +2484,15 @@ exports.placeOrderWithAddressId = async (req, res) => {
         billSummary: bill
       });
     }
-
+           
     // Save COD order
     const savedOrder = await newOrder.save();
+
+
+   const io = req.app.get("io");
+   await reduceStockForOrder(savedOrder.orderItems, io);
+
+
       await notificationService.sendOrderNotification({
       userId: userId,
       title: "Order Placed Successfully",
@@ -2503,7 +2509,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
 
 
     // Emit events
-    const io = req.app.get("io");
+
     await emitNewOrderToAdmin(io, savedOrder._id);
     
 const orderItemsList = savedOrder.orderItems.map(item => 
@@ -2854,11 +2860,15 @@ exports.verifyPayment = async (req, res) => {
     
     await order.save();
 
+
+   const io = req.app.get("io");
+  await reduceStockForOrder(order.orderItems, io); // Passing socket.io instance
+
     // Clear cart if exists
     if (order.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
-
+    
     // Send notification after payment verification
     try {
       await notificationService.sendOrderNotification({

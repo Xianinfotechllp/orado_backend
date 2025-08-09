@@ -41,6 +41,8 @@ const {
 const { assignTask } = require("../services/allocationService");
 const { awardPoints } = require("../services/loyaltyPointService");
 const { emitNewOrderToAdmin } = require("../services/orderSocketService");
+const { reduceStockForOrder } = require("../services/inventoryService")
+
 
 exports.createOrder = async (req, res) => {
   try {
@@ -2158,7 +2160,7 @@ exports.placeOrderV2 = async (req, res) => {
         messageType: "failure",
       });
     }
-
+         const io = req.app.get("io");
     // Fetch loyalty settings and user
     const loyaltySettings = await LoyalitySettings.findOne({}).lean();
     const user = await User.findById(userId);
@@ -2322,6 +2324,11 @@ exports.placeOrderV2 = async (req, res) => {
 
     const savedOrder = await newOrder.save();
 
+
+if (paymentMethod === "cash") {
+    await reduceStockForOrder(orderItems,io); // Reduce now
+}
+
     // Handle online payment (same as before)
     if (paymentMethod === "online") {
       const razorpayOrder = await razorpay.orders.create({
@@ -2340,7 +2347,7 @@ exports.placeOrderV2 = async (req, res) => {
       };
       await savedOrder.save();
 
-      const io = req.app.get("io");
+
       const populatedOrder = await Order.findById(savedOrder._id)
         .populate("customerId", "name email phone")
         .lean();
@@ -2380,7 +2387,7 @@ exports.placeOrderV2 = async (req, res) => {
     }
 
     // await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
-    const io = req.app.get("io");
+
     const populatedOrder = await Order.findById(savedOrder._id)
       .populate("customerId", "name email phone")
       .lean();
@@ -2534,7 +2541,7 @@ exports.verifyPayment = async (req, res) => {
       orderId,
     } = req.body;
 
-    // 🔒 1. Validate required fields
+    // 1. Validate required fields
     if (
       !razorpay_order_id ||
       !razorpay_payment_id ||
@@ -2547,13 +2554,13 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // 🧾 2. Create expected signature
+    // 2. Create expected signature
     const generatedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    // 🔁 3. Compare signatures
+    // 3. Compare signatures
     if (generatedSignature !== razorpay_signature) {
       return res.status(400).json({
         message: "Invalid signature, payment verification failed",
@@ -2561,7 +2568,7 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // 💾 4. Update order status
+    // 4. Update order status
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({
@@ -2577,15 +2584,18 @@ exports.verifyPayment = async (req, res) => {
     order.paymentStatus = "completed";
 
     await order.save();
+   const io = req.app.get("io");
+    // ✅ 5. Reduce stock after successful payment
+    await reduceStockForOrder(order.orderItems, io); // Passing socket.io instance
 
-    // 🚚 5. Assign delivery agent after successful payment
+    // 🚚 6. Assign delivery agent
     const assignmentResult = await assignNearestAgentSimple(order._id);
     if (!assignmentResult.success) {
       console.warn("Agent assignment failed:", assignmentResult.error);
     }
 
     return res.status(200).json({
-      message: "Payment verified and order confirmed",
+      message: "Payment verified, stock updated, and order confirmed",
       messageType: "success",
       orderId: order._id,
     });
