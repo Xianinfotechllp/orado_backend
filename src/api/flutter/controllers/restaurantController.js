@@ -504,7 +504,11 @@ exports.getRestaurantMenu = async (req, res) => {
         const products = await Product.find({
           restaurantId,
           categoryId: category._id,
-          active:true
+          active:true,
+           $or: [
+    { enableInventory: false }, // Inventory tracking disabled → always show
+    { enableInventory: true, stock: { $gt: 0 } } // Inventory enabled → must have stock
+  ]
         
         }).select('-revenueShare -costPrice -profitMargin');
 
