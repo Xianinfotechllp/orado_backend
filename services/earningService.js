@@ -4,7 +4,7 @@ const RestaurantEarning = require("../models/RestaurantEarningModel")
 const Product = require("../models/productModel")
 const Restaurant = require("../models/restaurantModel")
 const MerchantCommissionSetting = require('../models/merchantCommissionSettingModel');
-
+const calculateEarningsBreakdown = require('../utils/agentEarningCalculator');
 exports.addAgentEarnings = async ({ agentId, orderId, amount, type, remarks = null }) => {
   try {
     // Check if earning already exists to avoid duplicate
@@ -237,3 +237,56 @@ exports.createRestaurantEarning = async (order) => {
     throw error;
   }
 };
+
+
+
+
+
+
+
+
+exports.createAgentEarning = async ({
+  agentId,
+  orderId,
+  earningsConfig,
+  surgeZones = [],
+  incentiveBonuses = {},
+  distanceKm,  // <-- passed from outside
+}) => {
+  // Fetch order document from DB
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new Error('Order not found');
+  }
+
+  const tipAmount = order.tipAmount || 0;
+
+  // Calculate earnings breakdown using the utility function
+  const earningsData = calculateEarningsBreakdown({
+    distanceKm,
+    config: earningsConfig,
+    surgeZones,
+    tipAmount,
+    incentiveBonuses,
+  });
+
+  // Create and save with explicit fields matching your model
+  const agentEarning = new AgentEarning({
+    agentId,
+    orderId: order._id,
+    baseDeliveryFee: earningsData.baseFee,
+    distanceBeyondBaseKm: earningsData.distanceBeyondBase,
+    extraDistanceFee: earningsData.extraDistanceEarning,
+    surgeAmount: earningsData.surgeAmount,
+    tipAmount,
+    incentiveAmount: (incentiveBonuses.peakHourBonus || 0) + (incentiveBonuses.rainBonus || 0),
+    payoutStatus: 'pending',
+    totalEarning:earningsData.totalEarning
+    // totalEarning auto-calculated in pre-save hook
+  });
+
+  await agentEarning.save();
+
+  return agentEarning;
+};
+

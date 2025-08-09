@@ -18,6 +18,7 @@ const {
   addAgentEarnings,
   addRestaurantEarnings,
   createRestaurantEarning,
+  createAgentEarning
 } = require("../services/earningService");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const {
@@ -1056,7 +1057,7 @@ exports.getAssignedOrders = async (req, res) => {
           agentCandidates: {
             $elemMatch: {
               agent: agentId,
-              status: { $in: ["pending", "accepted","notified"] },
+              status: { $in: ["pending", "accepted", "sent"] },
             },
           },
         },
@@ -1375,7 +1376,6 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     const { status } = req.body;
 
     const validStatuses = [...deliveryFlow, "cancelled"];
-
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid delivery status" });
     }
@@ -1387,12 +1387,8 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
 
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    console.log("Assigned Agent:", order.assignedAgent?.toString());
-    console.log("Request Agent:", agentId.toString());
     if (order.assignedAgent?.toString() !== agentId.toString()) {
-      return res
-        .status(403)
-        .json({ message: "You are not assigned to this order" });
+      return res.status(403).json({ message: "You are not assigned to this order" });
     }
 
     const currentIndex = deliveryFlow.indexOf(order.agentDeliveryStatus);
@@ -1407,6 +1403,79 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     order.agentDeliveryStatus = status;
     await order.save();
 
+    // When delivered, create earnings record
+    if (status === 'delivered') {
+      // Check if already exists
+      const existingEarning = await AgentEarning.findOne({ agentId, orderId });
+      if (!existingEarning) {
+        // Get earnings config (city/global based on your logic)
+        const earningsConfig = await AgentEarningSettings.findOne({ mode: 'global' }); 
+        if (!earningsConfig) {
+          return res.status(500).json({ message: "Earnings configuration not found." });
+        }
+
+        // Calculate distance
+        let distanceKm = 0;
+        if (
+          Array.isArray(order.restaurantId?.location?.coordinates) &&
+          Array.isArray(order.deliveryLocation?.coordinates)
+        ) {
+          const fromCoords = order.restaurantId.location.coordinates; // [lon, lat]
+          const toCoords = order.deliveryLocation.coordinates;        // [lon, lat]
+
+          // Prefer driving distance, fallback to geolib straight distance
+          const drivingDistance = await getDrivingDistance(fromCoords, toCoords);
+          if (drivingDistance !== null) {
+            distanceKm = drivingDistance;
+          } else {
+            const distMeters = geolib.getDistance(
+              { latitude: fromCoords[1], longitude: fromCoords[0] },
+              { latitude: toCoords[1], longitude: toCoords[0] }
+            );
+            distanceKm = distMeters / 1000;
+          }
+        }
+
+        // Find applicable surge zones
+        let surgeZones = [];
+        try {
+          surgeZones = await findApplicableSurgeZones({
+            fromCoords: order.restaurantId.location.coordinates,
+            toCoords: order.deliveryLocation.coordinates,
+            time: new Date(),
+          });
+        } catch (err) {
+          console.warn("Failed to fetch surge zones:", err.message);
+        }
+
+        // Incentives - customize as per your logic
+        const incentiveBonuses = {
+          peakHourBonus: 0,
+          rainBonus: 0,
+          // ... add more if needed
+        };
+
+        // Calculate earnings breakdown
+        const earningsData = calculateEarningsBreakdown({
+          distanceKm,
+          config: earningsConfig.toObject(),
+          surgeZones,
+          tipAmount: order.tipAmount || 0,
+          incentiveBonuses,
+        });
+
+        // Create earning record
+        await createAgentEarning({
+          agentId,
+          orderId,
+          earningsConfig: earningsConfig.toObject(),
+          surgeZones,
+          incentiveBonuses,
+          distanceKm,
+        });
+      }
+    }
+
     const response = formatOrder(order, agentId);
 
     res.status(200).json({
@@ -1418,6 +1487,7 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 exports.getAgentNotifications = async (req, res) => {
   try {
@@ -2110,3 +2180,20 @@ exports.getAgentIncentiveSummary = async (req, res) => {
   }
 };
 
+
+
+
+
+async function getDrivingDistance(fromCoords, toCoords) {
+  const accessToken = 'your-mapbox-access-token';
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?geometries=geojson&access_token=${accessToken}`;
+
+  try {
+    const response = await axios.get(url);
+    const distanceMeters = response.data.routes[0].distance;
+    return distanceMeters / 1000; // convert to km
+  } catch (error) {
+    console.error("Error fetching driving distance:", error.message);
+    return null;
+  }
+}
