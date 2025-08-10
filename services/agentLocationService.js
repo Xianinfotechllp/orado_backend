@@ -1,9 +1,6 @@
 const Order = require("../models/orderModel");
 
 async function handleAgentLocation(io, agentId, lat, lng, deviceInfo, socket) {
-  // Notify admins
-//   socket.broadcast.emit("admin:updateLocation", { agentId, lat, lng, deviceInfo });
-
   // Find active order in pickup
   const activeOrder = await Order.findOne({
     assignedAgent: agentId,
@@ -11,14 +8,14 @@ async function handleAgentLocation(io, agentId, lat, lng, deviceInfo, socket) {
   }).populate("customerId");
 
   if (activeOrder && activeOrder.customerId?._id) {
-    const customerRoom = `user_${activeOrder.customerId._id}`;
+    const customerRoom = `user_${activeOrder.customerId._id.toString()}`;
     io.to(customerRoom).emit("agentLocationUpdate", {
-      orderId: activeOrder._id,
-      agentId,
-      latitude:lat,
-     longitude: lng,
+      orderId: activeOrder._id.toString(),
+      agentId: agentId.toString(),
+      latitude: lat,
+      longitude: lng,
     });
-    console.log(`🚚 Sent live location to customer ${activeOrder.customerId._id}`);
+    console.log(`🚚 Sent live location to customer ${activeOrder.customerId._id.toString()}`);
   }
 }
 
