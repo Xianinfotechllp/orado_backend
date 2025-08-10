@@ -1990,6 +1990,7 @@ exports.getAgentBasicDetails = async (req, res) => {
 
 
 
+
 exports.getAgentEarningsSummary = async (req, res) => {
   try {
     const { period = 'daily', startDate: customStart, endDate: customEnd } = req.query;
@@ -1999,7 +2000,6 @@ exports.getAgentEarningsSummary = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: agentId missing in token' });
     }
 
-    // Determine date range
     const now = moment();
     let startDate;
     let endDate = now;
@@ -2022,7 +2022,7 @@ exports.getAgentEarningsSummary = async (req, res) => {
       }
     }
 
-    // Aggregate earnings based on schema fields
+    // Aggregate earnings directly from schema fields
     const earnings = await AgentEarning.aggregate([
       {
         $match: {
@@ -2043,7 +2043,6 @@ exports.getAgentEarningsSummary = async (req, res) => {
       }
     ]);
 
-    // If no data, fallback to zeros
     const summaryData = earnings[0] || {
       base_fee: 0,
       extra_distance_fee: 0,
@@ -2053,7 +2052,6 @@ exports.getAgentEarningsSummary = async (req, res) => {
       total: 0
     };
 
-    // Delivery stats
     const totalDeliveries = await Order.countDocuments({
       assignedAgent: new mongoose.Types.ObjectId(agentId),
       createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
@@ -2065,6 +2063,7 @@ exports.getAgentEarningsSummary = async (req, res) => {
       createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
     });
 
+    // Match old API response structure
     return res.json({
       period,
       agentId,
@@ -2078,7 +2077,9 @@ exports.getAgentEarningsSummary = async (req, res) => {
         extraDistanceEarnings: summaryData.extra_distance_fee,
         tips: summaryData.tip,
         surgeBonus: summaryData.surge,
-        incentives: summaryData.incentive
+        incentives: summaryData.incentive,
+        penalties: 0, // Not tracked in current schema
+        other: 0
       },
       deliveryStats: {
         totalDeliveries,
