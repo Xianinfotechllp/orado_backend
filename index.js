@@ -177,7 +177,7 @@ io.on("connection", (socket) => {
     `agent_location:${agentId}`,
     JSON.stringify({ lat, lng }),
     "EX",
-    60
+    60  
   );
 
   // Step 2 (optional): Store in Redis GEOSET for advanced queries later
@@ -819,7 +819,7 @@ app.get("/socket-test", (req, res) => {
       longitude: route[index].lng,
     };
 
-    io.emit("agentLocationUpdate", location); // You can use io.to(roomName) instead
+    io.to(`user_688dfa7c19d90b48f3ba4605`).emit("agentLocationUpdate", location); // You can use io.to(roomName) instead
     console.log(`📍 [${index + 1}/40] Emitted location:`, location);
 
     index++;
