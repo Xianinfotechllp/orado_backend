@@ -7,26 +7,19 @@ const formatOrder = (order, agentId) => {
     (entry) => entry.agent.toString() === agentId.toString()
   );
 
-  const candidateStatus = candidateEntry?.status || null;
-  const isCandidateAccepted = candidateStatus === "accepted";
-  const isCandidatePending = candidateStatus === "pending";
-  const isCurrentCandidate = candidateEntry?.isCurrentCandidate || false;
+  // Treat "sent" as "pending" for frontend display
+  const normalizedStatus =
+    candidateEntry?.status === "sent" ? "pending" : candidateEntry?.status;
+
+  const isCandidateAccepted = normalizedStatus === "accepted";
+  const isCandidatePending = normalizedStatus === "pending";
 
   const isAutoAssigned = isAssigned && !candidateEntry;
+  const showAcceptReject =
+    !isAutoAssigned && isCandidatePending && !isAssigned;
+  const showOrderFlow =
+    isAutoAssigned || isCandidateAccepted || isAssigned;
 
-  // Show Accept/Reject buttons logic
-  let showAcceptReject = false;
-  if (order.allocationMethod === "one-by-one") {
-    // Only current candidate with pending status sees buttons
-    showAcceptReject = isCandidatePending && isCurrentCandidate && !isAssigned;
-  } else if (order.allocationMethod === "send-to-all") {
-    // All pending candidates see buttons
-    showAcceptReject = isCandidatePending && !isAssigned;
-  }
-
-  const showOrderFlow = isAutoAssigned || isCandidateAccepted || isAssigned;
-
-  // Delivery location coords
   const deliveryCoords =
     order.deliveryLocation?.coordinates?.length === 2
       ? {
@@ -35,7 +28,6 @@ const formatOrder = (order, agentId) => {
         }
       : null;
 
-  // Restaurant location coords
   const restaurantCoords =
     order.restaurantId?.location?.coordinates?.length === 2
       ? {
@@ -44,7 +36,6 @@ const formatOrder = (order, agentId) => {
         }
       : null;
 
-  // Map order items
   const orderItems = order.orderItems.map((item) => {
     const product = item.productId;
     return {
@@ -75,7 +66,6 @@ const formatOrder = (order, agentId) => {
     tax: order.tax,
     deliveryCharge: order.deliveryCharge,
     tipAmount: order.tipAmount,
-    collectAmount: order.totalAmount || 0,
 
     createdAt: order.createdAt,
     scheduledTime: order.scheduledTime || null,
@@ -96,6 +86,9 @@ const formatOrder = (order, agentId) => {
       phone: order.restaurantId?.phone || "",
     },
 
+    paymentMethod: order.paymentMethod,
+    collectAmount: order.totalAmount || 0,
+
     items: orderItems,
 
     offer: {
@@ -109,8 +102,6 @@ const formatOrder = (order, agentId) => {
     // UI Flags
     isAssigned,
     isAutoAssigned,
-    candidateStatus,
-    isCurrentCandidate,
     showAcceptReject,
     showOrderFlow,
   };
