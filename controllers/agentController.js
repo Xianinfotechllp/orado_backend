@@ -1136,7 +1136,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       });
     }
 
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId).populate("customerId");
     if (!order) {
       return res.status(404).json({
         status: "error",
@@ -1144,7 +1144,6 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       });
     }
 
-    // ✅ Find the candidate corresponding to this agent
     const candidateIndex = order.agentCandidates.findIndex(
       (c) => c.agent.toString() === agentId.toString()
     );
@@ -1158,7 +1157,6 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
     const candidate = order.agentCandidates[candidateIndex];
 
-    // Enforce one-by-one flow - only the current 'sent' or 'pending' candidate can respond
     if (!["sent", "pending"].includes(candidate.status) || !candidate.isCurrentCandidate) {
       return res.status(403).json({
         status: "error",
@@ -1166,7 +1164,6 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       });
     }
 
-    // Check if already responded
     if (candidate.respondedAt) {
       return res.status(400).json({
         status: "error",
@@ -1174,7 +1171,6 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       });
     }
 
-    // Record response time & mark responded
     candidate.respondedAt = new Date();
     candidate.responseTime = candidate.respondedAt - candidate.notifiedAt;
     candidate.isCurrentCandidate = false;
@@ -1182,12 +1178,10 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
     if (action === "accept") {
       candidate.status = "accepted";
 
-      // Assign the order officially to the agent
       order.assignedAgent = agentId;
       order.agentAssignmentStatus = "accepted_by_agent";
       order.agentAcceptedAt = new Date();
 
-      // Optionally: Clear any pending candidates or mark them rejected/skipped?
       order.agentCandidates.forEach((c, idx) => {
         if (idx !== candidateIndex && ["queued", "sent", "pending"].includes(c.status)) {
           c.status = "skipped";
@@ -1197,18 +1191,29 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
       await order.save();
 
+      // ✅ Emit event to customer about the assigned agent
+      const io = req.app.get("io"); // Access your socket.io instance
+      const agent = req.user; // Assuming agent details are in req.user
+
+      io.to(`user_${order.customerId._id.toString()}`).emit("agentAssigned", {
+        orderId: order._id.toString(),
+        agent: {
+          agentId: agent._id.toString(),
+          fullName: agent.fullName,
+          phoneNumber: agent.phoneNumber,
+        },
+      });
+
       return res.status(200).json({
         status: "success",
         message: "Order accepted successfully",
       });
     } else {
-      // Reject flow
       candidate.status = "rejected";
       candidate.rejectionReason = reason || "No reason provided";
 
       order.agentAssignmentStatus = "awaiting_agent_acceptance";
 
-      // Add to rejection history (if you track it)
       order.rejectionHistory = order.rejectionHistory || [];
       order.rejectionHistory.push({
         agentId,
@@ -1218,7 +1223,6 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
       await order.save();
 
-      // Notify next candidate
       await notifyNextPendingAgent(order);
 
       return res.status(200).json({
@@ -1234,6 +1238,7 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
     });
   }
 };
+
 
 
 exports.getAssignedOrderDetails = async (req, res) => {
