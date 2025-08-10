@@ -8,7 +8,7 @@ const  getRedisClient  = require("./config/redisClient");
 const redis = getRedisClient();
 const morgan = require('morgan');
 
-
+const { handleAgentLocation } = require("./services/agentLocationService");
 
 const app = express();
 const server = http.createServer(app);
@@ -192,7 +192,7 @@ io.on("connection", (socket) => {
   });
 });
 
-
+  await handleAgentLocation(io, agentId, lat, lng, deviceInfo, socket);
 
 
 
