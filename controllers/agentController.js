@@ -1989,7 +1989,6 @@ exports.getAgentBasicDetails = async (req, res) => {
 // };
 
 
-
 exports.getAgentEarningsSummary = async (req, res) => {
   try {
     const { period = 'daily', startDate: customStart, endDate: customEnd } = req.query;
@@ -1998,6 +1997,9 @@ exports.getAgentEarningsSummary = async (req, res) => {
     if (!agentId) {
       return res.status(401).json({ error: 'Unauthorized: agentId missing in token' });
     }
+
+    // Helper function to ensure numeric output
+    const toNumber = (val, decimals = 2) => Number(parseFloat(val || 0).toFixed(decimals));
 
     // Determine date range
     const now = moment();
@@ -2064,6 +2066,7 @@ exports.getAgentEarningsSummary = async (req, res) => {
       createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
     });
 
+    // Send clean numeric values
     return res.json({
       period,
       agentId,
@@ -2072,14 +2075,14 @@ exports.getAgentEarningsSummary = async (req, res) => {
         to: endDate.format()
       },
       summary: {
-        totalEarnings: summary.total,
-        baseEarnings: summary.base_fee,
-        extraDistanceEarnings: summary.extra_distance_fee,
-        tips: summary.tip,
-        surgeBonus: summary.surge,
-        incentives: summary.incentive,
-        penalties: 0, // no penalties field in schema
-        other: 0 // no other field in schema
+        totalEarnings: toNumber(summary.total),
+        baseEarnings: toNumber(summary.base_fee),
+        extraDistanceEarnings: toNumber(summary.extra_distance_fee),
+        tips: toNumber(summary.tip),
+        surgeBonus: toNumber(summary.surge),
+        incentives: toNumber(summary.incentive),
+        penalties: 0,
+        other: 0
       },
       deliveryStats: {
         totalDeliveries,
@@ -2093,101 +2096,113 @@ exports.getAgentEarningsSummary = async (req, res) => {
   }
 };
 
-
-
-exports.getAgentIncentiveSummary = async (req, res) => {
+exports.getAgentEarningsSummary = async (req, res) => {
   try {
-    const agentId = req.user._id;
-    const { type } = req.query; // 'daily', 'weekly', 'monthly'
+    const { period = 'daily', startDate: customStart, endDate: customEnd } = req.query;
+    const agentId = req.user?._id;
 
-    if (!["daily", "weekly", "monthly"].includes(type)) {
-      return res.status(400).json({ message: "Invalid incentive type" });
+    if (!agentId) {
+      return res.status(401).json({ error: 'Unauthorized: agentId missing in token' });
     }
 
-    const today = new Date();
+    // Helper: round to whole number
+    const roundMoney = (val) => Math.round(Number(val || 0));
 
-    // Time key helpers
-    const getDateKey = () => today.toISOString().slice(0, 10); // 'YYYY-MM-DD'
-    const getWeekKey = () => {
-      const weekNum = new Intl.DateTimeFormat('en', { week: 'numeric', year: 'numeric' });
-      return weekNum.format(today).replace(" ", "-"); // e.g., '2025-W31'
+    // Determine date range
+    const now = moment();
+    let startDate;
+    let endDate = now;
+
+    if (customStart && customEnd) {
+      startDate = moment(customStart).startOf('day');
+      endDate = moment(customEnd).endOf('day');
+    } else {
+      switch (period) {
+        case 'weekly':
+          startDate = now.clone().startOf('isoWeek');
+          break;
+        case 'monthly':
+          startDate = now.clone().startOf('month');
+          break;
+        case 'daily':
+        default:
+          startDate = now.clone().startOf('day');
+          break;
+      }
+    }
+
+    // Aggregate directly from flat schema fields
+    const earnings = await AgentEarning.aggregate([
+      {
+        $match: {
+          agentId: new mongoose.Types.ObjectId(agentId),
+          createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          base_fee: { $sum: "$baseDeliveryFee" },
+          extra_distance_fee: { $sum: "$extraDistanceFee" },
+          tip: { $sum: "$tipAmount" },
+          surge: { $sum: "$surgeAmount" },
+          incentive: { $sum: "$incentiveAmount" },
+          total: { $sum: "$totalEarning" }
+        }
+      }
+    ]);
+
+    const summary = earnings[0] || {
+      base_fee: 0,
+      extra_distance_fee: 0,
+      tip: 0,
+      surge: 0,
+      incentive: 0,
+      total: 0
     };
-    const getMonthKey = () => `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 
-    let timeFilter = {};
-    let label = "";
-
-    if (type === "daily") {
-      label = getDateKey();
-      timeFilter.date = label;
-    } else if (type === "weekly") {
-      label = getWeekKey();
-      timeFilter.week = label;
-    } else if (type === "monthly") {
-      label = getMonthKey();
-      timeFilter.month = label;
-    }
-
-    // Step 1: Find active rule
-    const rule = await IncentiveRule.findOne({
-      type,
-      active: true,
-      startDate: { $lte: today },
-      endDate: { $gte: today }
+    // Delivery stats
+    const totalDeliveries = await Order.countDocuments({
+      assignedAgent: new mongoose.Types.ObjectId(agentId),
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
     });
 
-    if (!rule) {
-      return res.status(404).json({ message: `No active ${type} incentive rule found` });
-    }
-
-    // Step 2: Get progress
-    const progress = await AgentIncentiveProgress.findOne({
-      agentId,
-      incentiveRuleId: rule._id,
-      type,
-      ...timeFilter
+    const completedDeliveries = await Order.countDocuments({
+      assignedAgent: new mongoose.Types.ObjectId(agentId),
+      agentDeliveryStatus: 'delivered',
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
     });
 
-    const currentValue = progress?.currentValue || 0;
-
-    // Determine target value dynamically from the rule condition
-    const targetValue = rule.condition?.minEarning || rule.condition?.minOrders || 0;
-
-    const percent = targetValue > 0 ? Math.min(100, Math.floor((currentValue / targetValue) * 100)) : 0;
-    const remaining = Math.max(0, targetValue - currentValue);
-
-    // Step 3: Fetch past earnings
-    const pastEarnings = await AgentIncentiveProgress.find({
+    // Send response
+    return res.json({
+      period,
       agentId,
-      type,
-      isCompleted: true
-    })
-      .sort({ updatedAt: -1 })
-      .limit(10)
-      .select("currentValue rewardAmount date week month");
-
-    // Final response
-    return res.status(200).json({
-      type,
-      dateLabel: label,
-      title: rule.title,
-      description: rule.description,
-      basedOn: rule.condition?.basedOn,
-      targetValue,
-      currentValue,
-      reward: rule.incentiveAmount,
-      rewardType: rule.rewardType,
-      percent,
-      remaining,
-      completed: currentValue >= targetValue,
-      pastEarnings
+      dateRange: {
+        from: startDate.format(),
+        to: endDate.format()
+      },
+      summary: {
+        totalEarnings: roundMoney(summary.total),
+        baseEarnings: roundMoney(summary.base_fee),
+        extraDistanceEarnings: roundMoney(summary.extra_distance_fee),
+        tips: roundMoney(summary.tip),
+        surgeBonus: roundMoney(summary.surge),
+        incentives: roundMoney(summary.incentive),
+        penalties: 0,
+        other: 0
+      },
+      deliveryStats: {
+        totalDeliveries,
+        completedDeliveries
+      }
     });
 
   } catch (error) {
-    console.error("Error in getAgentIncentiveSummary:", error);
-    return res.status(500).json({ message: "Server error" });
+    console.error('Error fetching agent earnings summary:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 
 exports.getAgentIncentiveSummary = async (req, res) => {
