@@ -190,11 +190,15 @@ io.on("connection", (socket) => {
     lng,
     deviceInfo,
   });
-});
 
   await handleAgentLocation(io, agentId, lat, lng, deviceInfo, socket);
 
 
+
+
+
+
+});
 
 
   // Agent live status + location
