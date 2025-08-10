@@ -84,14 +84,14 @@ const AgentEarningSchema = new mongoose.Schema({
   timestamps: true, // adds createdAt and updatedAt fields automatically
 });
 
-AgentEarningSchema.pre('save', function (next) {
-  this.totalEarning =
-    this.baseDeliveryFee +
-    this.extraDistanceFee +
-    this.surgeAmount +
-    this.tipAmount +
-    this.incentiveAmount;
-  next();
-});
+// AgentEarningSchema.pre('save', function (next) {
+//   this.totalEarning =
+//     this.baseDeliveryFee +
+//     this.extraDistanceFee +
+//     this.surgeAmount +
+//     this.tipAmount +
+//     this.incentiveAmount;
+//   next();
+// });
 
 module.exports = mongoose.model('AgentEarning', AgentEarningSchema);
