@@ -2239,13 +2239,16 @@ exports.getAgentIncentiveSummary = async (req, res) => {
     }
 
     // Step 1: Find the active incentive rule
-    const rule = await IncentiveRule.findOne({
-      type,
-      active: true,
-      startDate: { $lte: today },
-      endDate: { $gte: today }
-    });
-
+  const rule = await IncentiveRule.findOne({
+  period: type,
+  active: true,
+  startDate: { $lte: today },
+  $or: [
+    { endDate: { $gte: today } },  // Has end date in future
+    { endDate: null },             // OR has no end date (null)
+    { endDate: { $exists: false } } // OR field doesn't exist (optional)
+  ]
+});
     if (!rule) {
       return res.status(200).json({
         type,
@@ -2279,19 +2282,24 @@ exports.getAgentIncentiveSummary = async (req, res) => {
       .sort({ updatedAt: -1 })
       .limit(10)
       .select("currentValue rewardAmount date week month");
+const responseCondition = rule.conditions && rule.conditions.length > 0 
+  ? rule.conditions[0] 
+  : null;
+  const responeseIncetiveAmoun = rule.incentiveAmount && rule.incentiveAmount.length > 0 
+  ? rule.incentiveAmount[0] : null; 
 
     // Final response
     return res.status(200).json({
       incentiveConfigured: true,
       type,
       dateLabel: label,
-      title: rule.title,
+      title: rule.name,
       description: rule.description,
-      basedOn: rule.condition?.basedOn,
+      basedOn: responseCondition,
       targetValue,
       currentValue,
-      reward: rule.incentiveAmount,
-      rewardType: rule.rewardType,
+      reward: responeseIncetiveAmount,
+      rewardType: "fixed",
       percent,
       remaining,
       completed: currentValue >= targetValue,

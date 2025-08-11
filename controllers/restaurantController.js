@@ -1138,25 +1138,20 @@ exports.getRestaurantMenu = async (req, res) => {
       });
     }
 
-    // Current time in AM/PM format
-    const currentTime = moment().format("hh:mm A");
+    // Use a Moment object for current time
+    const currentMoment = moment();
 
     const menu = await Promise.all(
       categories.map(async (category) => {
         let products = await Product.find({
           restaurantId,
           categoryId: category._id,
-          active: true
+          active: true,
         }).select("-revenueShare -costPrice -profitMargin");
 
-        products = products.map(p => {
+        products = products.map((p) => {
           let isAvailable = true;
           let reason = null;
-
-          // Convert availableAfterTime (if set) to AM/PM format for comparison
-          let productAvailableTime = p.availableAfterTime 
-            ? moment(p.availableAfterTime, ["HH:mm", "hh:mm A"]).format("hh:mm A")
-            : null;
 
           if (p.enableInventory && p.stock <= 0) {
             isAvailable = false;
@@ -1168,16 +1163,26 @@ exports.getRestaurantMenu = async (req, res) => {
             if (!p.availableAfterTime) {
               isAvailable = false;
               reason = "Availability time not set";
-            } else if (moment(currentTime, "hh:mm A").isBefore(moment(productAvailableTime, "hh:mm A"))) {
-              isAvailable = false;
-              reason = `Available after ${productAvailableTime}`;
+            } else {
+              const [hour, minute] = p.availableAfterTime.split(":").map(Number);
+              const productAvailableMoment = moment()
+                .hour(hour)
+                .minute(minute)
+                .second(0);
+
+              if (currentMoment.isBefore(productAvailableMoment)) {
+                isAvailable = false;
+                reason = `Available after ${productAvailableMoment.format(
+                  "hh:mm A"
+                )}`;
+              }
             }
           }
 
           return {
             ...p.toObject(),
             isAvailable,
-            unavailableReason: reason
+            unavailableReason: reason,
           };
         });
 
@@ -1197,7 +1202,6 @@ exports.getRestaurantMenu = async (req, res) => {
       messageType: "success",
       data: menu,
     });
-
   } catch (error) {
     console.error("Error fetching menu:", error);
     res.status(500).json({

@@ -3,9 +3,9 @@ const router = express.Router();
 const incentivePlanController = require('../controllers/incentivePlanController');
 
 // Create a new incentive plan
-router.post('/', incentivePlanController.createIncentiveRule);
-
-
+router.post('/', incentivePlanController.createIncentivePlan);
+router.get("/",incentivePlanController.getIncentivePlans)
+router.patch("/:planId/toggle",incentivePlanController.toggleActiveStatus)
 // router.get('/', incentivePlanController.getAllIncentivePlans);
 // router.delete('/:id', incentivePlanController.deleteIncentivePlan);
 // router.patch('/:id/toggle-status', incentivePlanController.toggleIncentivePlanStatus)
@@ -22,5 +22,5 @@ router.post('/', incentivePlanController.createIncentiveRule);
 // router.delete('/:id', incentiveController.deleteIncentivePlan);
 
 // // Export using camelCase
-const incentiveRoutes = router;
-module.exports = incentiveRoutes;
+
+module.exports = router;

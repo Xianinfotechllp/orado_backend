@@ -99,17 +99,24 @@ exports.findApplicableSurge = (restaurantCoords, deliveryCoords, surgeAreas) => 
 
 
 exports.findApplicableSurgeZones = async ({ fromCoords, toCoords, time = new Date() }) => {
+  console.log('From coords:', fromCoords);
+  console.log('To coords:', toCoords);
+  console.log('Time:', time);
+
   const activeSurges = await SurgeArea.find({
     isActive: true,
     startTime: { $lte: time },
     endTime: { $gte: time }
   });
+  console.log('Active surges count:', activeSurges.length);
+
+  const turf = require('@turf/turf'); // move require outside the loop
 
   const insideSurges = [];
 
   for (const surge of activeSurges) {
+    console.log('Checking surge:', surge.name, surge.type);
     if (surge.type === 'Polygon') {
-      const turf = require('@turf/turf');
       const polygon = turf.polygon(surge.area.coordinates);
       const fromPoint = turf.point(fromCoords);
       const toPoint = turf.point(toCoords);
@@ -118,7 +125,6 @@ exports.findApplicableSurgeZones = async ({ fromCoords, toCoords, time = new Dat
         insideSurges.push(surge);
       }
     } else if (surge.type === 'Circle') {
-      const turf = require('@turf/turf');
       const center = turf.point(surge.center);
       const radiusInKm = surge.radius / 1000;
 
@@ -131,6 +137,8 @@ exports.findApplicableSurgeZones = async ({ fromCoords, toCoords, time = new Dat
     }
   }
 
+  console.log('Inside surges count:', insideSurges.length);
+
   return insideSurges.map(surge => ({
     name: surge.name,
     reason: surge.surgeReason,
@@ -140,4 +148,3 @@ exports.findApplicableSurgeZones = async ({ fromCoords, toCoords, time = new Dat
     id: surge._id,
   }));
 };
-
