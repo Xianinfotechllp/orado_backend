@@ -1,7 +1,7 @@
 const Agent = require("../models/agentModel");
 const AgentEarning = require("../models/AgentEarningModel");
 const Order = require("../models/orderModel");
-const IncentiveRule = require('../models/IncentiveRuleModel');
+const IncentivePlan = require('../models/IncentiveRuleModel');
 const User = require("../models/userModel");
 const Session = require("../models/session");
 const Restaurant = require("../models/restaurantModel");
@@ -2239,16 +2239,11 @@ exports.getAgentIncentiveSummary = async (req, res) => {
     }
 
     // Step 1: Find the active incentive rule
-  const rule = await IncentiveRule.findOne({
-  period: type,
-  active: true,
-  startDate: { $lte: today },
-  $or: [
-    { endDate: { $gte: today } },  // Has end date in future
-    { endDate: null },             // OR has no end date (null)
-    { endDate: { $exists: false } } // OR field doesn't exist (optional)
-  ]
+  const rule = await IncentivePlan.findOne({
+  period: type
+  
 });
+console.log(rule)
     if (!rule) {
       return res.status(200).json({
         type,
@@ -2269,7 +2264,9 @@ exports.getAgentIncentiveSummary = async (req, res) => {
     const currentValue = progress?.currentValue || 0;
 
     // Dynamic target
-    const targetValue = rule.condition?.minEarning || rule.condition?.minOrders || 0;
+    const targetValue =rule.conditions && rule.conditions.length > 0 
+  ? rule.conditions[0].threshold 
+  : null;
     const percent = targetValue > 0 ? Math.min(100, Math.floor((currentValue / targetValue) * 100)) : 0;
     const remaining = Math.max(0, targetValue - currentValue);
 
@@ -2283,10 +2280,10 @@ exports.getAgentIncentiveSummary = async (req, res) => {
       .limit(10)
       .select("currentValue rewardAmount date week month");
 const responseCondition = rule.conditions && rule.conditions.length > 0 
-  ? rule.conditions[0] 
+  ? rule.conditions[0].conditionType 
   : null;
-  const responeseIncetiveAmoun = rule.incentiveAmount && rule.incentiveAmount.length > 0 
-  ? rule.incentiveAmount[0] : null; 
+  const responeseIncetiveAmount = rule.conditions && rule.conditions.length > 0 
+  ? rule.conditions[0].incentiveAmount : null; 
 
     // Final response
     return res.status(200).json({
@@ -2296,7 +2293,7 @@ const responseCondition = rule.conditions && rule.conditions.length > 0
       title: rule.name,
       description: rule.description,
       basedOn: responseCondition,
-      targetValue,
+      targetValue,  
       currentValue,
       reward: responeseIncetiveAmount,
       rewardType: "fixed",

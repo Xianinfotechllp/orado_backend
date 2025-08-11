@@ -252,14 +252,13 @@ exports.toggleActiveStatus = async (req, res) => {
 
 
 exports.deleteIncentivePlan = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+
   
   try {
-    const { id } = req.params;
+    const { planId } = req.params;
 
     // 1. Verify plan exists
-    const plan = await IncentivePlan.findById(id).session(session);
+    const plan = await IncentivePlan.findById(planId)
     if (!plan) {
       await session.abortTransaction();
       return res.status(404).json({
@@ -268,20 +267,18 @@ exports.deleteIncentivePlan = async (req, res) => {
       });
     }
 
-    // 2. Delete all associated agent progress records
-    await AgentIncentiveProgress.deleteMany({ planId: id }).session(session);
+    // console.log('Plan found:', plan);
+
 
     // 3. Delete the plan itself
-    await IncentivePlan.findByIdAndDelete(id).session(session);
+    await IncentivePlan.findByIdAndDelete(planId)
 
-    // 4. Commit the transaction
-    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
       message: 'Incentive plan and all associated records deleted successfully',
       deletedPlan: {
-        id,
+        planId,
         name: plan.name,
         period: plan.period,
         deletedAt: new Date()
@@ -289,14 +286,12 @@ exports.deleteIncentivePlan = async (req, res) => {
     });
 
   } catch (error) {
-    await session.abortTransaction();
+
     console.error('Error deleting incentive plan:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to delete incentive plan',
       error: error.message
     });
-  } finally {
-    session.endSession();
-  }
+  } 
 };

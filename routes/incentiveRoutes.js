@@ -6,6 +6,7 @@ const incentivePlanController = require('../controllers/incentivePlanController'
 router.post('/', incentivePlanController.createIncentivePlan);
 router.get("/",incentivePlanController.getIncentivePlans)
 router.patch("/:planId/toggle",incentivePlanController.toggleActiveStatus)
+router.delete("/:planId",incentivePlanController.deleteIncentivePlan)
 // router.get('/', incentivePlanController.getAllIncentivePlans);
 // router.delete('/:id', incentivePlanController.deleteIncentivePlan);
 // router.patch('/:id/toggle-status', incentivePlanController.toggleIncentivePlanStatus)
