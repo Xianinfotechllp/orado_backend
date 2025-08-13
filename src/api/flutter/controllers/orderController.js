@@ -2218,6 +2218,21 @@ exports.placeOrderV2 = async (req, res) => {
 
 
 
+/*************  ✨ Windsurf Command ⭐  *************/
+/**
+ * Handles the placement of an order using a saved address. Validates input fields, user, address, 
+ * and cart details. Computes order cost including surge fee, delivery fee, taxes, and discounts.
+ * Creates a new order document and handles payment initiation if the payment method is online.
+ * Assigns a delivery agent and emits relevant notifications and events.
+ *
+ * @param {Object} req - The request object containing user and order details.
+ * @param {Object} res - The response object for sending back the HTTP response.
+ * @returns {Object} JSON response indicating success or failure of order placement.
+ * 
+ * @throws {Error} If any validation fails, or if there is an internal server error.
+ */
+
+/*******  754ea939-e3b3-4289-b20c-a50a66f3458a  *******/
 exports.placeOrderWithAddressId = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -2916,13 +2931,13 @@ exports.verifyPayment = async (req, res) => {
       await notificationService.sendOrderNotification({
         userId: userId.toString(),
         title: "Payment Successful",
-        body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
+        body: `Your payment for order  has been confirmed`,
         orderId: order._id.toString(),
         data: {
           orderStatus: "payment_completed",
-          amount: order.totalAmount
+          amount: 100
         },
-        deepLinkUrl: `/orders/${order._id}`
+        deepLinkUrl: `/ordeee`
       });
       console.log('[Payment] Notification sent');
     } catch (notificationError) {
