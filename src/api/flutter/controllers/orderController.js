@@ -2785,9 +2785,9 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 //     });
 //   }
 // };
-
 exports.verifyPayment = async (req, res) => {
   try {
+    console.log('[Payment] Starting verification process');
     const userId = req.user._id;
     const {
       razorpay_order_id,
@@ -2796,7 +2796,17 @@ exports.verifyPayment = async (req, res) => {
       orderId,
     } = req.body;
 
+    console.log('[Payment] Received data:', {
+      userId,
+      razorpay_order_id,
+      razorpay_payment_id,
+      orderId,
+      razorpay_signature: razorpay_signature ? 'exists' : 'missing'
+    });
+
+    // Validate input
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !orderId) {
+      console.error('[Payment] Missing required fields');
       return res.status(400).json({ 
         message: "Missing payment details", 
         messageType: "failure" 
@@ -2804,20 +2814,29 @@ exports.verifyPayment = async (req, res) => {
     }
 
     // Verify order exists and belongs to user
+    console.log('[Payment] Looking for order:', orderId);
     const order = await Order.findOne({
       _id: orderId,
       customerId: userId
     });
 
     if (!order) {
+      console.error('[Payment] Order not found or unauthorized');
       return res.status(404).json({ 
         message: "Order not found or doesn't belong to user",
         messageType: "failure" 
       });
     }
 
+    console.log('[Payment] Found order:', {
+      orderId: order._id,
+      paymentStatus: order.paymentStatus,
+      amount: order.totalAmount
+    });
+
     // Check if payment is already verified
     if (order.paymentStatus === 'completed') {
+      console.warn('[Payment] Payment already verified');
       return res.status(200).json({
         message: "Payment already verified",
         messageType: "success",
@@ -2826,14 +2845,21 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Generate expected signature
+    // Signature verification
+    console.log('[Payment] Verifying signature');
     const generatedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(razorpay_order_id + "|" + razorpay_payment_id)
       .digest("hex");
 
-    // Compare signatures
+    console.log('[Payment] Signature comparison:', {
+      generated: generatedSignature,
+      received: razorpay_signature,
+      match: generatedSignature === razorpay_signature
+    });
+
     if (generatedSignature !== razorpay_signature) {
+      console.error('[Payment] Signature mismatch');
       await Order.findByIdAndUpdate(orderId, {
         $set: {
           "onlinePaymentDetails.verificationStatus": "failed",
@@ -2848,7 +2874,8 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Update order payment status
+    // Update order status
+    console.log('[Payment] Updating order status');
     order.paymentStatus = "completed";
     order.onlinePaymentDetails = {
       razorpayOrderId: razorpay_order_id,
@@ -2859,18 +2886,33 @@ exports.verifyPayment = async (req, res) => {
     };
     
     await order.save();
+    console.log('[Payment] Order updated successfully');
 
+    // Process inventory
+    try {
+      console.log('[Payment] Reducing stock');
+      const io = req.app.get("io");
+      await reduceStockForOrder(order.orderItems, io);
+      console.log('[Payment] Stock reduced successfully');
+    } catch (stockError) {
+      console.error('[Payment] Stock reduction failed:', stockError);
+      // Continue even if stock reduction fails
+    }
 
-   const io = req.app.get("io");
-  await reduceStockForOrder(order.orderItems, io); // Passing socket.io instance
-
-    // Clear cart if exists
+    // Clear cart
     if (order.cartId) {
-      await Cart.findByIdAndDelete(order.cartId);
+      try {
+        console.log('[Payment] Clearing cart:', order.cartId);
+        await Cart.findByIdAndDelete(order.cartId);
+        console.log('[Payment] Cart cleared');
+      } catch (cartError) {
+        console.error('[Payment] Cart clearance failed:', cartError);
+      }
     }
     
-    // Send notification after payment verification
+    // Send notification
     try {
+      console.log('[Payment] Sending notification');
       await notificationService.sendOrderNotification({
         userId: userId,
         title: "Payment Successful",
@@ -2882,13 +2924,24 @@ exports.verifyPayment = async (req, res) => {
         },
         deepLinkUrl: `/orders/${order._id}`
       });
+      console.log('[Payment] Notification sent');
     } catch (notificationError) {
-      console.error("Notification error:", notificationError.message);
-      // Optionally, log or retry the notification
+      console.error('[Payment] Notification failed:', notificationError);
     }
 
-    // Trigger task allocation after payment verification
-    const allocationResult = await assignTask(orderId);
+    // Assign delivery agent
+    console.log('[Payment] Assigning delivery agent');
+    let allocationResult;
+    try {
+      allocationResult = await assignTask(orderId);
+      console.log('[Payment] Agent assignment result:', allocationResult);
+    } catch (allocationError) {
+      console.error('[Payment] Agent assignment failed:', allocationError);
+      allocationResult = {
+        success: false,
+        message: allocationError.message
+      };
+    }
 
     return res.status(200).json({
       message: "Payment verified and order confirmed.",
@@ -2896,24 +2949,33 @@ exports.verifyPayment = async (req, res) => {
       orderId: order._id,
       paymentStatus: order.paymentStatus,
       allocation: {
-        status: allocationResult.success ? "success" : "pending",
-        agentId: allocationResult.agentId || null,
-        reason: allocationResult.message || null,
+        status: allocationResult?.success ? "success" : "pending",
+        agentId: allocationResult?.agentId || null,
+        reason: allocationResult?.message || null,
       }
     });
 
   } catch (err) {
-    console.error("Payment verification error:", err);
+    console.error('[Payment] Verification error:', {
+      message: err.message,
+      stack: err.stack,
+      requestBody: req.body
+    });
     
     // Update order status if verification failed
     if (orderId) {
-      await Order.findByIdAndUpdate(orderId, {
-        $set: {
-          "onlinePaymentDetails.verificationStatus": "failed",
-          "onlinePaymentDetails.failureReason": err.message,
-          "paymentStatus": "failed"
-        }
-      });
+      try {
+        await Order.findByIdAndUpdate(orderId, {
+          $set: {
+            "onlinePaymentDetails.verificationStatus": "failed",
+            "onlinePaymentDetails.failureReason": err.message,
+            "paymentStatus": "failed"
+          }
+        });
+        console.log('[Payment] Marked order as failed');
+      } catch (updateError) {
+        console.error('[Payment] Failed to update order status:', updateError);
+      }
     }
 
     res.status(500).json({

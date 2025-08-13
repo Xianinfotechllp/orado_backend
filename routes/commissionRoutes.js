@@ -10,4 +10,4 @@ router.get("/settings", commissionController.getCommissionSettings);
 router.delete("/settings/:settingId", commissionController.deleteCommissionSetting);
 router.get("/summary",commissionController.getRestaurantCommissionsAdmin)
 
-module.exports = router
+module.exports = router 
