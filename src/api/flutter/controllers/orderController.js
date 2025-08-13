@@ -2914,6 +2914,25 @@ exports.verifyPayment = async (req, res) => {
       // Continue even if stock reduction fails
     }
 
+
+    try {
+    
+      console.log('[Payment] Notification sent');
+      await notificationService.sendOrderNotification({
+  userId: userId.toString(),
+  title: "Payment Successful",
+  body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
+  orderId: order._id.toString(),
+  data: {
+    orderStatus: "payment_completed",
+    paymentMethod: "online"
+  },
+  deepLinkUrl: `/orders/${order._id}`
+});
+    } catch (notificationError) {
+      console.error('[Payment] Notification failed:', notificationError);
+    }
+
     // Clear cart
     if (order.cartId) {
       try {
@@ -2926,23 +2945,7 @@ exports.verifyPayment = async (req, res) => {
     }
     
     // Send notification
-    try {
-      console.log('[Payment] Sending notification');
-      await notificationService.sendOrderNotification({
-        userId: userId.toString(),
-        title: "Payment Successful",
-        body: `Your payment for order  has been confirmed`,
-        orderId: "232323",
-        data: {
-          orderStatus: "payment_completed",
-          amount: 100
-        },
-        deepLinkUrl: `/ordeee`
-      });
-      console.log('[Payment] Notification sent');
-    } catch (notificationError) {
-      console.error('[Payment] Notification failed:', notificationError);
-    }
+    
 
     // Assign delivery agent
     console.log('[Payment] Assigning delivery agent');

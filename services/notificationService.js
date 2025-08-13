@@ -164,28 +164,44 @@ exports.sendOrderNotification = async ({
   notificationType = 'order_update'
 }) => {
   try {
+    console.log('[Notification] Starting process for:', { userId, orderId });
+    
     // 1. Get user's FCM token from database
     const user = await User.findById(userId).select('devices');
     if (!user) {
-      console.log('User not found');
+      console.error('[Notification] User not found:', userId);
       return { success: false, error: 'User not found' };
     }
 
-    console.log('User devices:', user.devices);
+    console.log('[Notification] User devices:', JSON.stringify(user.devices, null, 2));
 
-    // 2. Find active mobile device tokens
+    // 2. Filter and validate tokens
     const fcmTokens = user.devices
-      .filter(device => 
-        device.status === 'active' && 
-        ['android', 'ios'].includes(device.platform) && 
-        (device.token || device.fcmToken)
-      )
-      .map(device => device.token || device.fcmToken);
+      .filter(device => {
+        const isValid = device.status === 'active' && 
+                      ['android', 'ios'].includes(device.platform) && 
+                      (device.token || device.fcmToken);
+        if (!isValid) {
+          console.log(`[Notification] Skipping device ${device._id}:`, {
+            status: device.status,
+            platform: device.platform,
+            hasToken: !!(device.token || device.fcmToken)
+          });
+        }
+        return isValid;
+      })
+      .map(device => {
+        const token = device.token || device.fcmToken;
+        console.log(`[Notification] Using token for device ${device._id}:`, 
+                   token?.length, 'chars', 
+                   token?.startsWith('f') ? 'valid prefix' : 'unexpected prefix');
+        return token;
+      });
 
-    console.log('FCM Tokens:', fcmTokens);
+    console.log('[Notification] Final FCM Tokens:', fcmTokens);
 
     if (fcmTokens.length === 0) {
-      console.warn(`No active devices found for user ${userId}`);
+      console.error('[Notification] No valid devices found for user:', userId);
       return { success: false, error: 'No active devices' };
     }
 
@@ -197,17 +213,43 @@ exports.sendOrderNotification = async ({
         body: body,
       },
       data: {
-        ...data, // Spread any additional data
+        ...data,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
         orderId: orderId,
         type: notificationType,
         deepLink: deepLinkUrl || `yourapp://orders/${orderId}`
       },
+      android: {
+        priority: 'high',
+        notification: {
+          channel_id: androidChannel,
+          sound: sound
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: sound
+          }
+        }
+      }
     };
 
+    console.log('[Notification] Prepared message:', JSON.stringify(message, null, 2));
+
     // 4. Send notification
+    console.log('[Notification] Sending to FCM...');
     const response = await admin.messaging().sendEachForMulticast(message);
-    console.log(`✅ Notification sent to ${response.successCount} device(s)`);
+    
+    console.log('[Notification] FCM Response:', {
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      responses: response.responses.map((r, i) => ({
+        deviceToken: fcmTokens[i],
+        success: r.success,
+        error: r.error?.message || r.error?.code || 'No error'
+      }))
+    });
 
     return {
       success: true,
@@ -215,7 +257,12 @@ exports.sendOrderNotification = async ({
     };
 
   } catch (error) {
-    console.error('❌ Notification failed:', error);
+    console.error('[Notification] Critical Error:', {
+      message: error.message,
+      stack: error.stack,
+      userId,
+      orderId
+    });
     return {
       success: false,
       error: error.message
