@@ -2914,7 +2914,7 @@ exports.verifyPayment = async (req, res) => {
     try {
       console.log('[Payment] Sending notification');
       await notificationService.sendOrderNotification({
-        userId: userId,
+        userId: userId.toString(),
         title: "Payment Successful",
         body: `Your payment for order #${order._id.toString().slice(-6)} has been confirmed`,
         orderId: order._id.toString(),
