@@ -1288,8 +1288,6 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       useLoyaltyPoints = false,
       loyaltyPointsToRedeem = null,
     } = req.body;
-    console.log("getOrderPriceSummaryv2 called with params:" ,req.body);
-
 
       // Validate input
     if (!cartId || !userId) {

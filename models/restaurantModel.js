@@ -1,24 +1,24 @@
 const mongoose = require("mongoose");
 
 // ✅ Opening Hour Subdocument Schema
-const openingHourSchema = new mongoose.Schema({
-  day: {
-    type: String,
-    enum: [
-      "monday",
-      "tuesday",
-      "wednesday",
-      "thursday",
-      "friday",
-      "saturday",
-      "sunday",
-    ],
-    required: true,
-  },
-  openingTime: { type: String, required: true },
-  closingTime: { type: String, required: true },
-  isClosed: { type: Boolean, default: false },
-});
+  const openingHourSchema = new mongoose.Schema({
+    day: {
+      type: String,
+      enum: [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+      ],
+      required: true,
+    },
+    openingTime: { type: String, required: true },
+    closingTime: { type: String, required: true },
+    isClosed: { type: Boolean, default: false },
+  });
 
 // ✅ Main Restaurant Schema
 const restaurantSchema = new mongoose.Schema(

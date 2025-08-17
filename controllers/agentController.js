@@ -18,7 +18,8 @@ const {
   addAgentEarnings,
   addRestaurantEarnings,
   createRestaurantEarning,
-  createAgentEarning
+  createAgentEarning,
+  calculateIncentivesForAgent
 } = require("../services/earningService");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const {
@@ -1335,6 +1336,10 @@ exports.getAssignedOrderDetails = async (req, res) => {
         console.warn("⚠️ Failed to fetch surge zones:", err.message);
       }
     }
+   const incentive = await calculateIncentivesForAgent(agentId)
+    console.log("incentive",incentive)
+
+
 
     // 💰 Earnings Calculation
     const earningsBreakdown = calculateEarningsBreakdown({
@@ -1343,7 +1348,9 @@ exports.getAssignedOrderDetails = async (req, res) => {
       surgeZones: applicableSurges,
     });
 
-    console.log("💰 Earnings Breakdown:", earningsBreakdown);
+    // console.log("💰 Earnings Breakdown:", earningsBreakdown);
+
+
 
     // 📦 Format Order Response
     const formattedOrder = formatOrder(order, agentId);
@@ -1409,77 +1416,87 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     await order.save();
 
     // When delivered, create earnings record
-    if (status === 'delivered') {
-      // Check if already exists
-      const existingEarning = await AgentEarning.findOne({ agentId, orderId });
-      if (!existingEarning) {
-        // Get earnings config (city/global based on your logic)
-        const earningsConfig = await AgentEarningSettings.findOne({ mode: 'global' }); 
-        if (!earningsConfig) {
-          return res.status(500).json({ message: "Earnings configuration not found." });
-        }
-
-        // Calculate distance
-        let distanceKm = 0;
-        if (
-          Array.isArray(order.restaurantId?.location?.coordinates) &&
-          Array.isArray(order.deliveryLocation?.coordinates)
-        ) {
-          const fromCoords = order.restaurantId.location.coordinates; // [lon, lat]
-          const toCoords = order.deliveryLocation.coordinates;        // [lon, lat]
-
-          // Prefer driving distance, fallback to geolib straight distance
-          const drivingDistance = await getDrivingDistance(fromCoords, toCoords);
-          if (drivingDistance !== null) {
-            distanceKm = drivingDistance;
-          } else {
-            const distMeters = geolib.getDistance(
-              { latitude: fromCoords[1], longitude: fromCoords[0] },
-              { latitude: toCoords[1], longitude: toCoords[0] }
-            );
-            distanceKm = distMeters / 1000;
-          }
-        }
-
-        // Find applicable surge zones
-        let surgeZones = [];
-        try {
-          surgeZones = await findApplicableSurgeZones({
-            fromCoords: order.restaurantId.location.coordinates,
-            toCoords: order.deliveryLocation.coordinates,
-            time: new Date(),
-          });
-        } catch (err) {
-          console.warn("Failed to fetch surge zones:", err.message);
-        }
-
-        // Incentives - customize as per your logic
-        const incentiveBonuses = {
-          peakHourBonus: 0,
-          rainBonus: 0,
-          // ... add more if needed
-        };
-
-        // Calculate earnings breakdown
-        const earningsData = calculateEarningsBreakdown({
-          distanceKm,
-          config: earningsConfig.toObject(),
-          surgeZones,
-          tipAmount: order.tipAmount || 0,
-          incentiveBonuses,
-        });
-
-        // Create earning record
-        await createAgentEarning({
-          agentId,
-          orderId,
-          earningsConfig: earningsConfig.toObject(),
-          surgeZones,
-          incentiveBonuses,
-          distanceKm,
-        });
+  if (status === 'delivered') {
+  // ✅ Set agent back to AVAILABLE
+  await Agent.updateOne(
+    { _id: agentId },
+    {
+      $set: {
+        'agentStatus.status': 'AVAILABLE',
+        'agentStatus.availabilityStatus': 'AVAILABLE',
       }
     }
+  );
+
+  // Check if already exists
+  const existingEarning = await AgentEarning.findOne({ agentId, orderId });
+  if (!existingEarning) {
+    // Get earnings config (city/global based on your logic)
+    const earningsConfig = await AgentEarningSettings.findOne({ mode: 'global' }); 
+    if (!earningsConfig) {
+      return res.status(500).json({ message: "Earnings configuration not found." });
+    }
+
+    // Calculate distance
+    let distanceKm = 0;
+    if (
+      Array.isArray(order.restaurantId?.location?.coordinates) &&
+      Array.isArray(order.deliveryLocation?.coordinates)
+    ) {
+      const fromCoords = order.restaurantId.location.coordinates; // [lon, lat]
+      const toCoords = order.deliveryLocation.coordinates;        // [lon, lat]
+
+      // Prefer driving distance, fallback to geolib straight distance
+      const drivingDistance = await getDrivingDistance(fromCoords, toCoords);
+      if (drivingDistance !== null) {
+        distanceKm = drivingDistance;
+      } else {
+        const distMeters = geolib.getDistance(
+          { latitude: fromCoords[1], longitude: fromCoords[0] },
+          { latitude: toCoords[1], longitude: toCoords[0] }
+        );
+        distanceKm = distMeters / 1000;
+      }
+    }
+
+    // Find applicable surge zones
+    let surgeZones = [];
+    try {
+      surgeZones = await findApplicableSurgeZones({
+        fromCoords: order.restaurantId.location.coordinates,
+        toCoords: order.deliveryLocation.coordinates,
+        time: new Date(),
+      });
+    } catch (err) {
+      console.warn("Failed to fetch surge zones:", err.message);
+    }
+
+    // Incentives - customize as per your logic
+    const incentiveBonuses = {
+      peakHourBonus: 0,
+      rainBonus: 0,
+    };
+
+    // Calculate earnings breakdown
+    const earningsData = calculateEarningsBreakdown({
+      distanceKm,
+      config: earningsConfig.toObject(),
+      surgeZones,
+      tipAmount: order.tipAmount || 0,
+      incentiveBonuses,
+    });
+
+    // Create earning record
+    await createAgentEarning({
+      agentId,
+      orderId,
+      earningsConfig: earningsConfig.toObject(),
+      surgeZones,
+      incentiveBonuses,
+      distanceKm,
+    });
+  }
+}
 
     const response = formatOrder(order, agentId);
 

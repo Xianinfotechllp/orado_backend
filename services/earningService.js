@@ -5,6 +5,8 @@ const Product = require("../models/productModel")
 const Restaurant = require("../models/restaurantModel")
 const MerchantCommissionSetting = require('../models/merchantCommissionSettingModel');
 const calculateEarningsBreakdown = require('../utils/agentEarningCalculator');
+
+const IncentivePlan = require('../models/IncentiveRuleModel');
 exports.addAgentEarnings = async ({ agentId, orderId, amount, type, remarks = null }) => {
   try {
     // Check if earning already exists to avoid duplicate
@@ -241,7 +243,89 @@ exports.createRestaurantEarning = async (order) => {
 
 
 
+exports.calculateIncentivesForAgent = async (agentId, date = new Date()) => {
+  // Clone date to avoid mutations
+  const currentDate = new Date(date);
 
+  // 1. Fetch active incentive plans
+  const incentivePlans = await IncentivePlan.find({
+    isActive: true,
+    $or: [
+      { validTo: null },
+      { validTo: { $gte: currentDate } }
+    ],
+    validFrom: { $lte: currentDate }
+  });
+
+  let totalIncentive = 0;
+  const incentiveBreakdown = [];
+
+  for (const plan of incentivePlans) {
+    let startDate;
+    let endDate;
+
+    // 2. Determine date range based on plan.period
+    if (plan.period === 'daily') {
+      startDate = new Date(currentDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(currentDate);
+      endDate.setHours(23, 59, 59, 999);
+
+    } else if (plan.period === 'weekly') {
+      // Start of week (Sunday)
+      startDate = new Date(currentDate);
+      startDate.setDate(startDate.getDate() - startDate.getDay());
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
+
+    } else if (plan.period === 'monthly') {
+      startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    // 3. Get earnings in that period (excluding surge & tip)
+    const earnings = await AgentEarning.find({
+      agentId,
+      createdAt: { $gte: startDate, $lte: endDate }
+    });
+
+    const totalEligibleEarnings = earnings.reduce((sum, e) => {
+      return sum + (e.baseDeliveryFee || 0) + (e.extraDistanceFee || 0);
+    }, 0);
+
+    // 4. Check all conditions for this plan
+    for (const cond of plan.conditions) {
+      let meetsCondition = false;
+
+      if (cond.conditionType === 'earnings') {
+        meetsCondition = totalEligibleEarnings >= cond.threshold;
+      } else if (cond.conditionType === 'deliveries') {
+        meetsCondition = earnings.length >= cond.threshold;
+      }
+
+      if (meetsCondition) {
+        totalIncentive += cond.incentiveAmount;
+        incentiveBreakdown.push({
+          planName: plan.name,
+          period: plan.period,
+          conditionMet: cond,
+          earned: cond.incentiveAmount
+        });
+      }
+    }
+  }
+
+  return {
+    totalIncentive,
+    incentiveBreakdown
+  };
+};
 
 
 

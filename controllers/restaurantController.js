@@ -947,11 +947,13 @@ exports.getKyc = async (req, res) => {
   }
 };
 
+
 exports.addServiceArea = async (req, res) => {
   try {
     const { restaurantId } = req.params;
     const { serviceAreas } = req.body;
 
+    // Validate restaurantId
     if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
       return res.status(400).json({
         message: "Invalid restaurant ID",
@@ -959,29 +961,15 @@ exports.addServiceArea = async (req, res) => {
       });
     }
 
+    // Validate serviceAreas array
     if (!Array.isArray(serviceAreas) || serviceAreas.length === 0) {
       return res.status(400).json({
-        message: "serviceAreas must be a non-empty array of GeoJSON Polygons",
+        message: "serviceAreas must be a non-empty array",
         messageType: "failure",
       });
     }
 
-    // Validate each polygon
-    for (const area of serviceAreas) {
-      if (
-        !area.type ||
-        area.type !== "Polygon" ||
-        !Array.isArray(area.coordinates) ||
-        area.coordinates.length === 0
-      ) {
-        return res.status(400).json({
-          message:
-            "Each serviceArea must be a valid GeoJSON Polygon with coordinates",
-          messageType: "failure",
-        });
-      }
-    }
-
+    // Check if restaurant exists
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({
@@ -990,14 +978,40 @@ exports.addServiceArea = async (req, res) => {
       });
     }
 
-    // ✅ Remove old service areas (if you want to replace them)
+    // Validate each service area based on type
+    for (const sa of serviceAreas) {
+      if (!sa.type || !["Polygon", "Circle"].includes(sa.type)) {
+        return res.status(400).json({
+          message: "Each serviceArea must have a valid type: 'Polygon' or 'Circle'",
+          messageType: "failure",
+        });
+      }
+
+      if (sa.type === "Polygon") {
+        if (!sa.area || !Array.isArray(sa.area.coordinates) || sa.area.coordinates.length === 0) {
+          return res.status(400).json({
+            message: "Polygon type serviceArea must have valid 'area.coordinates'",
+            messageType: "failure",
+          });
+        }
+      } else if (sa.type === "Circle") {
+        if (!sa.center || !Array.isArray(sa.center) || sa.center.length !== 2 || !sa.radius || sa.radius <= 0) {
+          return res.status(400).json({
+            message: "Circle type serviceArea must have valid 'center' [lng, lat] and 'radius' > 0",
+            messageType: "failure",
+          });
+        }
+      }
+    }
+
+    // Remove old service areas (replace mode)
     await ServiceArea.deleteMany({ restaurantId });
 
-    // ✅ Add new service areas
+    // Insert new service areas
     const insertedAreas = await ServiceArea.insertMany(
-      serviceAreas.map((area) => ({
+      serviceAreas.map((sa) => ({
         restaurantId,
-        area,
+        ...sa
       }))
     );
 
@@ -1006,6 +1020,7 @@ exports.addServiceArea = async (req, res) => {
       messageType: "success",
       data: insertedAreas,
     });
+
   } catch (error) {
     console.error("Error updating service areas:", error);
     return res.status(500).json({
@@ -1014,6 +1029,7 @@ exports.addServiceArea = async (req, res) => {
     });
   }
 };
+
 
 exports.getServiceAreas = async (req, res) => {
   try {

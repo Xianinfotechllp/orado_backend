@@ -607,3 +607,147 @@ exports.getProductsByRestaurant = async (req, res) => {
     });
   }
 };
+
+
+
+// Get opening hours with better response structure
+exports.getOpeningHours = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.restaurantId)
+      .select("openingHours")
+      .lean();
+
+    if (!restaurant) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Restaurant not found",
+        data: null
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Opening hours retrieved successfully",
+      data: restaurant.openingHours
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve opening hours",
+      error: error.message,
+      data: null
+    });
+  }
+};
+
+// Update opening hours with better validation and response
+exports.updateOpeningHours = async (req, res) => {
+  try {
+    const { openingHours } = req.body;
+
+    // Validate input exists
+    if (!openingHours || !Array.isArray(openingHours)) {
+      return res.status(400).json({
+        success: false,
+        message: "Opening hours data is required and must be an array",
+        data: null
+      });
+    }
+
+    // Validate all days are present
+    const requiredDays = [
+      "monday", "tuesday", "wednesday", 
+      "thursday", "friday", "saturday", "sunday"
+    ];
+
+    const receivedDays = openingHours.map(h => h.day.toLowerCase());
+    const missingDays = requiredDays.filter(day => !receivedDays.includes(day));
+
+    if (missingDays.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing opening hours for: ${missingDays.join(", ")}`,
+        data: null,
+        missingDays
+      });
+    }
+
+    // Validate time format (basic check)
+    const invalidTimes = openingHours.filter(hour => {
+      return !hour.isClosed && (!isValidTime(hour.openingTime) || !isValidTime(hour.closingTime));
+    });
+
+    if (invalidTimes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid time format (use HH:MM)",
+        data: null,
+        invalidEntries: invalidTimes.map(t => t.day)
+      });
+    }
+
+    const restaurant = await Restaurant.findByIdAndUpdate(
+      req.params.restaurantId,
+      { openingHours },
+      { new: true, runValidators: true }
+    ).select("openingHours");
+
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: "Restaurant not found",
+        data: null
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Opening hours updated successfully",
+      data: restaurant.openingHours
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update opening hours",
+      error: error.message,
+      data: null
+    });
+  }
+};
+
+// Helper function to validate time format
+function isValidTime(time) {
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
+}
+// Get current status (open/closed)
+exports.getCurrentStatus = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.restaurantId)
+      .select("openingHours")
+      .lean();
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const now = new Date();
+    const currentDay = now.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+    const currentTime = now.toTimeString().slice(0, 5);
+
+    const todayHours = restaurant.openingHours.find(
+      (h) => h.day === currentDay
+    );
+
+    if (!todayHours || todayHours.isClosed) {
+      return res.json({ status: "closed" });
+    }
+
+    if (currentTime >= todayHours.openingTime && currentTime <= todayHours.closingTime) {
+      return res.json({ status: "open" });
+    }
+
+    res.json({ status: "closed" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

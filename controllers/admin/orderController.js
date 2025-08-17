@@ -612,43 +612,44 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         candidates: [],
       };
 
-      if (order.agentCandidates?.length) {
-        order.agentCandidates.forEach(c => {
-          candidateSummary[c.status] = (candidateSummary[c.status] || 0) + 1;
+  if (order.agentCandidates?.length) {
+  order.agentCandidates.forEach(c => {
+    candidateSummary[c.status] = (candidateSummary[c.status] || 0) + 1;
 
-          if (c.isCurrentCandidate) {
-            // Calculate how many seconds left before expiry
-            let expiresIn = null;
-            if (c.notifiedAt) {
-              const notifiedAtMs = new Date(c.notifiedAt).getTime();
-              const nowMs = Date.now();
-              const elapsedMs = nowMs - notifiedAtMs;
-              const remainingMs = expirySec * 1000 - elapsedMs;
-              expiresIn = remainingMs > 0 ? Math.floor(remainingMs / 1000) : 0;
-            }
-
-            candidateSummary.currentCandidate = {
-              agentId: c.agent._id,
-              fullName: c.agent.fullName,
-              status: c.status,
-              notifiedAt: c.notifiedAt,
-              assignedAt: c.assignedAt,
-              expiresIn, // seconds left to respond
-            };
-          }
-
-          candidateSummary.candidates.push({
-            agentId: c.agent._id,
-            fullName: c.agent.fullName,
-            status: c.status,
-            assignedAt: c.assignedAt,
-            notifiedAt: c.notifiedAt,
-            respondedAt: c.respondedAt,
-            rejectionReason: c.rejectionReason || null,
-            isCurrentCandidate: c.isCurrentCandidate,
-          });
-        });
+    if (c.isCurrentCandidate) {
+      // Calculate how many seconds left before expiry
+      let expiresIn = null;
+      if (c.notifiedAt) {
+        const notifiedAtMs = new Date(c.notifiedAt).getTime();
+        const nowMs = Date.now();
+        const elapsedMs = nowMs - notifiedAtMs;
+        const remainingMs = expirySec * 1000 - elapsedMs;
+        expiresIn = remainingMs > 0 ? Math.floor(remainingMs / 1000) : 0;
       }
+
+      candidateSummary.currentCandidate = {
+        agentId: c.agent._id,
+        fullName: c.agent.fullName,
+        status: c.status,
+        notifiedAt: c.notifiedAt,
+        assignedAt: c.assignedAt,
+        expiresIn, // seconds left to respond
+        totalTime: expirySec // Add this line to include the total time
+      };
+    }
+
+    candidateSummary.candidates.push({
+      agentId: c.agent._id,
+      fullName: c.agent.fullName,
+      status: c.status,
+      assignedAt: c.assignedAt,
+      notifiedAt: c.notifiedAt,
+      respondedAt: c.respondedAt,
+      rejectionReason: c.rejectionReason || null,
+      isCurrentCandidate: c.isCurrentCandidate,
+    });
+  });
+}
 
       return {
         _id: order._id,

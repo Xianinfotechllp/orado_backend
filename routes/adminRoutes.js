@@ -32,7 +32,7 @@ const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
 
-const { getRestaurantStats  } = require("../controllers/admin/restaurantController");
+const { getRestaurantStats ,getOpeningHours, updateOpeningHours,getCurrentStatus} = require("../controllers/admin/restaurantController");
 
 const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails,updateOrderStatus, getOrderLocationsByPeriod} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
@@ -76,7 +76,17 @@ router.get("/restaurant-requests", protect, checkPermission('merchants.manage'),
 router.post("/restaurant-application/:restaurantId/update", protect, checkPermission('merchants.manage'), updateRestaurantApprovalStatus);
 router.get("/restaurant/:restaurantId", protect, checkRole('admin', 'superAdmin'), getRestaurantById);
 router.put("/edit/restaurant/:restaurantId",upload.array("images",5), protect, checkRole('admin', 'superAdmin'), updateRestaurant);
+router.get("/restaurant/:restaurantId/opening-hours", getOpeningHours);
 
+// Update opening hours (owner only)
+router.put(
+  "/restaurant/:restaurantId/opening-hours",
+
+  updateOpeningHours
+);
+
+// Get current status
+router.get("/restaurant/:restaurantId/status", getCurrentStatus);
 
 
 

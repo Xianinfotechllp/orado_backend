@@ -6,21 +6,36 @@ const serviceAreaSchema = new mongoose.Schema({
     ref: "Restaurant",
     required: true
   },
+
+  type: {
+    type: String,
+    enum: ["Polygon", "Circle"],
+    required: true
+  },
+
+  // Polygon-based area (GeoJSON)
   area: {
     type: {
       type: String,
-      enum: ["Polygon"],
-      required: true,
-      default: "Polygon"
+      enum: ["Polygon"]
     },
     coordinates: {
-      type: [[[Number]]], // 3D array: [ [ [lng, lat], [lng, lat], ... ] ]
-      required: true
+      type: [[[Number]]]  // array of linear rings [ [lng, lat], ... ]
     }
+  },
+
+  // Circle-based area
+  center: {
+    type: [Number]  // [lng, lat]
+  },
+  radius: {
+    type: Number   // in meters
   }
+
 }, { timestamps: true });
 
-// ✅ Geo index on area field
+// Geo indexes
 serviceAreaSchema.index({ area: "2dsphere" });
+serviceAreaSchema.index({ center: "2dsphere" });
 
 module.exports = mongoose.model("ServiceArea", serviceAreaSchema);

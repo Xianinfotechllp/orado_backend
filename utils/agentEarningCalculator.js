@@ -4,6 +4,7 @@ function calculateEarningsBreakdown({
   surgeZones = [],
   tipAmount = 0,
   incentiveBonuses = {}, // e.g. { peakHourBonus: 0, rainBonus: 0 }
+  incentiveAmount = 0,   // ✅ New: total incentive for this order
 }) {
   const {
     baseFee = 0,
@@ -13,9 +14,11 @@ function calculateEarningsBreakdown({
 
   const { peakHourBonus = 0, rainBonus = 0 } = incentiveBonuses;
 
+  // Distance beyond baseKm
   const distanceBeyondBase = Math.max(0, distanceKm - baseKm);
   const extraDistanceEarning = distanceBeyondBase * perKmFeeBeyondBase;
 
+  // Surge calculation
   let surgeAmount = 0;
   const surgeDetails = [];
 
@@ -38,7 +41,15 @@ function calculateEarningsBreakdown({
     });
   }
 
-  const totalEarning = baseFee + extraDistanceEarning + surgeAmount + peakHourBonus + rainBonus + tipAmount;
+  // ✅ Total earnings including incentive
+  const totalEarning =
+    baseFee +
+    extraDistanceEarning +
+    surgeAmount +
+    peakHourBonus +
+    rainBonus +
+    tipAmount +
+    incentiveAmount;
 
   return {
     baseFee,
@@ -52,7 +63,9 @@ function calculateEarningsBreakdown({
     peakHourBonus,
     rainBonus,
     tipAmount,
+    incentiveAmount, // ✅ added in return object
     totalEarning,
   };
 }
+
 module.exports = calculateEarningsBreakdown;

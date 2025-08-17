@@ -108,82 +108,89 @@ const assignNearestAvailable = async (orderId, config) => {
 
 /**
  * One by One Agent Assignment Logic
- */
-const assignOneByOne = async (orderId) => {
+ */const assignOneByOne = async (orderId) => {
   console.log("📌 Starting One-by-One Agent Assignment...");
 
-  const order = await Order.findById(orderId);
-  if (!order) throw new Error("Order not found");
-  if (order.assignedAgent) return { status: "already_assigned" };
+  try {
+    const order = await Order.findById(orderId);
+    if (!order) throw new Error("Order not found");
+    if (order.assignedAgent) return { status: "already_assigned" };
 
-  const restaurant = await Restaurant.findById(order.restaurantId);
-  if (!restaurant?.location) throw new Error("Restaurant location not set.");
+    const restaurant = await Restaurant.findById(order.restaurantId);
+    if (!restaurant?.location) throw new Error("Restaurant location not set.");
 
-  const nearbyAgents = await Agent.find({
-    "agentStatus.status": "AVAILABLE",
-    "agentStatus.availabilityStatus": "AVAILABLE",
-    location: {
-      $near: {
-        $geometry: restaurant.location,
-        $maxDistance: 50000,
+    const nearbyAgents = await Agent.find({
+      "agentStatus.status": "AVAILABLE",
+      "agentStatus.availabilityStatus": "AVAILABLE",
+      location: {
+        $near: {
+          $geometry: restaurant.location,
+          $maxDistance: 50000,
+        },
       },
-    },
-  }).limit(10);
+    }).limit(10);
 
-  if (!nearbyAgents.length) {
-    console.log("❌ No nearby agents found.");
-    return { status: "unassigned", reason: "No agents nearby" };
-  }
+    if (!nearbyAgents.length) {
+      console.log("❌ No nearby agents found.");
+      return { status: "unassigned", reason: "No agents nearby" };
+    }
 
-  // Fetch allocation settings for one_by_one
-  const allocationSettings = await AllocationSettings.findOne({});
-  const expirySec = allocationSettings?.oneByOneSettings?.requestExpirySec || 120; // fallback 2 minutes
+    // Fetch allocation settings for one_by_one
+    const allocationSettings = await AllocationSettings.findOne({});
+    const expirySec = allocationSettings?.oneByOneSettings?.requestExpirySec || 120;
 
-  const now = new Date();
+    const now = new Date();
 
-  const candidates = nearbyAgents.map((agent, index) => ({
-    agent: agent._id,
-    status: index === 0 ? "sent" : "queued",  // first is notified (sent), others queued
-    assignedAt: now,
-    notifiedAt: index === 0 ? now : null,
-    respondedAt: null,
-    isCurrentCandidate: index === 0,
-  }));
+    const candidates = nearbyAgents.map((agent, index) => ({
+      agent: agent._id,
+      status: index === 0 ? "sent" : "queued",
+      assignedAt: now,
+      notifiedAt: index === 0 ? now : null,
+      respondedAt: null,
+      isCurrentCandidate: index === 0,
+      attemptNumber: 1,
+    }));
 
-  order.agentCandidates = candidates;
-  order.agentAssignmentStatus = "awaiting_agent_acceptance";
-  order.allocationMethod = "one_by_one";
-  await order.save();
+    order.agentCandidates = candidates;
+    order.agentAssignmentStatus = "awaiting_agent_acceptance";
+    order.allocationMethod = "one_by_one";
+    await order.save();
 
-  const firstAgent = nearbyAgents[0];
+    const firstAgent = nearbyAgents[0];
 
-  await sendNotificationToAgent({
-    agentId: firstAgent._id,
-    title: "New Delivery Task",
-    body: "You have a new delivery assignment. Please accept or decline.",
-    data: {
-      type: "ORDER_ASSIGNMENT",
+    // Send notification to agent
+    await sendNotificationToAgent({
+      agentId: firstAgent._id,
+      title: "New Delivery Task",
+      body: "You have a new delivery assignment. Please accept or decline.",
+      data: {
+        type: "ORDER_ASSIGNMENT",
+        orderId: order._id.toString(),
+        customerName: order.customerName || "Customer",
+        address: order.deliveryAddress?.formatted || "",
+      },
+    });
+
+    console.log(`📨 First agent (${firstAgent.fullName}) notified for order ${orderId}`);
+
+    // Schedule timeout check
+    const job = await agenda.schedule(new Date(Date.now() + expirySec * 1000), "checkAgentResponseTimeout", {
       orderId: order._id.toString(),
-      customerName: order.customerName || "Customer",
-      address: order.deliveryAddress?.formatted || "",
-    },
-  });
+      agentId: firstAgent._id.toString(),
+    });
 
-  console.log(`📨 First agent (${firstAgent.fullName}) notified for order ${orderId}`);
+    console.log(`⏳ Timeout job (ID: ${job.attrs._id}) scheduled for Agent ${firstAgent.fullName} on Order ${order._id} with expiry ${expirySec} seconds`);
 
-  // Schedule timeout dynamically using expirySec
-  await agenda.schedule(`in ${expirySec} seconds`, "checkAgentResponseTimeout", {
-    orderId: order._id.toString(),
-    agentId: firstAgent._id.toString(),
-  });
-
-  console.log(`⏳ Timeout job scheduled for Agent ${firstAgent.fullName} on Order ${order._id} with expiry ${expirySec} seconds`);
-
-  return {
-    status: "first_agent_notified",
-    agentId: firstAgent._id,
-    candidateCount: nearbyAgents.length,
-  };
+    return {
+      status: "first_agent_notified",
+      agentId: firstAgent._id,
+      candidateCount: nearbyAgents.length,
+      jobId: job.attrs._id,
+    };
+  } catch (error) {
+    console.error("Error in assignOneByOne:", error);
+    throw error;
+  }
 };
 
 /**
