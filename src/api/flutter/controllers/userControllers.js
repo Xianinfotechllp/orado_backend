@@ -371,9 +371,7 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ userId: userExist._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
+  const token = jwt.sign({ userId: userExist._id }, process.env.JWT_SECRET);
 
     // Create a safe user object without password
     const user = {

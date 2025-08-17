@@ -6,8 +6,6 @@ const Session = require("../../../../models/session");
 const ChangeRequest = require("../../../../models/changeRequest");
 
 exports.protect = async (req, res, next) => {
-  
-
   let token;
 
   if (
@@ -17,34 +15,25 @@ exports.protect = async (req, res, next) => {
     try {
       token = req.headers.authorization.split(" ")[1];
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Validate session token exists in DB
-      // const session = await Session.findOne({ token, userId: decoded.userId });
-      // if (!session) {
-      //   return res.status(401).json({ message: "Session expired or invalid" });
-      // }
-
-      // // Optional: Check if session is expired manually (for extra control)
-      // if (session.expiresAt && new Date() > session.expiresAt) {
-      //   await session.deleteOne(); // clean it up
-      //   return res.status(401).json({ message: "Session expired" });
-      // }
+      // 👇 This ignores the exp claim
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        ignoreExpiration: true,
+      });
 
       const user = await User.findById(decoded.userId).select("-password");
       if (!user) return res.status(401).json({ message: "User not found" });
-      req.user = user;
-      // req.session = session;
-      next();
 
+      req.user = user;
+      next();
     } catch (err) {
       console.error("Auth Error:", err);
-      return res.status(401).json({ message: "Invalid or expired token" });
+      return res.status(401).json({ message: "Invalid token" });
     }
   } else {
     return res.status(401).json({ message: "No token provided" });
   }
 };
+
 
 
 exports.checkRole = (...allowedRoles) => {
