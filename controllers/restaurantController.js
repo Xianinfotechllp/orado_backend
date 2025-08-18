@@ -348,6 +348,7 @@ exports.getRestaurantsByMerchantId = async (req, res) => {
     const formattedRestaurants = restaurants.map((restaurant) => ({
       id: restaurant._id,
       name: restaurant.name,
+      storeType:restaurant.storeType,
       address: restaurant.address,
       phone: restaurant.phone,
       email: restaurant.email,
@@ -534,7 +535,40 @@ if (req.body.location) {
   }
 };
 
-
+exports.toggleActiveStatus = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    
+    // Find the restaurant
+    const restaurant = await Restaurant.findById(restaurantId);
+    
+    if (!restaurant) {
+      return res.status(404).json({ success: false, message: "Restaurant not found" });
+    }
+    
+    // Check if user has permission to toggle status
+    // You might want to add authorization logic here
+    // For example, only admin or owner can toggle status
+    
+    // Toggle the active status
+    restaurant.active = !restaurant.active;
+    
+    // Save the updated restaurant
+    await restaurant.save();
+    
+    res.status(200).json({ 
+      success: true, 
+      message: `Restaurant status updated to ${restaurant.active ? "active" : "inactive"}`,
+      data: {
+        active: restaurant.active
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error toggling restaurant status:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
 
 
 

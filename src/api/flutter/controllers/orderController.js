@@ -2502,9 +2502,28 @@ exports.placeOrderWithAddressId = async (req, res) => {
            
     // Save COD order
     const savedOrder = await newOrder.save();
+    const populatedOrder = await Order.findById(savedOrder._id)
+  .populate("customerId", "name email phone")
+  .lean();
+
+sanitizeOrderNumbers(populatedOrder, [
+  "subtotal",
+  "tax",
+  "discountAmount",
+  "deliveryCharge",
+  "offerDiscount",
+  "surgeCharge",
+  "tipAmount",
+  "totalAmount",
+]);
+
+const io = req.app.get("io");
+io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+  "new_order",
+  populatedOrder
+);
 
 
-   const io = req.app.get("io");
    await reduceStockForOrder(savedOrder.orderItems, io);
 
 
