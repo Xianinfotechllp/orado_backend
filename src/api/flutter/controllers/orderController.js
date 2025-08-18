@@ -2506,6 +2506,14 @@ exports.placeOrderWithAddressId = async (req, res) => {
   .populate("customerId", "name email phone")
   .lean();
 
+
+   const sanitizeOrderNumbers = (order, fields) => {
+        fields.forEach((key) => {
+          order[key] = Number(order[key]) || 0;
+        });
+        return order;
+      };
+
 sanitizeOrderNumbers(populatedOrder, [
   "subtotal",
   "tax",
