@@ -1173,3 +1173,143 @@ exports.getAgentCODSummary = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+
+
+
+
+
+exports.getCODMonitoring = async (req, res) => {
+  try {
+    const {
+      search, // agent name or phone
+      startDate,
+      endDate,
+      showExceededCOD,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const query = {};
+
+    // 🔍 Search by name or phone
+    if (search) {
+      query.$or = [
+        { fullName: { $regex: search, $options: "i" } },
+        { phoneNumber: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // 📅 Filter by date range (lastUpdated in codTracking)
+    if (startDate || endDate) {
+      query["codTracking.lastUpdated"] = {};
+      if (startDate) query["codTracking.lastUpdated"].$gte = new Date(startDate);
+      if (endDate) query["codTracking.lastUpdated"].$lte = new Date(endDate);
+    }
+
+    // ⚠️ Show only agents who exceeded COD
+    if (showExceededCOD === "true") {
+      query.$expr = {
+        $gt: ["$codTracking.currentCODHolding", "$permissions.maxCODAmount"],
+      };
+    }
+
+    // 📊 Fetch agents with pagination
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: { "codTracking.lastUpdated": -1 }, // latest first
+      select:
+        "fullName phoneNumber permissions.maxCODAmount codTracking codSubmissionLogs",
+    };
+
+    const agents = await Agent.paginate(query, options);
+
+    // 📈 Summary Calculations
+    const totalCOD = await Agent.aggregate([
+      { $group: { _id: null, total: { $sum: "$codTracking.currentCODHolding" } } },
+    ]);
+
+    const exceededAgents = await Agent.countDocuments({
+      $expr: {
+        $gt: ["$codTracking.currentCODHolding", "$permissions.maxCODAmount"],
+      },
+    });
+
+    const unverifiedSubmissions = await Agent.aggregate([
+      { $unwind: "$codSubmissionLogs" },
+      { $match: { "codSubmissionLogs.isVerifiedByAdmin": false } },
+      { $count: "count" },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      summary: {
+        totalCODHeld: totalCOD[0]?.total || 0,
+        agentsExceededCOD: exceededAgents,
+        unverifiedSubmits: unverifiedSubmissions[0]?.count || 0,
+      },
+      data: agents.docs.map((agent) => ({
+        id: agent._id,
+        fullName: agent.fullName,
+        phone: agent.phoneNumber,
+        codLimit: agent.permissions.maxCODAmount,
+        currentHolding: agent.codTracking.currentCODHolding,
+        dailyCollected: agent.codTracking.dailyCollected,
+        lastSubmitted:
+          agent.codSubmissionLogs.length > 0
+            ? agent.codSubmissionLogs[agent.codSubmissionLogs.length - 1].droppedAt
+            : null,
+        status:
+          agent.codTracking.currentCODHolding > agent.permissions.maxCODAmount
+            ? "Over"
+            : "OK",
+      })),
+      pagination: {
+        totalDocs: agents.totalDocs,
+        totalPages: agents.totalPages,
+        page: agents.page,
+        limit: agents.limit,
+      },
+    });
+  } catch (error) {
+    console.error("COD Monitoring Error:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+
+
+exports.updateAgentCODLimit = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { newLimit } = req.body;
+
+    if (!newLimit || newLimit < 0) {
+      return res.status(400).json({ success: false, message: "Invalid COD limit" });
+    }
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ success: false, message: "Agent not found" });
+    }
+
+    // Update COD limit
+    agent.permissions.maxCODAmount = newLimit;
+    await agent.save();
+
+    res.json({
+      success: true,
+      message: "COD Limit updated successfully",
+      data: {
+        id: agent._id,
+        fullName: agent.fullName,
+        phoneNumber: agent.phoneNumber,
+        newLimit: agent.permissions.maxCODAmount,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating COD Limit:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};

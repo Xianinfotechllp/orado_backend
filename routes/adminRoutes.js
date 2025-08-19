@@ -26,7 +26,9 @@ const {createSurgeArea, getSurgeAreas ,  toggleSurgeAreaStatus,deleteSurgeArea }
 const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveApplication, rejectApplication,
   getAgentSelfies,getAgentSelfieHistory,getSelfieDetails,
   getAgentCODSummary,
-  getAllListStatus
+  getAllListStatus,
+  getCODMonitoring,
+  updateAgentCODLimit
 } = require("../controllers/admin/agentControllers")
 const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
@@ -426,6 +428,9 @@ router.post('/agent-earnings/settings',addAgentEarnigsSetting)
 router.get('/agent-earnings/settings',getAgentEarningsSettings)
 //cod llimt of agetns
 router.get("/agent-cod-summray",getAgentCODSummary)
+router.get("/agent-cod-moniter",getCODMonitoring)
+// Update COD Limit
+router.put("/agents/:agentId/cod-limit", updateAgentCODLimit);
 
 
 

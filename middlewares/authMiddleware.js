@@ -56,19 +56,8 @@ exports.protectAgent = async (req, res, next) => {
     try {
       token = req.headers.authorization.split(" ")[1];
 
+      // This will throw if token is expired or invalid
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Validate session exists
-      // const session = await Session.findOne({ token, userId: decoded.agentId });
-      // if (!session) {
-      //   return res.status(401).json({ message: "Session expired or invalid" });
-      // }
-
-      // // Optional: Session expiry check
-      // if (session.expiresAt && new Date() > session.expiresAt) {
-      //   await session.deleteOne();
-      //   return res.status(401).json({ message: "Session expired" });
-      // }
 
       // Get agent data
       const agent = await Agent.findById(decoded.agentId).select("-password");
@@ -77,9 +66,7 @@ exports.protectAgent = async (req, res, next) => {
       }
 
       req.user = agent;
-      // req.session = session;
       next();
-
     } catch (err) {
       console.error("Agent Auth Error:", err);
       return res.status(401).json({ message: "Invalid or expired token" });

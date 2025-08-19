@@ -191,10 +191,10 @@ exports.loginAgent = async (req, res) => {
       await agent.save();
     }
 
+    // 🔑 Generate JWT WITHOUT expiration
     const token = jwt.sign(
       { agentId: agent._id, role: agent.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      process.env.JWT_SECRET
     );
 
     const MAX_SESSIONS = 1;
@@ -215,7 +215,7 @@ exports.loginAgent = async (req, res) => {
       token,
       userAgent,
       ip,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      // ❌ Removed `expiresAt` since token has no expiry
     });
 
     return res.status(200).json({
@@ -238,6 +238,7 @@ exports.loginAgent = async (req, res) => {
       .json({ message: "Server error", error: error.message });
   }
 };
+
 
 // Logout user by deleting session
 
