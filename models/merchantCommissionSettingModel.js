@@ -9,7 +9,7 @@ const merchantCommissionSettingSchema = new mongoose.Schema({
 
   storeType: {
     type: String,
-    enum: ['restaurant', 'grocery', 'meat'], // extend as needed
+    enum: ['restaurant', 'grocery', 'meat',"pharmacy"], // extend as needed
     required: false // optional if you want to apply by type
   },
 

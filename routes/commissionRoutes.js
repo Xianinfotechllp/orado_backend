@@ -9,5 +9,7 @@ router.post("/settings", commissionController.createOrUpdateCommissionSetting);
 router.get("/settings", commissionController.getCommissionSettings);
 router.delete("/settings/:settingId", commissionController.deleteCommissionSetting);
 router.get("/summary",commissionController.getRestaurantCommissionsAdmin)
+router.get("/summary/export-excel",commissionController.exportRestaurantCommissionsExcel)
+
 
 module.exports = router 

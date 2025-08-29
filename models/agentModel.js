@@ -285,7 +285,7 @@ const agentSchema = new mongoose.Schema(
       {
         reason: { type: String, required: true },
         severity: {type: String, enum: ["minor", "major", "critical"], default: "minor"},
-        issuedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        // issuedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
         issuedAt: { type: Date, default: Date.now }
       }
     ],

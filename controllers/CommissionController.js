@@ -3,11 +3,97 @@ const Order = require("../models/orderModel")
 const MerchantCommissionSetting = require("../models/merchantCommissionSettingModel");
 const mongoose = require('mongoose');
 const RestaurantEarnigs = require("../models/RestaurantEarningModel")
+const ExcelJS = require('exceljs');
+
+const Restaurant = require("../models/restaurantModel");
+// exports.createOrUpdateCommissionSetting = async (req, res) => {
+//   try {
+//     const {
+//       restaurantId,
+//       storeType,
+//       commissionType,
+//       commissionValue,
+//       commissionBase = "subtotal",
+//       isDefault = false,
+//     } = req.body;
+
+//     // === Validate Required Fields ===
+//     if (!commissionType || commissionValue == null) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "commissionType and commissionValue are required.",
+//       });
+//     }
+
+//     // === Determine Scope ===
+//     let filter = {};
+
+//     if (isDefault) {
+//       // Global default setting
+//       filter = { isDefault: true, restaurantId: null };
+//     } else if (restaurantId) {
+//       // Restaurant-specific setting (with or without storeType)
+//       filter = { restaurantId };
+//       if (storeType) filter.storeType = storeType;
+//     } else {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Either isDefault or restaurantId must be provided.",
+//       });
+//     }
+
+//     // === Check Existing Entry ===
+//     const existingSetting = await MerchantCommissionSetting.findOne(filter);
+
+//     if (existingSetting) {
+//       // Update existing
+//       existingSetting.commissionType = commissionType;
+//       existingSetting.commissionValue = commissionValue;
+//       existingSetting.commissionBase = commissionBase;
+//       existingSetting.isDefault = isDefault;
+
+//       await existingSetting.save();
+
+//       return res.status(200).json({
+//         success: true,
+//         message: isDefault
+//           ? "Default commission updated successfully."
+//           : "Commission setting updated successfully.",
+//         data: existingSetting,
+//       });
+//     } else {
+//       // Create new
+//       const newSetting = await MerchantCommissionSetting.create({
+//         restaurantId: isDefault ? null : restaurantId,
+//         storeType: storeType || null,
+//         commissionType,
+//         commissionValue,
+//         commissionBase,
+//         isDefault,
+//       });
+
+//       return res.status(201).json({
+//         success: true,
+//         message: isDefault
+//           ? "Default commission created successfully."
+//           : "Commission setting created successfully.",
+//         data: newSetting,
+//       });
+//     }
+//   } catch (err) {
+//     console.error("Error in createOrUpdateCommissionSetting:", err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error.",
+//     });
+//   }
+// };
+
+
 exports.createOrUpdateCommissionSetting = async (req, res) => {
   try {
     const {
       restaurantId,
-      storeType,
       commissionType,
       commissionValue,
       commissionBase = "subtotal",
@@ -22,21 +108,35 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
       });
     }
 
+    let storeType = null;
+
+    // === If not default, we must have restaurantId ===
+    if (!isDefault) {
+      if (!restaurantId) {
+        return res.status(400).json({
+          success: false,
+          message: "restaurantId is required if not default.",
+        });
+      }
+
+      // Fetch restaurant to get storeType automatically
+      const restaurant = await Restaurant.findById(restaurantId).select("storeType");
+      if (!restaurant) {
+        return res.status(404).json({
+          success: false,
+          message: "Restaurant not found.",
+        });
+      }
+
+      storeType = restaurant.storeType; // ✅ take from DB, not req.body
+    }
+
     // === Determine Scope ===
     let filter = {};
-
     if (isDefault) {
-      // Global default setting
-      filter = { isDefault: true, restaurantId: null };
-    } else if (restaurantId) {
-      // Restaurant-specific setting (with or without storeType)
-      filter = { restaurantId };
-      if (storeType) filter.storeType = storeType;
+      filter = { isDefault: true };
     } else {
-      return res.status(400).json({
-        success: false,
-        message: "Either isDefault or restaurantId must be provided.",
-      });
+      filter = { restaurantId };
     }
 
     // === Check Existing Entry ===
@@ -47,7 +147,7 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
       existingSetting.commissionType = commissionType;
       existingSetting.commissionValue = commissionValue;
       existingSetting.commissionBase = commissionBase;
-      existingSetting.isDefault = isDefault;
+      existingSetting.storeType = storeType; // Update storeType too
 
       await existingSetting.save();
 
@@ -62,7 +162,7 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
       // Create new
       const newSetting = await MerchantCommissionSetting.create({
         restaurantId: isDefault ? null : restaurantId,
-        storeType: storeType || null,
+        storeType: isDefault ? null : storeType,
         commissionType,
         commissionValue,
         commissionBase,
@@ -85,9 +185,6 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
     });
   }
 };
-
-
-
 exports.getCommissionSettings = async (req, res) => {
   try {
     const { restaurantId, storeType, isDefault } = req.query;
@@ -333,3 +430,91 @@ exports.getRestaurantCommissionsAdmin = async (req, res) => {
   }
 };
 
+
+
+
+
+exports.exportRestaurantCommissionsExcel = async (req, res) => {
+  try {
+    const { restaurantId, startDate, endDate } = req.query;
+
+    const filter = {};
+
+    // Filter by restaurant
+    if (restaurantId && mongoose.Types.ObjectId.isValid(restaurantId)) {
+      filter.restaurantId = restaurantId;
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.date.$lte = end;
+      }
+    }
+
+    // Fetch data with restaurant info
+    const commissions = await RestaurantEarnigs.find(filter)
+      .populate("restaurantId", "name")
+      .sort({ createdAt: -1 });
+
+    // Get restaurant name for filename if we have a specific restaurant filter
+    let restaurantName = "all";
+    if (restaurantId && commissions.length > 0 && commissions[0].restaurantId) {
+      restaurantName = commissions[0].restaurantId.name.replace(/\s+/g, '_').toLowerCase();
+    }
+
+    // Create workbook & sheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Commissions");
+
+    // Define columns
+    worksheet.columns = [
+      { header: "Order ID", key: "orderId", width: 30 },
+      { header: "Restaurant", key: "restaurant", width: 25 },
+      { header: "Cart Total", key: "cartTotal", width: 15 },
+      { header: "Total Amount", key: "totalAmount", width: 15 },
+      { header: "Payable to Merchant", key: "merchantPayable", width: 20 },
+      { header: "Payable to Admin", key: "adminPayable", width: 20 },
+      { header: "Status", key: "status", width: 15 },
+      { header: "Date", key: "date", width: 20 },
+    ];
+
+    // Add rows
+    commissions.forEach((item) => {
+      worksheet.addRow({
+        orderId: item._id.toString(),
+        restaurant: item.restaurantId?.name || "N/A",
+        cartTotal: item.cartTotal,
+        totalAmount: item.totalAmount,
+        merchantPayable: item.restaurantNetEarning,
+        adminPayable: item.commissionAmount,
+        status: item.status || "Pending",
+        date: item.date ? item.date.toISOString().split("T")[0] : "",
+      });
+    });
+
+    // Response headers
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=commissions_${restaurantName}.xlsx`
+    );
+
+    // Write to response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("❌ Error exporting commissions:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while exporting commissions",
+    });
+  }
+};

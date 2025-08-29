@@ -4,6 +4,11 @@ const Category = require("../models/categoryModel")
 const Product = require("../models/productModel")
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const fs = require("fs");
+const User = require("../models/userModel");
+const xlsx = require("xlsx");
+const ExcelJS = require("exceljs");
+
+
 exports.createStore = async (req, res) => {
   try {
     const {
@@ -99,6 +104,148 @@ exports.createStore = async (req, res) => {
 
   } catch (err) {
     console.error("Create store error:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: err.message,
+    });
+  }
+};
+
+exports.createMerchantAndStore = async (req, res) => {
+  try {
+    const {
+      // Merchant fields
+      ownerName,
+      phone,
+      email,
+      password, // should be hashed before saving
+      // Store fields
+      name,
+      address,
+      storeType,
+      foodType,
+      city,
+      paymentMethods,
+      minOrderAmount,
+      commission,
+      preparationTime,
+      openingHours,
+    } = req.body;
+
+
+
+    console.log("req.body:", req.body);
+    // ===== Validate Required Fields =====
+    if (!name || !ownerName || !phone || !address || !storeType || !city) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: name, ownerName, phone, address, storeType, city",
+      });
+    }
+
+    // ✅ Check if merchant already exists
+    const existingMerchant = await User.findOne({ phone });
+    if (existingMerchant) {
+      return res.status(400).json({
+        success: false,
+        message: "Merchant with this phone already exists.",
+      });
+    }
+
+    // ✅ Create Merchant (using User model)
+    const newMerchant = new User({
+      name: ownerName,
+      phone,
+      email,
+      password, // hash this with bcrypt
+      userType: "merchant",
+      active: true,
+    });
+
+    const savedMerchant = await newMerchant.save();
+
+    // ===== Handle File Uploads =====
+    const imageFiles = req.files?.images || [];
+    const fssaiDoc = req.files?.fssaiDoc?.[0];
+    const gstDoc = req.files?.gstDoc?.[0];
+    const aadharDoc = req.files?.aadharDoc?.[0];
+
+    if (!imageFiles.length || !fssaiDoc || !gstDoc || !aadharDoc) {
+      return res.status(400).json({
+        success: false,
+        message: "All documents (images, FSSAI, GST, Aadhar) are required.",
+      });
+    }
+
+    // ✅ Upload images
+    const imageUploadResults = await Promise.all(
+      imageFiles.map((file) =>
+        uploadOnCloudinary(file.path, "orado/stores/images")
+      )
+    );
+    const imageUrls = imageUploadResults.map((img) => img?.secure_url).filter(Boolean);
+
+    // ✅ Upload documents
+    const fssaiUpload = await uploadOnCloudinary(fssaiDoc.path, "orado/stores/docs");
+    const gstUpload = await uploadOnCloudinary(gstDoc.path, "orado/stores/docs");
+    const aadharUpload = await uploadOnCloudinary(aadharDoc.path, "orado/stores/docs");
+
+    if (!fssaiUpload || !gstUpload || !aadharUpload) {
+      return res.status(500).json({
+        success: false,
+        message: "Document upload failed",
+      });
+    }
+
+    // ===== Parse JSON fields =====
+    const parsedAddress = typeof address === "string" ? JSON.parse(address) : address;
+    const parsedOpeningHours = typeof openingHours === "string" ? JSON.parse(openingHours) : openingHours;
+
+    // ===== Create Store =====
+    const newStore = new Restaurant({
+      name,
+      ownerId: savedMerchant._id, // link to merchant
+      ownerName,
+      phone,
+      email,
+      address: parsedAddress,
+      storeType,
+      foodType,
+      city,
+      paymentMethods,
+      minOrderAmount,
+      commission,
+      preparationTime,
+      openingHours: parsedOpeningHours,
+      images: imageUrls,
+      kycDocuments: {
+        fssaiDocUrl: fssaiUpload.secure_url,
+        gstDocUrl: gstUpload.secure_url,
+        aadharDocUrl: aadharUpload.secure_url,
+      },
+      location: {
+        type: "Point",
+        coordinates: [
+          parseFloat(parsedAddress?.longitude) || 0,
+          parseFloat(parsedAddress?.latitude) || 0,
+        ],
+      },
+    });
+
+    const savedStore = await newStore.save();
+
+    // ===== Return Combined Response =====
+    return res.status(201).json({
+      success: true,
+      message: "Merchant (User) and Store created successfully",
+      data: {
+        merchant: savedMerchant,
+        store: savedStore,
+      },
+    });
+  } catch (err) {
+    console.error("Create Merchant & Store Error:", err.message);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -368,6 +515,10 @@ exports.createCategory = async (req, res) => {
 // Update Category
 exports.updateCategory = async (req, res) => {
   try {
+
+
+
+    console.log(req.body,req.params.id1)
     const categoryId = req.params.id;
     const {
       name,
@@ -422,7 +573,26 @@ exports.updateCategory = async (req, res) => {
 
 
 
+exports.deleteCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    // Find and delete category
+    const category = await Category.findByIdAndDelete(id);
+
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    // Optional: If you also want to delete products under this category
+    // await Product.deleteMany({ categoryId: id });
+
+    res.status(200).json({ message: "Category deleted successfully", category });
+  } catch (error) {
+    console.error("Error deleting category:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
 
 
 exports.toggleProductStatus = async (req, res) => {
@@ -475,3 +645,408 @@ exports.deleteProduct = async (req, res) => {
   }
 };
 
+
+
+exports.importCategories = async (req, res) => {
+  try {
+    const { restaurantId } = req.params; // from URL
+    if (!restaurantId) {
+      return res.status(400).json({ message: "Restaurant ID is required" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Please upload an Excel file" });
+    }
+
+    // Read uploaded Excel from buffer
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    // Convert sheet to JSON
+    const categories = xlsx.utils.sheet_to_json(sheet);
+
+    if (!categories.length) {
+      return res.status(400).json({ message: "Excel file is empty" });
+    }
+
+    // Format categories for DB
+    const formattedCategories = categories.map((cat) => ({
+      name: cat.name || "",
+      restaurantId, // always use from API, not Excel
+      availability: cat.availability || "always",
+      availableAfterTime: cat.availableAfterTime || null,
+      active: cat.active !== undefined ? Boolean(cat.active) : true,
+      description: cat.description || "",
+      images: cat.images ? cat.images.split(",") : [],
+    }));
+
+    // Insert into MongoDB
+    const savedCategories = await Category.insertMany(formattedCategories);
+
+    // Push categories into Restaurant.categories[]
+    await Restaurant.findByIdAndUpdate(
+      restaurantId,
+      { $push: { categories: { $each: savedCategories.map((c) => c._id) } } },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      message: "Categories imported successfully!",
+      count: savedCategories.length,
+      savedCategories,
+    });
+  } catch (error) {
+    console.error("Error importing categories:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+exports.downloadCategoryTemplate = async (req, res) => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Categories Template");
+
+    // Define columns
+    worksheet.columns = [
+      { header: "name", key: "name", width: 30 },
+      { header: "description", key: "description", width: 30 },
+      { header: "availability", key: "availability", width: 20 }, // always, time-based, disabled
+      { header: "availableAfterTime", key: "availableAfterTime", width: 20 },
+      { header: "active", key: "active", width: 10 }, // true / false
+      { header: "images", key: "images", width: 40 }, // comma-separated URLs
+    ];
+
+    // Add one sample row
+    worksheet.addRow({
+      name: "Pizza",
+      description: "Italian pizza with cheese",
+      availability: "always",
+      availableAfterTime: "",
+      active: true,
+      images: "https://example.com/pizza.jpg",
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=category_template.xlsx"
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Error generating template:", error);
+    res.status(500).json({ message: "Error generating template", error });
+  }
+};
+
+
+
+
+
+
+
+exports.exportCategories = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    // Fetch categories for the restaurant
+    const categories = await Category.find({ restaurantId }).lean();
+    if (!categories.length) {
+      return res.status(404).json({ message: "No categories found." });
+    }
+
+    // Create a new workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Categories");
+
+    // Define columns (include _id for bulk edit; can be hidden if desired)
+    worksheet.columns = [
+      { header: "Category ID", key: "_id", width: 30 }, // optional: hidden
+      { header: "Category Name", key: "name", width: 30 },
+      { header: "Description", key: "description", width: 40 },
+      { header: "Status", key: "status", width: 15 },
+      { header: "Availability", key: "availability", width: 20 },
+      { header: "Available After Time", key: "availableAfterTime", width: 25 },
+    ];
+
+    // Add category data rows
+    categories.forEach((cat) => {
+      worksheet.addRow({
+        _id: cat._id, // for safe bulk editing
+        name: cat.name,
+        description: cat.description || "",
+        status: cat.active ? "Active" : "Inactive",
+        availability: cat.availability || "always",
+        availableAfterTime: cat.availableAfterTime || "",
+      });
+    });
+
+    // Optionally hide the _id column in Excel
+    worksheet.getColumn("_id").hidden = true;
+
+    // Set response headers for download
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=categories.xlsx"
+    );
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    // Write workbook to the response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export Categories Error:", error);
+    res.status(500).json({ message: "Failed to export categories." });
+  }
+};
+
+
+
+
+
+
+
+
+
+exports.bulkEditCategories = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded." });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+
+    const worksheet = workbook.worksheets[0];
+    const rows = [];
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // skip headers
+
+      let [_id, name, description, availability, availableAfterTime, active, images] =
+        row.values.slice(1);
+
+      const cleanId = _id ? _id.toString().replace(/"/g, "").trim() : null;
+      const cleanName = name ? name.toString().trim() : "";
+
+      // 🚨 Skip if no ID and no name
+      if (!cleanId && !cleanName) return;
+
+      rows.push({
+        _id: cleanId,
+        name: cleanName,
+        description: description?.toString().trim() || "",
+        availability: availability?.toString().trim() || "always",
+        availableAfterTime: availableAfterTime || "",
+        active: active === true || active === "true",
+        images: images
+          ? images.toString().split(",").map((url) => url.trim())
+          : [],
+      });
+    });
+
+    // Save updates and creations
+    const savedCategories = (
+      await Promise.all(
+        rows.map(async (catData) => {
+          if (catData._id) {
+            // 🔎 Skip updating if name is blank (avoid wiping categories)
+            if (!catData.name) return null;
+
+            return Category.findOneAndUpdate(
+              { _id: catData._id, restaurantId },
+              {
+                name: catData.name,
+                description: catData.description,
+                availability: catData.availability,
+                availableAfterTime: catData.availableAfterTime,
+                active: catData.active,
+                images: catData.images,
+              },
+              { new: true }
+            );
+          } else {
+            // 🔎 Only create if name exists
+            if (!catData.name) return null;
+            return Category.create({ ...catData, restaurantId });
+          }
+        })
+      )
+    ).filter(Boolean); // remove nulls from skipped rows
+
+    res.json({
+      message: "Categories updated successfully.",
+      count: savedCategories.length,
+      savedCategories,
+    });
+  } catch (error) {
+    console.error("Bulk Edit Categories Error:", error);
+    res.status(500).json({ message: "Failed to bulk edit categories." });
+  }
+};
+
+
+
+
+
+exports.exportProducts = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    // Fetch products for this restaurant
+    const products = await Product.find({ restaurantId })
+      .populate("categoryId", "name") // optional: populate category name
+      .lean();
+
+    if (!products.length) {
+      return res.status(404).json({ message: "No products found." });
+    }
+
+    // Create workbook & worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Products");
+
+    // Define Excel columns
+    worksheet.columns = [
+      { header: "Product ID", key: "_id", width: 30 }, // keep hidden
+      { header: "Product Name", key: "name", width: 30 },
+      { header: "Description", key: "description", width: 40 },
+      { header: "Price", key: "price", width: 15 },
+      { header: "Category ID", key: "categoryId", width: 30 },
+      { header: "Category Name", key: "categoryName", width: 25 },
+      { header: "Food Type", key: "foodType", width: 15 },
+      { header: "Status", key: "status", width: 15 },
+      { header: "Availability", key: "availability", width: 20 },
+      { header: "Available After Time", key: "availableAfterTime", width: 25 },
+      { header: "Preparation Time (mins)", key: "preparationTime", width: 25 },
+      { header: "Has Inventory", key: "hasInventory", width: 15 },
+      { header: "Stock", key: "stock", width: 15 },
+      { header: "Images", key: "images", width: 50 },
+    ];
+
+    // Add product data rows
+    products.forEach((prod) => {
+   worksheet.addRow({
+  _id: prod._id,
+  name: prod.name,
+  description: prod.description || "",
+  price: prod.price || 0,
+  categoryId: prod.categoryId?._id || prod.categoryId,
+  categoryName: prod.categoryId?.name || "",
+  foodType: prod.foodType,
+  status: prod.active ? "Active" : "Inactive",
+  availability: prod.availability || "always",
+  availableAfterTime: prod.availableAfterTime || "",
+  preparationTime: prod.preparationTime || 10,
+  hasInventory: prod.hasInventory ? "Yes" : "No",   // <-- new field
+  stock: prod.stock || 0,
+  images: prod.images?.length ? prod.images.join(", ") : "",
+});
+
+    });
+
+    // Hide Product ID column (internal use only)
+    worksheet.getColumn("_id").hidden = true;
+    worksheet.getColumn("images").alignment = { wrapText: false };
+
+    // Set headers for download
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=products.xlsx"
+    );
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    // Stream workbook to response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export Products Error:", error);
+    res.status(500).json({ message: "Failed to export products." });
+  }
+};
+
+
+
+
+exports.bulkEditProducts = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (!rows.length) {
+      return res.status(400).json({ message: "Uploaded file is empty" });
+    }
+
+    let updatedCount = 0;
+    let errors = [];
+    let updatedProducts = [];
+
+    for (const row of rows) {
+      try {
+        if (!row["Product ID"]) continue;
+
+        const productId = String(row["Product ID"]).trim().replace(/^"|"$/g, "");
+
+        const updateData = {
+          name: row["Product Name"],
+          description: row["Description"],
+          price: Number(row["Price"]) || 0,
+          categoryId: row["Category ID"]
+            ? String(row["Category ID"]).trim().replace(/^"|"$/g, "")
+            : null,
+          foodType: row["Food Type"]?.toLowerCase(),
+          active: row["Status"] === "Active",
+          availability: row["Availability"] || "always",
+          availableAfterTime: row["Available After Time"] || null,
+          preparationTime: Number(row["Preparation Time (mins)"]) || 10,
+          enableInventory: row["Has Inventory"] === "Yes",
+          stock: Number(row["Stock"]) || 0,
+          images: row["Images"]
+            ? row["Images"].split(",").map((s) => s.trim())
+            : [],
+        };
+
+        const updated = await Product.findByIdAndUpdate(productId, updateData, {
+          new: true, // return the updated document
+        });
+
+        if (updated) {
+          updatedCount++;
+          updatedProducts.push(updated);
+        }
+      } catch (err) {
+        errors.push({ row: row["Product ID"], error: err.message });
+      }
+    }
+
+    return res.json({
+      message: "Bulk update completed",
+      updatedCount,
+      updatedProducts, // 👈 send back updated products
+      errors,
+    });
+  } catch (error) {
+    console.error("Bulk Edit Products Error:", error);
+    res.status(500).json({ message: "Failed to bulk update products." });
+  }
+};

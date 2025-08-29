@@ -37,10 +37,12 @@ const allowedOrigins = [
 app.use(express.json());
 app.use(cors({
   origin: (origin, callback) => {
-    callback(null, origin);
+    callback(null, origin); // allows all origins dynamically
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'], // request headers allowed
+  exposedHeaders: ['Content-Disposition'] // response headers exposed to frontend
 }));
 
 const io = socketIo(server, {
@@ -57,7 +59,7 @@ const io = socketIo(server, {
 // Attach io to app so it can be used in controllers
 app.set("io", io);
 
-app.use((req, res, next) => {
+app.use((req, res, next) => { 
   req.io = io;
   next();
 });

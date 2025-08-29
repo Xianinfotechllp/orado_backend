@@ -98,36 +98,59 @@ exports.getSimpleRectOrderStats = async (req, res) => {
 
 exports.getAdminOrders = async (req, res) => {
   try {
+    // Parse pagination parameters with defaults
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const totalOrders = await Order.countDocuments();
+
+    // Fetch orders with pagination
     const orders = await Order.find()
       .populate({ path: 'customerId', select: 'name' })
       .populate({ path: 'restaurantId', select: 'name address location' })
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
 
- const formattedOrders = orders.map(order => ({
-  orderId: order._id,
-  restaurantId: order.restaurantId?._id || null, // add this line
-  orderStatus: order.orderStatus,
-  restaurantName: order.restaurantId?.name || 'N/A',
-  restaurantAddress: order.restaurantId?.address || 'N/A',
-  restaurantLocation: order.restaurantId?.location,
-  customerName: order.customerId?.name || 'Guest',
-  customerId: order.customerId?._id || null,
-  amount: `$ ${order.totalAmount?.toFixed(2)}`,
-  address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
-  deliveryMode: order.deliveryMode,
-  paymentStatus: order.paymentStatus,
-  paymentMethod: order.paymentMethod === 'cash' ? 'Pay On Delivery' : order.paymentMethod,
-  preparationTime: `${order.preparationTime || 0} Mins`,
-  orderTime: new Date(order.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
-  scheduledDeliveryTime: new Date(order.orderTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
-}));
+    const formattedOrders = orders.map(order => ({
+      orderId: order._id,
+      restaurantId: order.restaurantId?._id || null,
+      orderStatus: order.orderStatus,
+      restaurantName: order.restaurantId?.name || 'N/A',
+      restaurantAddress: order.restaurantId?.address || 'N/A',
+      restaurantLocation: order.restaurantId?.location,
+      customerName: order.customerId?.name || 'Guest',
+      customerId: order.customerId?._id || null,
+      amount: `₹ ${order.totalAmount?.toFixed(2)}`,
+      address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
+      deliveryMode: order.deliveryMode,
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod === 'cash' ? 'Pay On Delivery' : order.paymentMethod,
+      preparationTime: `${order.preparationTime || 0} Mins`,
+      orderTime: new Date(order.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
+      scheduledDeliveryTime: new Date(order.orderTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
+    }));
 
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalOrders / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
 
     res.status(200).json({
       messageType: "success",
       message: "Orders fetched successfully.",
-      data: formattedOrders
+      data: formattedOrders,
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        totalOrders: totalOrders,
+        hasNextPage: hasNextPage,
+        hasPrevPage: hasPrevPage,
+        limit: limit
+      }
     });
   } catch (error) {
     console.error("Error fetching admin orders:", error);
@@ -137,7 +160,6 @@ exports.getAdminOrders = async (req, res) => {
     });
   }
 };
-
 
 
 

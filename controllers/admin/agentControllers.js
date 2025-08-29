@@ -6,6 +6,11 @@ const AgentNotification = require('../../models/AgentNotificationModel');
 const admin = require('../../config/firebaseAdmin'); 
 const sendNotificationToAgent = require('../../utils/sendNotificationToAgent')
 const AgentDeviceInfo = require("../../models/AgentDeviceInfoModel")
+
+const  getRedisClient  = require("../../config/redisClient");
+const redis = getRedisClient();
+
+
 exports.getAllList = async (req, res) => {
   try {
     // First get all agents with basic info
@@ -93,17 +98,19 @@ exports.getAllList = async (req, res) => {
 
 exports.getAllListStatus = async (req, res) => {
   try {
-    // Get all agents with basic info
+    // Fetch all agents
     const agents = await Agent.find()
-      .select("fullName phoneNumber agentStatus location currentOrder lastStatusUpdate")
+      .select(
+        "fullName phoneNumber agentStatus location currentOrder lastStatusUpdate profilePicture"
+      )
       .lean();
 
-    // Get all device info in one query for efficiency
+    // Fetch device info for all agents
     const deviceInfos = await AgentDeviceInfo.find({
-      agent: { $in: agents.map(a => a._id) }
+      agent: { $in: agents.map((a) => a._id) },
     }).lean();
 
-    // Create a map of agentId -> deviceInfo for quick lookup
+    // Map agentId -> device info
     const deviceInfoMap = deviceInfos.reduce((map, info) => {
       map[info.agent.toString()] = {
         os: info.os,
@@ -115,54 +122,66 @@ exports.getAllListStatus = async (req, res) => {
         timezone: info.timezone,
         locationEnabled: info.locationEnabled,
         isRooted: info.isRooted,
-        updatedAt: info.updatedAt
+        updatedAt: info.updatedAt,
       };
       return map;
     }, {});
 
-    // Format the response with all raw data
-    const responseData = agents.map((agent) => {
-      const coordinates = agent.location?.coordinates || [0, 0];
-      const accuracy = agent.location?.accuracy || 0;
+    // Build final response with Redis fallback for location
+    const responseData = await Promise.all(
+      agents.map(async (agent) => {
+        let coordinates = [0, 0];
+        let accuracy = 0;
 
-      return {
-        _id: agent._id,
-        fullName: agent.fullName,
-        phoneNumber: agent.phoneNumber,
-        // Raw status data for frontend to interpret
-        agentStatus: {
-          status: agent.agentStatus.status || "OFFLINE",
-          availabilityStatus: agent.agentStatus.availabilityStatus || "UNAVAILABLE"
-        },
-        // Raw location data
-        location: {
-          type: agent.location?.type || 'Point',
-          coordinates: coordinates,
-          accuracy: accuracy
-        },
-        // Device information
-        deviceInfo: deviceInfoMap[agent._id.toString()] || null,
-        // Current order if exists
-        currentOrder: agent.currentOrder || null,
-        // Last update timestamp
-        lastStatusUpdate: agent.lastStatusUpdate
-      };
-    });
+        // Try Redis first
+        const redisLoc = await redis.get(`agent_location:${agent._id}`);
+        if (redisLoc) {
+          const parsed = JSON.parse(redisLoc);
+          coordinates = [parsed.lat, parsed.lng];
+          accuracy = parsed.accuracy || 0;
+          console.log(`Agent ${agent._id} location fetched from Redis:`, coordinates);
+        } else if (agent.location?.coordinates) {
+          // Fallback to DB location
+          coordinates = agent.location.coordinates;
+          accuracy = agent.location.accuracy || 0;
+          console.log(`Agent ${agent._id} location fetched from DB:`, coordinates);
+        } else {
+          console.log(`Agent ${agent._id} has no location data.`);
+        }
+
+        return {
+          _id: agent._id,
+          fullName: agent.fullName,
+          phoneNumber: agent.phoneNumber,
+          profilePicture: agent.profilePicture,
+          agentStatus: {
+            status: agent.agentStatus?.status || "OFFLINE",
+            availabilityStatus: agent.agentStatus?.availabilityStatus || "UNAVAILABLE",
+          },
+          location: {
+            type: agent.location?.type || "Point",
+            coordinates,
+            accuracy,
+          },
+          deviceInfo: deviceInfoMap[agent._id.toString()] || null,
+          currentOrder: agent.currentOrder || null,
+          lastStatusUpdate: agent.lastStatusUpdate,
+        };
+      })
+    );
 
     res.status(200).json({
-      messageType: 'success',
+      messageType: "success",
       data: responseData,
     });
-
   } catch (error) {
-    console.error('Error fetching agent list:', error);
+    console.error("Error fetching agent list:", error);
     res.status(500).json({
-      messageType: 'failure',
-      message: 'Failed to fetch agents',
+      messageType: "failure",
+      message: "Failed to fetch agents",
     });
   }
 };
-
 
 
 
@@ -328,36 +347,48 @@ const notificationBody = `You've been assigned to deliver from ${restaurantName}
 };
 
 
+
 exports.giveWarning = async (req, res) => {
-  const adminId = req.user._id;
-  const { agentId } = req.params;
-  const { reason, severity = "minor" } = req.body;
+  try {
+    console.log(req.body);
 
-  if (!reason) return res.status(400).json({ message: "Reason is required" });
+    const { agentId } = req.params;
+    const { reason, severity = "minor" } = req.body;
 
-  // Validate severity (just in case)
-  const validSeverities = ["minor", "major", "critical"];
-  if (!validSeverities.includes(severity)) {
-    return res.status(400).json({ message: "Invalid severity value" });
+    if (!reason) {
+      return res.status(400).json({ message: "Reason is required" });
+    }
+
+    // Validate severity
+    const validSeverities = ["minor", "major", "critical"];
+    if (!validSeverities.includes(severity)) {
+      return res.status(400).json({ message: "Invalid severity value" });
+    }
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found." });
+    }
+
+    // Add warning
+    agent.warnings.push({ reason, severity });
+    await agent.save();
+
+    // Send notification
+    await sendNotificationToAgent({
+      agentId,
+      title: "Warning Issued",
+      body: `Reason: ${reason} | Severity: ${severity}`,
+      data: { type: "warning", reason, severity },
+    });
+
+    return res.json({ message: "Warning issued.", agent });
+  } catch (error) {
+    console.error("Error issuing warning:", error);
+    return res.status(500).json({ message: "Internal server error", error: error.message });
   }
-
-  const agent = await Agent.findById(agentId);
-  if (!agent) return res.status(404).json({ message: "Agent not found." });
-
-  // Add warning
-  agent.warnings.push({ reason, severity, issuedBy: adminId });
-  await agent.save();
-
-  // Send notification
-  await sendNotificationToAgent({
-    agentId,
-    title: "Warning Issued",
-    body: `Reason: ${reason} | Severity: ${severity}`,
-    data: { type: "warning", reason, severity },
-  });
-
-  return res.json({ message: "Warning issued.", agent });
 };
+
 
 
 
