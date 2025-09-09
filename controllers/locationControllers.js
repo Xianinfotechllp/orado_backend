@@ -1088,6 +1088,7 @@ exports.getNearbyStores = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
+    // ✅ Fetch nearby stores with geoNear
     const stores = await Restaurant.aggregate([
       {
         $geoNear: {
@@ -1120,17 +1121,15 @@ exports.getNearbyStores = async (req, res) => {
       { $limit: parseInt(limit) }
     ]);
 
+    // ✅ Count total documents using geoWithin (no $near!)
+    const earthRadiusInMeters = 6378137; // WGS84 standard earth radius
     const total = await Restaurant.countDocuments({
       storeType,
       approvalStatus: "approved",
       active: true,
       location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [lon, lat]
-          },
-          $maxDistance: parseFloat(radius)
+        $geoWithin: {
+          $centerSphere: [[lon, lat], parseFloat(radius) / earthRadiusInMeters]
         }
       }
     });
