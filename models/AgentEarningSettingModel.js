@@ -1,60 +1,61 @@
 const mongoose = require('mongoose');
 
-const AgentEarningSettingSchema = new mongoose.Schema({
-  mode: {
-    type: String,
-    enum: ['global', 'merchant', 'city'], // supports global, merchant, or city-level config
-    default: 'global',
-  },
-
-  merchantId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Merchant',
-    required: function () {
-      return this.mode === 'merchant';
+const AgentEarningSettingSchema = new mongoose.Schema(
+  {
+    mode: {
+      type: String,
+      enum: ['global', 'merchant', 'city'], // supports global, merchant, or city-level config
+      default: 'global',
     },
-  },
 
-  cityId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'City',
-    required: function () {
-      return this.mode === 'city';
+    merchantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Restaurant',
+      required: function () {
+        return this.mode === 'merchant';
+      },
     },
-  },
 
-  baseFee: {
-    type: Number,
-    required: true,
-    default: 20,
-  },
+    cityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'City',
+      required: function () {
+        return this.mode === 'city';
+      },
+    },
 
-  baseKm: {
-    type: Number,
-    required: true,
-    default: 2,
-  },
+    baseFee: {
+      type: Number,
+      default: 20,
+    },
 
-  perKmFeeBeyondBase: {
-    type: Number,
-    required: true,
-    default: 10,
-  },
+    baseKm: {
+      type: Number,
+      default: 2,
+    },
 
-  peakHourBonus: {
-    type: Number,
-    default: 20,
-  },
+    perKmFeeBeyondBase: {
+      type: Number,
+      default: 10,
+    },
 
-  rainBonus: {
-    type: Number,
-    default: 15,
-  },
+    // ✅ Flexible bonuses object (scalable for future)
+    bonuses: {
+      peakHour: { type: Number, default: 20 },
+      rain: { type: Number, default: 15 },
+      zone: { type: Number, default: 0 },
+    },
 
-  createdAt: {
-    type: Date,
-    default: Date.now,
+    // ✅ Helpful flag to indicate explicit overrides
+    isOverride: { type: Boolean, default: false },
   },
-});
+  { timestamps: true } // ✅ auto-creates createdAt & updatedAt
+);
+
+// ✅ Ensure only one unique config exists per mode+entity
+AgentEarningSettingSchema.index(
+  { mode: 1, cityId: 1, merchantId: 1 },
+  { unique: true }
+);
 
 module.exports = mongoose.model('AgentEarningSetting', AgentEarningSettingSchema);

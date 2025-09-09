@@ -272,7 +272,7 @@ router.post('/send-push-notification', upload.single("image"),sendPushNotificati
 
 
 const admin = require('../config/firebaseAdmin');
-const { addAgentEarnigsSetting, getAgentEarningsSettings } = require("../controllers/admin/agentEarnigsettings");
+const { addAgentEarnigsSetting, getAgentEarningsSettings , updateAgentEarningsSetting , deleteAgentEarningsSetting} = require("../controllers/admin/agentEarnigsettings");
 // const fcmToken ='fuSZmmKPQq66p53WOmBE0n:APA91bFLxmPN6DYQudlk81dmo45EF-jbux16F_E9bHsTQFEnPeq_BXyUZMSeCQCTzCdzxo2XxST_wTXEYrVHnvvBpxAn2dmWqa2NgykT1LSXqw6EGwuDVAA';
 router.get('/send-test-notification', async (req, res) => {
   
@@ -426,6 +426,8 @@ router.post('/agent/:agentId/leaves/:leaveId/decision', protect, checkRole('admi
 //agent earnigs settings
 router.post('/agent-earnings/settings',addAgentEarnigsSetting)
 router.get('/agent-earnings/settings',getAgentEarningsSettings)
+router.put("/agent-earnings/settings/:id",updateAgentEarningsSetting)
+router.delete("/agent-earnings/settings/:id",deleteAgentEarningsSetting)
 //cod llimt of agetns
 router.get("/agent-cod-summray",getAgentCODSummary)
 router.get("/agent-cod-moniter",getCODMonitoring)

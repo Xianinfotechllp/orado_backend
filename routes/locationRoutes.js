@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const {getRestaurantsInServiceArea,getNearbyCategories,getRestaurantsByLocationAndCategory,getRecommendedRestaurants,getNearbyProducts,searchRestaurants, getNearbyGroceryStores, searchStore} = require('../controllers/locationControllers')
+const {getRestaurantsInServiceArea,getNearbyCategories,getRestaurantsByLocationAndCategory,getRecommendedRestaurants,getNearbyProducts,searchRestaurants, getNearbyGroceryStores, searchStore, getNearbyStores} = require('../controllers/locationControllers')
 router.get("/nearby-restaurants",getRestaurantsInServiceArea)
 router.get("/nearby-categories",getNearbyCategories)
 router.get("/nearby-restaurants/category/:categoryName",getRestaurantsByLocationAndCategory)
@@ -9,6 +9,7 @@ router.get("/nearby-products",getNearbyProducts)
 router.get("/nearby/restaurants/search",searchRestaurants)
 
 router.get("/nearby-grocery",getNearbyGroceryStores)
+router.get("/nearby-stores",getNearbyStores)
     
 
 router.get("/nearby-stores",getNearbyGroceryStores)
