@@ -20,7 +20,8 @@ const {
  exportCategories,
  bulkEditCategories,
  exportProducts,
- bulkEditProducts
+ bulkEditProducts,getCategoriesByStore
+ ,getProductsByStore
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -79,5 +80,14 @@ router.get("/:restaurantId/products/export",exportProducts)
 router.post("/:restaurantId/products/bulk-edit",excelUpload.single("file"),bulkEditProducts)
 
 
+
+
+
+
+
+router.get("/:storeId/categories", getCategoriesByStore);
+
+// ================= Products =================
+router.get("/:storeId/products", getProductsByStore);
 
 module.exports = router;

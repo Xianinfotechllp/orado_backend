@@ -1102,20 +1102,21 @@ exports.getPromoCodesForCustomerAndRestaurant = async (req, res) => {
       isActive: true,
       validFrom: { $lte: now },
       validTill: { $gte: now },
-      $or: [
-        {
-          isMerchantSpecific: false,
-          isCustomerSpecific: false
-        },
-        {
-          isMerchantSpecific: true,
-          applicableMerchants: new mongoose.Types.ObjectId(restaurantId)
-        },
-        {
-          isCustomerSpecific: true,
-          applicableCustomers: new mongoose.Types.ObjectId(customerId)
-        }
-      ]
+    $or: [
+  {
+    isMerchantSpecific: false,
+    isCustomerSpecific: false
+  },
+  {
+    isMerchantSpecific: true,
+    applicableMerchants: new mongoose.Types.ObjectId(restaurantId)
+  },
+  {
+    isCustomerSpecific: true,
+    applicableCustomers: new mongoose.Types.ObjectId(customerId)
+  }
+]
+
     });
 
     // Filter: Allow only if customer hasn't exceeded usage

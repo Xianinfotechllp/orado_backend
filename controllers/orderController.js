@@ -1289,7 +1289,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       loyaltyPointsToRedeem = null,
     } = req.body;
 
-      // Validate input
+    // Validate input
     if (!cartId || !userId) {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
@@ -1305,17 +1305,12 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     if (!restaurant) {
       return res.status(404).json({ error: "Restaurant not found" });
     }
-    // Fetch User and Loyalty Settings
-    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
-    if (!loyaltySettings) {
-      return res.status(400).json({ error: "Loyalty program not configured" });
-    }
-
+    
     const user = await User.findById(userId);
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
 
-    // Optional: Check if user is within restaurant's service area
+    // Check if user is within restaurant's service area
     const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
       userCoords,
       restaurant._id
@@ -1324,9 +1319,30 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       return res.status(400).json({
         code: "OUT_OF_DELIVERY_AREA",
         error: "Out of Delivery Area",
-        message:
-          "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+        message: "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
       });
+    }
+
+    // Check minimum order amount FIRST (before other calculations)
+    const cartSubtotal = cart.products.reduce(
+      (total, item) => total + item.price * item.quantity,
+      0
+    );
+
+    if (cartSubtotal < restaurant.minOrderAmount) {
+      return res.status(400).json({
+        code: "MIN_ORDER_NOT_MET",
+        message: `Minimum order amount for this restaurant is ₹${restaurant.minOrderAmount.toFixed(2)}`,
+        minOrderAmount: restaurant.minOrderAmount,
+        currentAmount: cartSubtotal,
+        requiredMore: restaurant.minOrderAmount - cartSubtotal
+      });
+    }
+
+    // Fetch User and Loyalty Settings
+    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+    if (!loyaltySettings) {
+      return res.status(400).json({ error: "Loyalty program not configured" });
     }
 
     // Step 1: Calculate base cart total (pre-offer, pre-surge)
@@ -1368,21 +1384,21 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
-      promoCode: couponCode, // Changed from couponCode to promoCode to match the function
+      promoCode: couponCode, // Pass the coupon code
       deliveryFee,
       offers,
       revenueShare: { type: "percentage", value: 20 },
       isSurge,
       surgeFeeAmount,
-      surgeReason, // Added this
+      surgeReason,
       merchantId: restaurant._id,
       cartId,
       useLoyaltyPoints,
       loyaltyPointsAvailable: loyaltyPointsAvailable,
-      loyaltyPointsToRedeem: loyaltyPointsToRedeem, // Added this
+      loyaltyPointsToRedeem: loyaltyPointsToRedeem,
       loyaltySettings: loyaltySettings,
-      userId: userId, // Added this
-      PromoCode: PromoCode, // Added this to support promo code validation
+      userId: userId,
+      PromoCode: PromoCode,
     });
 
     // Step 7: Calculate distance between restaurant and customer
@@ -1392,21 +1408,40 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       { units: "kilometers" }
     );
 
-    // Step 8: Construct enhanced summary object with loyalty points
-    const summary = {
-      subtotal: costSummary.cartTotal,
+    // Step 8: Enhance promo code info with amount needed for application
+    let enhancedPromoInfo = { ...costSummary.promoCodeInfo };
+    
+    if (couponCode && costSummary.promoCodeInfo.applied === false) {
+      // Check if there's a validated promo that couldn't be applied due to minimum order
+      if (costSummary.promoCodeInfo.code) {
+        const promo = await PromoCode.findOne({
+          code: couponCode.toUpperCase(),
+          isActive: true
+        });
+        
+        if (promo && costSummary.cartTotal < promo.minOrderValue) {
+          enhancedPromoInfo.amountNeeded = promo.minOrderValue - costSummary.cartTotal;
+          enhancedPromoInfo.minOrderValue = promo.minOrderValue;
+        }
+      }
+    }
 
+    // Step 9: Construct enhanced summary object with loyalty points
+    const summary = {
+      subtotal: costSummary.cartTotal, // This is the cart total after combos
+      minimumOrderAmount: restaurant.minOrderAmount,
+  
       // Discounts
       discount: costSummary.totalDiscount,
       offerDiscount: costSummary.offerDiscount,
-      couponDiscount: costSummary.promoCodeInfo.discount, // Updated to use promoCodeInfo
+      couponDiscount: costSummary.promoCodeInfo.discount,
       comboDiscount: costSummary.comboDiscount,
       loyaltyDiscount: costSummary.loyaltyDiscount,
       offersApplied: costSummary.offersApplied,
       combosApplied: costSummary.combosApplied,
 
-      // Promo Code Information
-      promoCodeInfo: costSummary.promoCodeInfo, // Added this new section
+      // Enhanced Promo Code Information
+      promoCodeInfo: enhancedPromoInfo,
 
       // Delivery + Surge + Tip
       deliveryFee,
@@ -1431,6 +1466,7 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
 
       // Final Amount
       total: costSummary.finalAmount,
+      finalAmount: costSummary.finalAmount,
 
       // Loyalty Points Information
       loyaltyPoints: {
@@ -2158,7 +2194,22 @@ exports.placeOrderV2 = async (req, res) => {
         messageType: "failure",
       });
     }
-         const io = req.app.get("io");
+const cartSubtotal = cart.products.reduce(
+  (total, item) => total + item.price * item.quantity,
+  0
+);
+
+if (cartSubtotal < restaurant.minOrderAmount) {
+  return res.status(400).json({
+    code: "MIN_ORDER_NOT_REACHED",
+    message: `Minimum order amount for this store is ₹${restaurant.minOrderAmount}. Please add more items.`,
+    messageType: "failure",
+  });
+}
+
+
+      
+   const io = req.app.get("io");
     // Fetch loyalty settings and user
     const loyaltySettings = await LoyalitySettings.findOne({}).lean();
     const user = await User.findById(userId);

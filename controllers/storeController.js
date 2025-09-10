@@ -1050,3 +1050,72 @@ exports.bulkEditProducts = async (req, res) => {
     res.status(500).json({ message: "Failed to bulk update products." });
   }
 };
+
+
+exports.getCategoriesByStore = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    const categories = await Category.find({
+      restaurantId: storeId, // still stored in DB as restaurantId field
+      active: true
+    }).sort({ name: 1 }); // sort alphabetically
+
+    return res.status(200).json({
+      success: true,
+      message: "Categories fetched successfully",
+      categories
+    });
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch categories",
+      error: error.message
+    });
+  }
+};
+exports.getProductsByStore = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { categoryId, search, sortBy, sortOrder = "asc" } = req.query;
+
+    const filters = {
+      restaurantId: storeId, // still mapped to restaurantId in schema
+      active: true,
+    };
+
+    if (categoryId) {
+      filters.categoryId = categoryId;
+    }
+
+    if (search) {
+      filters.name = { $regex: search, $options: "i" }; // case-insensitive search
+    }
+
+    // Sorting
+    let sortQuery = {};
+    if (sortBy) {
+      sortQuery[sortBy] = sortOrder === "desc" ? -1 : 1;
+    } else {
+      sortQuery["name"] = 1; // default alphabetical
+    }
+
+    const products = await Product.find(filters)
+      .populate("categoryId", "name")
+      .sort(sortQuery);
+
+    return res.status(200).json({
+      success: true,
+      message: "Products fetched successfully",
+      products,
+    });
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch products",
+      error: error.message,
+    });
+  }
+};
