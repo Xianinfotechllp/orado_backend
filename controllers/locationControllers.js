@@ -1158,14 +1158,27 @@ exports.getStoreById = async (req, res) => {
     const restaurant = await Restaurant.findById(id)
       .select(
         "-kyc -kycDocuments -kycStatus -kycRejectionReason -approvalRejectionReason"
-      ) // Exclude KYC-related fields
-      .populate("categories", "name") // Optional: populate category names
-      .populate("products", "name price") // Optional: populate product names and prices
-      .lean(); // Convert Mongoose doc to plain JS object
+      )
+      .populate("categories", "name")
+      .populate("products", "name price")
+      .lean();
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
     }
+
+    // Fetch active offers for this restaurant
+    const offers = await Offer.find({
+      applicableRestaurants: id,
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() },
+    })
+      .select("title description type discountValue maxDiscount minOrderValue applicableLevel applicableProducts comboProducts bogoDetails")
+      .lean();
+
+    // Attach offers to restaurant response
+    restaurant.offers = offers;
 
     res.status(200).json(restaurant);
   } catch (error) {
