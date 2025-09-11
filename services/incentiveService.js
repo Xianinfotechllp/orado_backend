@@ -5,6 +5,7 @@ const AgentEarning = require('../models/AgentEarningModel'); // Each order's ear
 // Correct export and async function
 exports.createAgentIncentive = async ({ agentId }) => {
   const now = new Date();
+  console.log('🔹 Running createAgentIncentive for agentId:', agentId, 'at', now);
 
   try {
     // 1️⃣ Get all active plans
@@ -13,14 +14,19 @@ exports.createAgentIncentive = async ({ agentId }) => {
       validFrom: { $lte: now },
       $or: [{ validTo: null }, { validTo: { $gte: now } }]
     });
+    console.log('🔹 Found active incentive plans:', activePlans.length);
 
     for (const plan of activePlans) {
+      console.log('➡ Processing plan:', plan.name, 'Period:', plan.period);
+
       // Determine period identifier
       const periodIdentifier = getPeriodIdentifier(plan.period, now);
+      console.log('   Period Identifier:', periodIdentifier);
 
       // Get start & end of period
       const startOfPeriod = getPeriodStartDate(plan.period, now);
       const endOfPeriod = getPeriodEndDate(plan.period, now);
+      console.log('   Period Start:', startOfPeriod, 'End:', endOfPeriod);
 
       // 2️⃣ Calculate total earnings and deliveries in this period
       const earnings = await AgentEarning.find({
@@ -30,19 +36,26 @@ exports.createAgentIncentive = async ({ agentId }) => {
 
       const totalEarnings = earnings.reduce((sum, e) => sum + e.totalEarning, 0);
       const completedDeliveries = earnings.length;
+      console.log('   Total Earnings:', totalEarnings, 'Completed Deliveries:', completedDeliveries);
 
       // 3️⃣ Calculate total incentive based on plan conditions
       let totalIncentive = 0;
       for (const condition of plan.conditions) {
         if (condition.conditionType === 'earnings' && totalEarnings >= condition.threshold) {
           totalIncentive += condition.incentiveAmount;
+          console.log(`     + Incentive added for earnings condition: ${condition.incentiveAmount}`);
         } else if (condition.conditionType === 'deliveries' && completedDeliveries >= condition.threshold) {
           totalIncentive += condition.incentiveAmount;
+          console.log(`     + Incentive added for deliveries condition: ${condition.incentiveAmount}`);
         }
       }
+      console.log('   Calculated total incentive:', totalIncentive);
 
       // Skip if no incentive
-      if (totalIncentive <= 0) continue;
+      if (totalIncentive <= 0) {
+        console.log('   Skipping plan, no incentive earned.');
+        continue;
+      }
 
       // 4️⃣ Upsert incentive earning record
       const existing = await AgentIncentiveEarning.findOne({
@@ -52,6 +65,7 @@ exports.createAgentIncentive = async ({ agentId }) => {
       });
 
       if (!existing) {
+        console.log('   Creating new incentive record');
         await AgentIncentiveEarning.create({
           agentId,
           planId: plan._id,
@@ -61,12 +75,14 @@ exports.createAgentIncentive = async ({ agentId }) => {
           payoutStatus: 'pending'
         });
       } else {
+        console.log('   Updating existing incentive record');
         existing.incentiveAmount = totalIncentive;
         await existing.save();
       }
     }
+    console.log('✅ createAgentIncentive completed successfully for agentId:', agentId);
   } catch (err) {
-    console.error('Error creating agent incentive:', err);
+    console.error('❌ Error creating agent incentive:', err);
   }
 };
 
