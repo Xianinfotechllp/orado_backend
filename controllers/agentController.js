@@ -11,7 +11,7 @@ const mongoose = require("mongoose");
 const axios = require('axios')
 const AgentEarningSettings = require("../models/AgentEarningSettingModel");
 const AgentIncentiveProgress = require("../models/agentIncentiveProgress")
-
+  const { createAgentIncentive  } = require('../services/incentiveService');
 
 const geolib = require('geolib');
 const {
@@ -1337,8 +1337,6 @@ exports.getAssignedOrderDetails = async (req, res) => {
         console.warn("⚠️ Failed to fetch surge zones:", err.message);
       }
     }
-   const incentive = await calculateIncentivesForAgent(agentId)
-    console.log("incentive",incentive)
 
 
 
@@ -1349,6 +1347,8 @@ exports.getAssignedOrderDetails = async (req, res) => {
       surgeZones: applicableSurges,
     });
 
+
+  
     // console.log("💰 Earnings Breakdown:", earningsBreakdown);
 
 
@@ -1382,134 +1382,134 @@ const deliveryFlow = [
   "delivered",
 ];
 
-exports.updateAgentDeliveryStatus = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const agentId = req.user._id;
-    const { status } = req.body;
+  exports.updateAgentDeliveryStatus = async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      const agentId = req.user._id;
+      const { status } = req.body;
 
-    const validStatuses = [...deliveryFlow, "cancelled"];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid delivery status" });
-    }
+      const validStatuses = [...deliveryFlow, "cancelled"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid delivery status" });
+      }
 
-    const order = await Order.findById(orderId)
-      .populate("customerId")
-      .populate("restaurantId")
-      .populate("orderItems.productId");
+      const order = await Order.findById(orderId)
+        .populate("customerId")
+        .populate("restaurantId")
+        .populate("orderItems.productId");
 
-    if (!order) return res.status(404).json({ message: "Order not found" });
+      if (!order) return res.status(404).json({ message: "Order not found" });
 
-    if (order.assignedAgent?.toString() !== agentId.toString()) {
-      return res.status(403).json({ message: "You are not assigned to this order" });
-    }
+      if (order.assignedAgent?.toString() !== agentId.toString()) {
+        return res.status(403).json({ message: "You are not assigned to this order" });
+      }
 
-    const currentIndex = deliveryFlow.indexOf(order.agentDeliveryStatus);
-    const newIndex = deliveryFlow.indexOf(status);
+      const currentIndex = deliveryFlow.indexOf(order.agentDeliveryStatus);
+      const newIndex = deliveryFlow.indexOf(status);
 
-    if (status !== "cancelled" && newIndex !== currentIndex + 1) {
-      return res.status(400).json({
-        message: `Invalid step transition: can't move from ${order.agentDeliveryStatus} to ${status}`,
+      if (status !== "cancelled" && newIndex !== currentIndex + 1) {
+        return res.status(400).json({
+          message: `Invalid step transition: can't move from ${order.agentDeliveryStatus} to ${status}`,
+        });
+      }
+
+      order.agentDeliveryStatus = status;
+      await order.save();
+
+      // When delivered, create earnings record
+    if (status === 'delivered') {
+    // ✅ Set agent back to AVAILABLE
+    await Agent.updateOne(
+      { _id: agentId },
+      {
+        $set: {
+          'agentStatus.status': 'AVAILABLE',
+          'agentStatus.availabilityStatus': 'AVAILABLE',
+        }
+      }
+    );
+
+    // Check if already exists
+    const existingEarning = await AgentEarning.findOne({ agentId, orderId });
+    if (!existingEarning) {
+      // Get earnings config (city/global based on your logic)
+      const earningsConfig = await AgentEarningSettings.findOne({ mode: 'global' }); 
+      if (!earningsConfig) {
+        return res.status(500).json({ message: "Earnings configuration not found." });
+      }
+
+      // Calculate distance
+      let distanceKm = 0;
+      if (
+        Array.isArray(order.restaurantId?.location?.coordinates) &&
+        Array.isArray(order.deliveryLocation?.coordinates)
+      ) {
+        const fromCoords = order.restaurantId.location.coordinates; // [lon, lat]
+        const toCoords = order.deliveryLocation.coordinates;        // [lon, lat]
+
+        // Prefer driving distance, fallback to geolib straight distance
+        const drivingDistance = await getDrivingDistance(fromCoords, toCoords);
+        if (drivingDistance !== null) {
+          distanceKm = drivingDistance;
+        } else {
+          const distMeters = geolib.getDistance(
+            { latitude: fromCoords[1], longitude: fromCoords[0] },
+            { latitude: toCoords[1], longitude: toCoords[0] }
+          );
+          distanceKm = distMeters / 1000;
+        }
+      }
+
+      // Find applicable surge zones
+      let surgeZones = [];
+      try {
+        surgeZones = await findApplicableSurgeZones({
+          fromCoords: order.restaurantId.location.coordinates,
+          toCoords: order.deliveryLocation.coordinates,
+          time: new Date(),
+        });
+      } catch (err) {
+        console.warn("Failed to fetch surge zones:", err.message);
+      }
+
+      // Incentives - customize as per your logic
+      const incentiveBonuses = {
+        peakHourBonus: 0,
+        rainBonus: 0,
+      };
+
+      // Calculate earnings breakdown
+      const earningsData = calculateEarningsBreakdown({
+        distanceKm,
+        config: earningsConfig.toObject(),
+        surgeZones,
+        tipAmount: order.tipAmount || 0,
+        incentiveBonuses,
+      });
+
+      // Create earning record
+      await createAgentEarning({
+        agentId,
+        orderId,
+        earningsConfig: earningsConfig.toObject(),
+        surgeZones,
+        incentiveBonuses,
+        distanceKm,
       });
     }
+  }
+      await createAgentIncentive({ agentId });
+      const response = formatOrder(order, agentId);
 
-    order.agentDeliveryStatus = status;
-    await order.save();
-
-    // When delivered, create earnings record
-  if (status === 'delivered') {
-  // ✅ Set agent back to AVAILABLE
-  await Agent.updateOne(
-    { _id: agentId },
-    {
-      $set: {
-        'agentStatus.status': 'AVAILABLE',
-        'agentStatus.availabilityStatus': 'AVAILABLE',
-      }
-    }
-  );
-
-  // Check if already exists
-  const existingEarning = await AgentEarning.findOne({ agentId, orderId });
-  if (!existingEarning) {
-    // Get earnings config (city/global based on your logic)
-    const earningsConfig = await AgentEarningSettings.findOne({ mode: 'global' }); 
-    if (!earningsConfig) {
-      return res.status(500).json({ message: "Earnings configuration not found." });
-    }
-
-    // Calculate distance
-    let distanceKm = 0;
-    if (
-      Array.isArray(order.restaurantId?.location?.coordinates) &&
-      Array.isArray(order.deliveryLocation?.coordinates)
-    ) {
-      const fromCoords = order.restaurantId.location.coordinates; // [lon, lat]
-      const toCoords = order.deliveryLocation.coordinates;        // [lon, lat]
-
-      // Prefer driving distance, fallback to geolib straight distance
-      const drivingDistance = await getDrivingDistance(fromCoords, toCoords);
-      if (drivingDistance !== null) {
-        distanceKm = drivingDistance;
-      } else {
-        const distMeters = geolib.getDistance(
-          { latitude: fromCoords[1], longitude: fromCoords[0] },
-          { latitude: toCoords[1], longitude: toCoords[0] }
-        );
-        distanceKm = distMeters / 1000;
-      }
-    }
-
-    // Find applicable surge zones
-    let surgeZones = [];
-    try {
-      surgeZones = await findApplicableSurgeZones({
-        fromCoords: order.restaurantId.location.coordinates,
-        toCoords: order.deliveryLocation.coordinates,
-        time: new Date(),
+      res.status(200).json({
+        message: "Delivery status updated",
+        order: response,
       });
     } catch (err) {
-      console.warn("Failed to fetch surge zones:", err.message);
+      console.error(err);
+      res.status(500).json({ message: "Server error" });
     }
-
-    // Incentives - customize as per your logic
-    const incentiveBonuses = {
-      peakHourBonus: 0,
-      rainBonus: 0,
-    };
-
-    // Calculate earnings breakdown
-    const earningsData = calculateEarningsBreakdown({
-      distanceKm,
-      config: earningsConfig.toObject(),
-      surgeZones,
-      tipAmount: order.tipAmount || 0,
-      incentiveBonuses,
-    });
-
-    // Create earning record
-    await createAgentEarning({
-      agentId,
-      orderId,
-      earningsConfig: earningsConfig.toObject(),
-      surgeZones,
-      incentiveBonuses,
-      distanceKm,
-    });
-  }
-}
-
-    const response = formatOrder(order, agentId);
-
-    res.status(200).json({
-      message: "Delivery status updated",
-      order: response,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
+  };
 
 
 exports.getAgentNotifications = async (req, res) => {

@@ -196,7 +196,7 @@ exports.getAllListStatus = async (req, res) => {
 exports.manualAssignAgent = async (req, res) => {
   try {
     const { orderId, agentId } = req.body;
-
+    console.log(req.body)
     // 1. Fetch the order
     const order = await Order.findById(orderId)
       .populate({

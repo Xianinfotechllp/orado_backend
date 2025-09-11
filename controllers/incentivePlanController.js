@@ -99,8 +99,9 @@ validTo: Joi.date()
  */
 exports.createIncentivePlan = async (req, res) => {
   try {
+    console.log(req.body)
     // Validate request using Joi
-    const { error, value } = incentivePlanSchema.validate(req.body, { abortEarly: false });
+    const { error, value } = incentivePlanSchema.validate(req.body, { abortEarly: false,  allowUnknown: true });
     
     if (error) {
       const errorMessages = error.details.map(detail => ({
@@ -143,7 +144,7 @@ exports.createIncentivePlan = async (req, res) => {
       period,
       conditions,
       validFrom: validFrom || Date.now(),
-  validTo: validTo === '' ? null : validTo, // Convert empty string to null
+       validTo: validTo === '' ? null : validTo, // Convert empty string to null
       isActive: true
 
     });
