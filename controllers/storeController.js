@@ -1075,47 +1075,51 @@ exports.getCategoriesByStore = async (req, res) => {
     });
   }
 };
-exports.getProductsByStore = async (req, res) => {
+exports.getProducts = async (req, res) => {
   try {
-    const { storeId } = req.params;
-    const { categoryId, search, sortBy, sortOrder = "asc" } = req.query;
+    const products = await Product.find().populate('categoryId restaurantId');
 
-    const filters = {
-      restaurantId: storeId, // still mapped to restaurantId in schema
-      active: true,
-    };
+    // Current time in HH:mm format
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5); // e.g. "16:45"
 
-    if (categoryId) {
-      filters.categoryId = categoryId;
-    }
+    const formatted = products.map(prod => {
+      let isAvailable = true;
+      let unavailableReason = null;
 
-    if (search) {
-      filters.name = { $regex: search, $options: "i" }; // case-insensitive search
-    }
+      // 1. Check stock / out-of-stock
+      if (prod.availability === 'out-of-stock' || prod.stock <= 0) {
+        isAvailable = false;
+        unavailableReason = 'Out of Stock';
+      }
 
-    // Sorting
-    let sortQuery = {};
-    if (sortBy) {
-      sortQuery[sortBy] = sortOrder === "desc" ? -1 : 1;
-    } else {
-      sortQuery["name"] = 1; // default alphabetical
-    }
+      // 2. Check time-based availability
+      else if (prod.availability === 'time-based' && prod.availableAfterTime) {
+        if (currentTime < prod.availableAfterTime) {
+          isAvailable = false;
+          unavailableReason = `Unavailable until ${prod.availableAfterTime}`;
+        }
+      }
 
-    const products = await Product.find(filters)
-      .populate("categoryId", "name")
-      .sort(sortQuery);
-
-    return res.status(200).json({
-      success: true,
-      message: "Products fetched successfully",
-      products,
+      return {
+        ...prod.toObject(),
+        isAvailable,
+        unavailableReason
+      };
     });
-  } catch (error) {
-    console.error("Error fetching products:", error);
-    return res.status(500).json({
+
+    res.json({
+      success: true,
+      count: formatted.length,
+      products: formatted
+    });
+
+  } catch (err) {
+    console.error('Error fetching products:', err);
+    res.status(500).json({
       success: false,
-      message: "Failed to fetch products",
-      error: error.message,
+      message: 'Server Error',
+      error: err.message
     });
   }
 };

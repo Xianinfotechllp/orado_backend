@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
-const AgentIncentiveEarningSchema = new Schema({
-  agentId: {
+  const AgentIncentiveEarningSchema = new Schema({
+    agentId: {
     type: Schema.Types.ObjectId,
     ref: 'Agent',
     required: true,

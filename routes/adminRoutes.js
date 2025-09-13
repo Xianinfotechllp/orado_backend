@@ -28,7 +28,8 @@ const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveAp
   getAgentCODSummary,
   getAllListStatus,
   getCODMonitoring,
-  updateAgentCODLimit
+  updateAgentCODLimit,
+  getAgentPayouts
 } = require("../controllers/admin/agentControllers")
 const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
@@ -433,6 +434,7 @@ router.get("/agent-cod-summray",getAgentCODSummary)
 router.get("/agent-cod-moniter",getCODMonitoring)
 // Update COD Limit
 router.put("/agents/:agentId/cod-limit", updateAgentCODLimit);
+router.get("/agent/payouts",getAgentPayouts)
 
 
 

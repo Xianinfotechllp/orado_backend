@@ -6,6 +6,8 @@ const AgentNotification = require('../../models/AgentNotificationModel');
 const admin = require('../../config/firebaseAdmin'); 
 const sendNotificationToAgent = require('../../utils/sendNotificationToAgent')
 const AgentDeviceInfo = require("../../models/AgentDeviceInfoModel")
+const AgentEarning = require("../../models/AgentEarningModel");
+const AgentIncentiveEarning = require("../../models/AgentIncentiveEarningModel");
 
 const  getRedisClient  = require("../../config/redisClient");
 const redis = getRedisClient();
@@ -1342,5 +1344,85 @@ exports.updateAgentCODLimit = async (req, res) => {
   } catch (error) {
     console.error("Error updating COD Limit:", error);
     res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+
+
+exports.getAgentPayouts = async (req, res) => {
+  try {
+    // Step 1: Aggregate earnings per agent
+    const earnings = await AgentEarning.aggregate([
+      {
+        $group: {
+          _id: "$agentId",
+          orders: { $sum: 1 },
+          earnings: { $sum: "$totalEarning" },
+          tips: { $sum: "$tipAmount" },
+          surge: { $sum: "$surgeAmount" },
+          totalPaid: { $sum: "$paidAmount" },
+          payoutStatuses: { $addToSet: "$payoutStatus" },
+        },
+      },
+    ]);
+
+    // Step 2: Aggregate incentives per agent
+    const incentives = await AgentIncentiveEarning.aggregate([
+      {
+        $group: {
+          _id: { agentId: "$agentId", periodType: "$periodType" },
+          incentive: { $sum: "$incentiveAmount" },
+        },
+      },
+    ]);
+
+    // Step 3: Transform incentives into daily/weekly/monthly map
+    const incentiveMap = {};
+    incentives.forEach((inc) => {
+      const agentId = inc._id.agentId.toString();
+      if (!incentiveMap[agentId]) {
+        incentiveMap[agentId] = { daily: 0, weekly: 0, monthly: 0 };
+      }
+      if (inc._id.periodType === "daily") incentiveMap[agentId].daily += inc.incentive;
+      else if (inc._id.periodType === "weekly") incentiveMap[agentId].weekly += inc.incentive;
+      else if (inc._id.periodType === "monthly") incentiveMap[agentId].monthly += inc.incentive;
+    });
+
+    // Step 4: Merge earnings + incentives + populate agent details
+    const result = await Promise.all(
+      earnings.map(async (e) => {
+        const agentId = e._id.toString();
+        const agent = await Agent.findById(agentId).select("fullName _id"); // select only required fields
+        const dailyInc = incentiveMap[agentId]?.daily || 0;
+        const weeklyInc = incentiveMap[agentId]?.weekly || 0;
+        const monthlyInc = incentiveMap[agentId]?.monthly || 0;
+        const totalIncentive = dailyInc + weeklyInc + monthlyInc;
+
+        return {
+  agentId,
+  agentName: agent?.fullName || "Unknown",
+  orders: e.orders,
+  earnings: e.earnings,
+  tips: e.tips,
+  surge: e.surge,
+  dailyIncentive: dailyInc,
+  weeklyIncentive: weeklyInc,
+  monthlyIncentive: monthlyInc,
+  totalIncentive,
+  totalPayout: e.earnings + totalIncentive, // <-- use total earnings, not paidAmount
+  amountPaid: e.totalPaid, // optional: how much has been already paid
+  status: e.payoutStatuses.includes("pending")
+    ? "pending"
+    : e.payoutStatuses.includes("partial")
+    ? "partial"
+    : "paid",
+};
+      })
+    );
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch agent payouts" });
   }
 };
