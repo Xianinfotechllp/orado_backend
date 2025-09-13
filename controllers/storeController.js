@@ -1075,51 +1075,102 @@ exports.getCategoriesByStore = async (req, res) => {
     });
   }
 };
-exports.getProducts = async (req, res) => {
+exports.getProductsByStore = async (req, res) => {
   try {
-    const products = await Product.find().populate('categoryId restaurantId');
+    const { storeId } = req.params;
+    const { categoryId, search, sortBy, sortOrder = "asc" } = req.query;
 
-    // Current time in HH:mm format
-    const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5); // e.g. "16:45"
+    const filters = {
+      restaurantId: storeId, // still mapped to restaurantId in schema
+      active: true, // only fetch active products
+    };
 
-    const formatted = products.map(prod => {
+    if (categoryId) {
+      filters.categoryId = categoryId;
+    }
+
+    if (search) {
+      filters.name = { $regex: search, $options: "i" }; // case-insensitive search
+    }
+
+    // Sorting
+    let sortQuery = {};
+    if (sortBy) {
+      sortQuery[sortBy] = sortOrder === "desc" ? -1 : 1;
+    } else {
+      sortQuery["name"] = 1; // default alphabetical
+    }
+
+    const products = await Product.find(filters)
+      .populate("categoryId", "name")
+      .sort(sortQuery);
+
+    // Format products with availability logic
+    const formattedProducts = products.map((product) => {
       let isAvailable = true;
       let unavailableReason = null;
 
-      // 1. Check stock / out-of-stock
-      if (prod.availability === 'out-of-stock' || prod.stock <= 0) {
+      // Case 0: Product inactive
+      if (!product.active) {
         isAvailable = false;
-        unavailableReason = 'Out of Stock';
+        unavailableReason = "Unavailable";
       }
 
-      // 2. Check time-based availability
-      else if (prod.availability === 'time-based' && prod.availableAfterTime) {
-        if (currentTime < prod.availableAfterTime) {
+      // Case 1: Out of stock (inventory enabled)
+      else if (product.enableInventory && product.stock <= 0) {
+        isAvailable = false;
+        unavailableReason = "Out of Stock";
+      }
+
+      // Case 2: Time-based availability
+      else if (product.availability === "time-based" && product.availableAfterTime) {
+        const now = new Date();
+        const [hours, minutes] = product.availableAfterTime.split(":").map(Number);
+
+        const availableTime = new Date();
+        availableTime.setHours(hours, minutes, 0, 0);
+
+        if (now < availableTime) {
           isAvailable = false;
-          unavailableReason = `Unavailable until ${prod.availableAfterTime}`;
+          unavailableReason = `Unavailable until ${product.availableAfterTime}`;
+        }
+      }
+
+      // Case 3: Manually marked out of stock
+      else if (product.availability === "out-of-stock") {
+        isAvailable = false;
+        unavailableReason = "Out of Stock";
+      }
+
+      // Case 4: Attributes (variants) check
+      if (product.attributes && product.attributes.length > 0) {
+        const anyVariantAvailable = product.attributes.some(
+          (attr) => attr.isAvailable && attr.stock > 0
+        );
+        if (!anyVariantAvailable) {
+          isAvailable = false;
+          unavailableReason = "Out of Stock (All Variants)";
         }
       }
 
       return {
-        ...prod.toObject(),
+        ...product.toObject(),
         isAvailable,
-        unavailableReason
+        unavailableReason,
       };
     });
 
-    res.json({
+    return res.status(200).json({
       success: true,
-      count: formatted.length,
-      products: formatted
+      message: "Products fetched successfully",
+      products: formattedProducts,
     });
-
-  } catch (err) {
-    console.error('Error fetching products:', err);
-    res.status(500).json({
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    return res.status(500).json({
       success: false,
-      message: 'Server Error',
-      error: err.message
+      message: "Failed to fetch products",
+      error: error.message,
     });
   }
 };
