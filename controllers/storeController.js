@@ -1082,7 +1082,7 @@ exports.getProductsByStore = async (req, res) => {
 
     const filters = {
       restaurantId: storeId, // still mapped to restaurantId in schema
-      active: true, // only fetch active products
+      // active: true, // only fetch active products
     };
 
     if (categoryId) {
