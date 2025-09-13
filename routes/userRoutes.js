@@ -90,7 +90,7 @@ router.post("/wallet/initiate", protect, initiateWalletTopUp)
 router.post("/wallet/verify", protect, verifyAndCreditWallet)
 router.get("/wallet/balance", protect, getWalletBalance)
 router.get("/wallet/transactions", protect, getUserWalletTransactions);
-app.post("/webhook/razorpay",express.raw({ type: "application/json" }),razorpayWebhook);
+router.post("/webhook/razorpay",express.raw({ type: "application/json" }),razorpayWebhook);
 
 
 
