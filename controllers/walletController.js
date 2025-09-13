@@ -15,27 +15,36 @@ exports.initiateWalletTopUp = async (req, res) => {
       return res.status(400).json({ error: "Invalid amount" });
     }
 
-    // In the future, integrate with Razorpay, Stripe etc.
-    // For now, just return mock "payment" data
-      const razorpayOrder = await razorpay.orders.create({
-      amount: amount * 100, // ₹10 => 1000 paise
+    // Step 1: Create Razorpay order
+    const razorpayOrder = await razorpay.orders.create({
+      amount: amount * 100, // convert to paise
       currency: "INR",
       receipt: `wallet_topup_${userId}`,
-      payment_capture: 1,
-    })
+      payment_capture: 1, // auto capture
+    });
 
-      res.status(200).json({
+    // Step 2: Create pending WalletTransaction
+    const walletTransaction = await WalletTransaction.create({
+      user: userId,
+      type: "credit",
+      amount: amount,
+      status: "pending", // pending until webhook confirms
+      description: `Wallet top-up initiated via Razorpay order ${razorpayOrder.id}`,
+      razorpayOrderId: razorpayOrder.id,
+    });
+
+    // Step 3: Return order info to frontend
+    res.status(200).json({
       success: true,
       orderId: razorpayOrder.id,
+      transactionId: walletTransaction._id,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
-      key: process.env.RAZORPAY_KEY_ID, // Send to frontend
+      key: process.env.RAZORPAY_KEY_ID,
     });
   } catch (error) {
     console.error("initiateWalletTopUp error:", error);
-    res.status(500).json({
-      error: "Failed to initiate wallet top-up",
-    });
+    res.status(500).json({ error: "Failed to initiate wallet top-up" });
   }
 };
 exports.verifyAndCreditWallet = async (req, res) => {
@@ -202,5 +211,62 @@ exports.getAllRefundTransactions = async (req, res) => {
   } catch (err) {
     console.error("Error fetching refund transactions:", err);
     res.status(500).json({ error: "Failed to fetch refund transactions." });
+  }
+};
+
+
+
+
+exports.razorpayWebhook = async (req, res) => {
+  try {
+    // Step 1: Verify webhook signature
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const signature = req.headers["x-razorpay-signature"];
+    const body = JSON.stringify(req.body);
+
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(body)
+      .digest("hex");
+
+    if (signature !== expectedSignature) {
+      return res.status(400).json({ error: "Invalid webhook signature" });
+    }
+
+    const event = req.body.event;
+
+    // Step 2: Handle successful payment event
+    if (event === "payment.captured") {
+      const payment = req.body.payload.payment.entity;
+      const razorpayOrderId = payment.order_id;
+      const amount = payment.amount / 100; // convert paise to INR
+
+      // Step 3: Find the wallet transaction
+      const walletTx = await WalletTransaction.findOne({
+        razorpayOrderId: razorpayOrderId,
+        status: "pending",
+      });
+
+      if (!walletTx) {
+        return res.status(404).json({ error: "Wallet transaction not found" });
+      }
+
+      // Step 4: Credit user's wallet
+      const user = await User.findById(walletTx.user);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      user.walletBalance += amount;
+      await user.save();
+
+      // Step 5: Update wallet transaction status
+      walletTx.status = "success";
+      walletTx.description = `Wallet top-up via Razorpay payment ID: ${payment.id}`;
+      await walletTx.save();
+    }
+
+    res.status(200).json({ status: "ok" });
+  } catch (error) {
+    console.error("Razorpay webhook error:", error);
+    res.status(500).json({ error: "Webhook processing failed" });
   }
 };

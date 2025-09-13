@@ -16,7 +16,7 @@ const { registerUser, verifyOtp, loginUser,addAddress,getAddress ,deleteAddressB
        getLoyaltyTransactionHistory,
        getPromoCodesForCustomerAndRestaurant
 } = require("../controllers/userControllers");
-const {initiateWalletTopUp, verifyAndCreditWallet, getWalletBalance, getUserWalletTransactions} = require('../controllers/walletController')
+const {initiateWalletTopUp, verifyAndCreditWallet, getWalletBalance, getUserWalletTransactions,razorpayWebhook} = require('../controllers/walletController')
 
 
 
@@ -90,7 +90,7 @@ router.post("/wallet/initiate", protect, initiateWalletTopUp)
 router.post("/wallet/verify", protect, verifyAndCreditWallet)
 router.get("/wallet/balance", protect, getWalletBalance)
 router.get("/wallet/transactions", protect, getUserWalletTransactions);
-
+router.post("/webhook/razorpay", express.json({ type: "*/*" }), razorpayWebhook);
 
 
 //loyality point
