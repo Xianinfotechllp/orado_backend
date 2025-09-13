@@ -1287,9 +1287,10 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       tipAmount = 0,
       useLoyaltyPoints = false,
       loyaltyPointsToRedeem = null,
+      useWallet = false, // ✅ new: whether user wants to use wallet
     } = req.body;
+    console.log(req.body.useWallet);
 
-    // Validate input
     if (!cartId || !userId) {
       return res.status(400).json({ error: "cartId and userId are required" });
     }
@@ -1305,12 +1306,14 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
     if (!restaurant) {
       return res.status(404).json({ error: "Restaurant not found" });
     }
-    
+
+    // Fetch User
     const user = await User.findById(userId);
+    const walletBalance = user?.walletBalance || 0; // ✅ wallet balance
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
 
-    // Check if user is within restaurant's service area
+    // Check if user is inside service area
     const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
       userCoords,
       restaurant._id
@@ -1319,16 +1322,15 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       return res.status(400).json({
         code: "OUT_OF_DELIVERY_AREA",
         error: "Out of Delivery Area",
-        message: "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+        message: "Sorry, this restaurant does not deliver to your current location.",
       });
     }
 
-    // Check minimum order amount FIRST (before other calculations)
+    // Check minimum order
     const cartSubtotal = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
-
     if (cartSubtotal < restaurant.minOrderAmount) {
       return res.status(400).json({
         code: "MIN_ORDER_NOT_MET",
@@ -1339,19 +1341,19 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       });
     }
 
-    // Fetch User and Loyalty Settings
+    // Loyalty settings
     const loyaltySettings = await LoyalitySettings.findOne({}).lean();
     if (!loyaltySettings) {
       return res.status(400).json({ error: "Loyalty program not configured" });
     }
 
-    // Step 1: Calculate base cart total (pre-offer, pre-surge)
+    // Step 1: Base cart total
     const preSurgeOrderAmount = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
 
-    // Step 2: Get active and valid offers for the restaurant
+    // Step 2: Get active offers
     const offers = await Offer.find({
       applicableRestaurants: restaurant._id,
       isActive: true,
@@ -1359,32 +1361,27 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       validTill: { $gte: new Date() },
     }).lean();
 
-    // Step 3: Calculate surge fee based on location and order value
-    const surgeObj = await getApplicableSurgeFee(
-      userCoords,
-      preSurgeOrderAmount
-    );
+    // Step 3: Calculate surge fee
+    const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
     const surgeReason = surgeObj?.reason || null;
 
-    // Step 4: Get cityId using geo coordinates
+    // Step 4: City ID
     const cityId = await geoService.findCityByCoordinates(longitude, latitude);
 
-    // Step 5: Calculate delivery fee based on distance and city settings
+    // Step 5: Delivery fee
     const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
       userCoords,
       cityId
     );
 
-    const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
-
-    // Step 6: Get final cost breakdown with loyalty points
+    // Step 6: Calculate final cost
     const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
-      promoCode: couponCode, // Pass the coupon code
+      promoCode: couponCode,
       deliveryFee,
       offers,
       revenueShare: { type: "percentage", value: 20 },
@@ -1394,31 +1391,36 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       merchantId: restaurant._id,
       cartId,
       useLoyaltyPoints,
-      loyaltyPointsAvailable: loyaltyPointsAvailable,
-      loyaltyPointsToRedeem: loyaltyPointsToRedeem,
-      loyaltySettings: loyaltySettings,
-      userId: userId,
+      loyaltyPointsAvailable: user.loyaltyPoints || 0,
+      loyaltyPointsToRedeem,
+      loyaltySettings,
+      userId,
       PromoCode: PromoCode,
     });
 
-    // Step 7: Calculate distance between restaurant and customer
+    // Step 7: Apply wallet
+    let walletApplied = 0;
+    if (useWallet && walletBalance > 0) {
+      walletApplied = Math.min(walletBalance, costSummary.finalAmount);
+    }
+    const finalAmountAfterWallet = costSummary.finalAmount - walletApplied;
+     console.log("walletApplied:", walletApplied);
+    console.log("finalAmountAfterWallet:", finalAmountAfterWallet);
+    // Step 8: Distance
     const distanceKm = turf.distance(
       turf.point(userCoords),
       turf.point(restaurantCoords),
       { units: "kilometers" }
     );
 
-    // Step 8: Enhance promo code info with amount needed for application
+    // Step 9: Promo info enhancement
     let enhancedPromoInfo = { ...costSummary.promoCodeInfo };
-    
     if (couponCode && costSummary.promoCodeInfo.applied === false) {
-      // Check if there's a validated promo that couldn't be applied due to minimum order
       if (costSummary.promoCodeInfo.code) {
         const promo = await PromoCode.findOne({
           code: couponCode.toUpperCase(),
           isActive: true
         });
-        
         if (promo && costSummary.cartTotal < promo.minOrderValue) {
           enhancedPromoInfo.amountNeeded = promo.minOrderValue - costSummary.cartTotal;
           enhancedPromoInfo.minOrderValue = promo.minOrderValue;
@@ -1426,11 +1428,11 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       }
     }
 
-    // Step 9: Construct enhanced summary object with loyalty points
+    // Step 10: Build summary
     const summary = {
-      subtotal: costSummary.cartTotal, // This is the cart total after combos
+      subtotal: costSummary.cartTotal,
       minimumOrderAmount: restaurant.minOrderAmount,
-  
+
       // Discounts
       discount: costSummary.totalDiscount,
       offerDiscount: costSummary.offerDiscount,
@@ -1440,37 +1442,38 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       offersApplied: costSummary.offersApplied,
       combosApplied: costSummary.combosApplied,
 
-      // Enhanced Promo Code Information
       promoCodeInfo: enhancedPromoInfo,
 
-      // Delivery + Surge + Tip
       deliveryFee,
       surgeFee: costSummary.surgeFee,
       isSurge,
       surgeReason: costSummary.surgeReason,
       tipAmount: costSummary.tipAmount,
 
-      // Packing and Addons
       packingCharges: costSummary.packingCharges,
       totalPackingCharge: costSummary.totalPackingCharge,
       additionalCharges: costSummary.additionalCharges,
       totalAdditionalCharges: costSummary.totalAdditionalCharges,
 
-      // Tax
-      taxes: costSummary.taxBreakdown,
       tax: costSummary.totalTaxAmount,
+      taxes: costSummary.taxBreakdown,
       totalTaxAmount: costSummary.totalTaxAmount,
 
-      // Distance Info
       distanceKm,
 
-      // Final Amount
-      total: costSummary.finalAmount,
-      finalAmount: costSummary.finalAmount,
+      // Wallet
+      wallet: {
+        applied: walletApplied,
+        remainingBalance: walletBalance - walletApplied,
+      },
 
-      // Loyalty Points Information
+      // Final total
+      total: costSummary.finalAmount,
+      totalPayable: finalAmountAfterWallet,
+      finalAmount:finalAmountAfterWallet,
+
       loyaltyPoints: {
-        available: loyaltyPointsAvailable,
+        available: user.loyaltyPoints || 0,
         used: costSummary.loyaltyPoints.used,
         potentialEarned: costSummary.loyaltyPoints.potentialEarned,
         messages: costSummary.loyaltyPoints.messages,
@@ -1488,11 +1491,11 @@ exports.getOrderPriceSummaryv2 = async (req, res) => {
       },
     };
 
-    // Final response
     return res.status(200).json({
       message: "Bill summary calculated successfully",
       data: summary,
     });
+
   } catch (err) {
     console.error("Error in getOrderPriceSummaryv2:", err);
     res.status(500).json({ error: "Internal Server Error" });

@@ -125,7 +125,36 @@ exports.getUserWalletTransactions = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch wallet transactions." });
   }
 };
-
+exports.getTransactionStatusByOrderId = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user._id;
+    
+    const transaction = await WalletTransaction.findOne({ 
+      razorpayOrderId: orderId,
+      user: userId
+    });
+    
+    if (!transaction) {
+      return res.status(404).json({ 
+        error: "Transaction not found",
+        status: "not_found"
+      });
+    }
+    
+    res.status(200).json({
+      status: transaction.status,
+      amount: transaction.amount,
+      type: transaction.type,
+      description: transaction.description,
+      createdAt: transaction.createdAt,
+      updatedAt: transaction.updatedAt
+    });
+  } catch (error) {
+    console.error("getTransactionStatus error:", error);
+    res.status(500).json({ error: "Failed to get transaction status" });
+  }
+}
 
 
 exports.getWalletBalance = async (req, res) => {
