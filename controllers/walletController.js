@@ -235,32 +235,43 @@ exports.razorpayWebhook = async (req, res) => {
 
     const event = req.body.event;
 
-    // Step 2: Handle successful payment event
+    // ✅ Step 2: Handle events
     if (event === "payment.captured") {
+      // Success case
       const payment = req.body.payload.payment.entity;
       const razorpayOrderId = payment.order_id;
-      const amount = payment.amount / 100; // convert paise to INR
+      const amount = payment.amount / 100; // paise → INR
 
-      // Step 3: Find the wallet transaction
       const walletTx = await WalletTransaction.findOne({
-        razorpayOrderId: razorpayOrderId,
+        razorpayOrderId,
         status: "pending",
       });
+      if (!walletTx) return res.status(404).json({ error: "Wallet transaction not found" });
 
-      if (!walletTx) {
-        return res.status(404).json({ error: "Wallet transaction not found" });
-      }
-
-      // Step 4: Credit user's wallet
       const user = await User.findById(walletTx.user);
       if (!user) return res.status(404).json({ error: "User not found" });
 
       user.walletBalance += amount;
       await user.save();
 
-      // Step 5: Update wallet transaction status
       walletTx.status = "success";
       walletTx.description = `Wallet top-up via Razorpay payment ID: ${payment.id}`;
+      await walletTx.save();
+    }
+
+    else if (event === "payment.failed") {
+      // Failure case
+      const payment = req.body.payload.payment.entity;
+      const razorpayOrderId = payment.order_id;
+
+      const walletTx = await WalletTransaction.findOne({
+        razorpayOrderId,
+        status: "pending",
+      });
+      if (!walletTx) return res.status(404).json({ error: "Wallet transaction not found" });
+
+      walletTx.status = "failed";
+      walletTx.description = `Payment failed. Reason: ${payment.error_description || "Unknown"}`;
       await walletTx.save();
     }
 
