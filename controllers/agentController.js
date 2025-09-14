@@ -1497,10 +1497,13 @@ const deliveryFlow = [
         incentiveBonuses,
         distanceKm,
       });
-    }
-  }
+
+
+      
       await createAgentIncentive({ agentId });
        const createMilestoneProgress = await updateAgentMilestoneProgress(agentId, order, false, earningsData.baseEarinig);  
+    }
+  }
       const response = formatOrder(order, agentId);
 
       res.status(200).json({
