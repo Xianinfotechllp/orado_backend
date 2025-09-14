@@ -1501,7 +1501,7 @@ const deliveryFlow = [
 
       
       await createAgentIncentive({ agentId });
-       const createMilestoneProgress = await updateAgentMilestoneProgress(agentId, order, false, earningsData.baseEarinig);  
+       const createMilestoneProgress = await updateAgentMilestoneProgress(agentId, order, false, earningsData.baseEarnings);  
     }
   }
       const response = formatOrder(order, agentId);
