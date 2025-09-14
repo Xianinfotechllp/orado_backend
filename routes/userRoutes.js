@@ -95,6 +95,7 @@ router.post("/webhook/razorpay",express.raw({ type: "application/json" }),razorp
 
 
 
+
 //loyality point
 
 router.get("/loyalty/balance", protect, getUserLoyaltyBalance)

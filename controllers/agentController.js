@@ -40,6 +40,7 @@ const AgentSelfie = require("../models/AgentSelfieModel");
 const haversineDistance = require("haversine-distance");
 const  calculateEarningsBreakdown  = require("../utils/agentEarningCalculator");
 const { findApplicableSurgeZones } = require("../utils/surgeCalculator");
+const { updateAgentMilestoneProgress } = require("../services/milestoneService");
 exports.registerAgent = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -1499,6 +1500,7 @@ const deliveryFlow = [
     }
   }
       await createAgentIncentive({ agentId });
+       const createMilestoneProgress = await updateAgentMilestoneProgress(agentId, order, false, 10);  
       const response = formatOrder(order, agentId);
 
       res.status(200).json({

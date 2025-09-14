@@ -51,6 +51,9 @@ const { updateAllocationSettings, getAllocationSettings, updateAutoAllocationSta
 const { createRole, getAllRoles, getRoleById, updateRole, deleteRole } = require("../controllers/admin/roleControllers");
 const { createManager, getAllManagers, getManagerById, updateManager, deleteManager } = require("../controllers/admin/managerController");
 // Authentication routes
+
+
+const milestoneController = require("../controllers/milestoneController");
 router.post("/login", adminLogin);
 router.post("/logout", protect, checkRole('admin', 'superAdmin'), logoutAdmin);
 router.post("/logout-all", protect, checkRole('admin', 'superAdmin'), logoutAll);
@@ -435,6 +438,14 @@ router.get("/agent-cod-moniter",getCODMonitoring)
 // Update COD Limit
 router.put("/agents/:agentId/cod-limit", updateAgentCODLimit);
 router.get("/agent/payouts",getAgentPayouts)
+
+
+
+//milestone routes
+router.get("/milestones",milestoneController.getAllMilestones);
+router.post("/milestones",milestoneController.createMilestone);
+router.put("/milestones/:id",milestoneController.updateMilestone);
+router.delete("/milestones/:id",milestoneController.deleteMilestone);
 
 
 
