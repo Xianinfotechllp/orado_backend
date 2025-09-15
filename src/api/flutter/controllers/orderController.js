@@ -1086,19 +1086,18 @@ exports.getCustomerOrderStatus = async (req, res) => {
 
 exports.getOrderPriceSummary = async (req, res) => {
   try {
-    const { 
-      longitude, 
-      latitude, 
-      couponCode, 
-      promoCode,
-      cartId, 
+    const {
+      longitude,
+      latitude,
+      couponCode,
+      cartId,
       tipAmount = 0,
       useLoyaltyPoints = false,
-      loyaltyPointsToRedeem = null
+      loyaltyPointsToRedeem = null,
+      useWallet = false,
     } = req.body;
 
-    console.log(req.body);
-    const userId = req.user._id;
+    const userId = req.user?._id;
 
     if (!cartId || !userId) {
       return res.status(400).json({
@@ -1107,21 +1106,16 @@ exports.getOrderPriceSummary = async (req, res) => {
       });
     }
 
+    // Fetch Cart
     const cart = await Cart.findOne({ _id: cartId, user: userId });
-    if (!cart) {
+    if (!cart || !cart.products?.length) {
       return res.status(404).json({
-        message: "Cart not found for this user",
+        message: "Cart not found or empty",
         messageType: "failure",
       });
     }
 
-    if (!cart.products || cart.products.length === 0) {
-      return res.status(400).json({
-        message: "Cart is empty",
-        messageType: "failure",
-      });
-    }
-
+    // Fetch Restaurant
     const restaurant = await Restaurant.findById(cart.restaurantId);
     if (!restaurant) {
       return res.status(404).json({
@@ -1130,14 +1124,26 @@ exports.getOrderPriceSummary = async (req, res) => {
       });
     }
 
-    // Fetch loyalty settings and user info
-    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
-    const user = await User.findById(userId);
+    // Fetch User and Loyalty settings
+    const [user, loyaltySettings] = await Promise.all([
+      User.findById(userId),
+      LoyalitySettings.findOne({}).lean(),
+    ]);
+
+    if (!loyaltySettings) {
+      return res.status(400).json({
+        message: "Loyalty program not configured",
+        messageType: "failure",
+      });
+    }
+
+    const walletBalance = user?.walletBalance || 0;
     const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
 
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
 
+    // Service area check
     const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
       userCoords,
       restaurant._id
@@ -1147,56 +1153,77 @@ exports.getOrderPriceSummary = async (req, res) => {
         code: "OUT_OF_DELIVERY_AREA",
         error: "Out of Delivery Area",
         messageType: "failure",
-        message: "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
+        message:
+          "Sorry, this restaurant does not deliver to your current location. Please update your address or choose another restaurant nearby.",
       });
     }
 
-    const preSurgeOrderAmount = cart.products.reduce(
+    // Minimum order check
+    const cartSubtotal = cart.products.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
+    if (cartSubtotal < restaurant.minOrderAmount) {
+      return res.status(400).json({
+        code: "MIN_ORDER_NOT_MET",
+        message: `Minimum order amount for this restaurant is ₹${restaurant.minOrderAmount.toFixed(2)}`,
+        minOrderAmount: restaurant.minOrderAmount,
+        currentAmount: cartSubtotal,
+        requiredMore: restaurant.minOrderAmount - cartSubtotal,
+      });
+    }
 
-    const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
+    // Surge and offers
+    const preSurgeOrderAmount = cartSubtotal;
+    const [offers, surgeObj] = await Promise.all([
+      Offer.find({
+        applicableRestaurants: restaurant._id,
+        isActive: true,
+        validFrom: { $lte: new Date() },
+        validTill: { $gte: new Date() },
+      }).lean(),
+      getApplicableSurgeFee(userCoords, preSurgeOrderAmount),
+    ]);
+
     const isSurge = !!surgeObj;
     const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
-    const surgeReason = surgeObj ? surgeObj.reason : null;
+    const surgeReason = surgeObj?.reason || null;
 
+    // City and delivery fee
+    const cityId = await geoService.findCityByCoordinates(longitude, latitude);
     const deliveryFee = await feeService.calculateDeliveryFee(
       restaurantCoords,
-      userCoords
+      userCoords,
+      cityId
     );
 
-    const offers = await Offer.find({
-      applicableRestaurants: restaurant._id,
-      isActive: true,
-      validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() },
-    }).lean();
-
-    const foodTax = await feeService.getActiveTaxes("food");
-
+    // Cost summary (V2)
     const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
-      couponCode,
-      promoCode,
-      deliveryFee: deliveryFee,
-      userCoords,
+      promoCode: couponCode,
+      deliveryFee,
       offers,
       revenueShare: { type: "percentage", value: 20 },
-      taxes: foodTax,
       isSurge,
       surgeFeeAmount,
       surgeReason,
-      merchantId: restaurant.merchant,
-      userId,
-      PromoCode: PromoCode,
-      // Loyalty parameters
+      merchantId: restaurant._id,
+      cartId,
       useLoyaltyPoints,
       loyaltyPointsAvailable,
+      loyaltyPointsToRedeem,
       loyaltySettings,
-      loyaltyPointsToRedeem
+      userId,
+      PromoCode: PromoCode,
     });
+
+    // Wallet application
+    let walletApplied = 0;
+    if (useWallet && walletBalance > 0) {
+      walletApplied = Math.min(walletBalance, costSummary.finalAmount);
+    }
+    const finalAmountAfterWallet = costSummary.finalAmount - walletApplied;
 
     const distanceKm = turf.distance(
       turf.point(userCoords),
@@ -1204,61 +1231,70 @@ exports.getOrderPriceSummary = async (req, res) => {
       { units: "kilometers" }
     );
 
-    const isOffer = costSummary.offersApplied.length > 0 ? "1" : "0";
-    const isPromo = costSummary.promoCodeInfo.applied ? "1" : "0";
+    // Enhance promo info if not applied due to min amount
+    let enhancedPromoInfo = { ...costSummary.promoCodeInfo };
+    if (couponCode && costSummary.promoCodeInfo.applied === false) {
+      if (costSummary.promoCodeInfo.code) {
+        const promo = await PromoCode.findOne({
+          code: couponCode.toUpperCase(),
+          isActive: true,
+        });
+        if (promo && costSummary.cartTotal < promo.minOrderValue) {
+          enhancedPromoInfo.amountNeeded =
+            promo.minOrderValue - costSummary.cartTotal;
+          enhancedPromoInfo.minOrderValue = promo.minOrderValue;
+        }
+      }
+    }
 
     const summary = {
-      deliveryFee: costSummary.deliveryFee.toFixed(2),
-      discount: costSummary.offerDiscount.toFixed(2),
-      distanceKm: distanceKm.toFixed(2),
-      subtotal: costSummary.cartTotal.toFixed(2),
-      tax: costSummary.totalTaxAmount.toFixed(2),
-      totalTaxAmount: costSummary.totalTaxAmount.toFixed(2),
-      surgeFee: costSummary.surgeFee.toFixed(2),
-      total: costSummary.finalAmount.toFixed(2),
-      tipAmount: costSummary.tipAmount.toFixed(2),
-      isSurge: isSurge ? "1" : "0",
-      surgeReason: surgeReason || "",
-      offersApplied: costSummary.offersApplied.length
-        ? costSummary.offersApplied.join(", ")
-        : "",
-      isOffer: isOffer,
-      isPromo: isPromo,
-      promoCodeInfo: {
-        code: costSummary.promoCodeInfo.code || "",
-        applied: isPromo,
-        messages: costSummary.promoCodeInfo.messages || [],
-        discount: costSummary.promoCodeInfo.discount.toFixed(2)
+      subtotal: costSummary.cartTotal,
+      minimumOrderAmount: restaurant.minOrderAmount,
+      discount: costSummary.totalDiscount,
+      offerDiscount: costSummary.offerDiscount,
+      couponDiscount: costSummary.promoCodeInfo.discount,
+      comboDiscount: costSummary.comboDiscount,
+      loyaltyDiscount: costSummary.loyaltyDiscount,
+      offersApplied: costSummary.offersApplied,
+      combosApplied: costSummary.combosApplied,
+      promoCodeInfo: enhancedPromoInfo,
+      deliveryFee,
+      surgeFee: costSummary.surgeFee,
+      isSurge,
+      surgeReason: costSummary.surgeReason,
+      tipAmount: costSummary.tipAmount,
+      packingCharges: costSummary.packingCharges,
+      totalPackingCharge: costSummary.totalPackingCharge,
+      additionalCharges: costSummary.additionalCharges,
+      totalAdditionalCharges: costSummary.totalAdditionalCharges,
+      tax: costSummary.totalTaxAmount,
+      taxes: costSummary.taxBreakdown,
+      totalTaxAmount: costSummary.totalTaxAmount,
+      distanceKm,
+      wallet: {
+        applied: walletApplied,
+        remainingBalance: walletBalance - walletApplied,
       },
-      taxes: costSummary.taxBreakdown.map((tax) => ({
-        name: tax.name,
-        percentage: tax.percentage.toFixed(2),
-        amount: tax.amount.toFixed(2),
-      })),
-      totalDiscount: costSummary.totalDiscount.toFixed(2),
-      // Loyalty points information
+      total: costSummary.finalAmount,
+      totalPayable: finalAmountAfterWallet,
+      finalAmount: finalAmountAfterWallet,
       loyaltyPoints: {
         available: loyaltyPointsAvailable,
-        used: costSummary.loyaltyPoints?.used || 0,
-        potentialEarned: costSummary.loyaltyPoints?.potentialEarned || 0,
-        discount: costSummary.loyaltyPoints?.discount || 0,
-        messages: costSummary.loyaltyPoints?.messages || [],
-        redemptionInfo: {
-          minOrderAmount: loyaltySettings?.minOrderAmountForRedemption || 0,
-          minPoints: loyaltySettings?.minPointsForRedemption || 0,
-          maxPercent: loyaltySettings?.maxRedemptionPercent || 0,
-          valuePerPoint: loyaltySettings?.valuePerPoint || 0,
+        used: costSummary.loyaltyPoints.used,
+        potentialEarned: costSummary.loyaltyPoints.potentialEarned,
+        messages: costSummary.loyaltyPoints.messages,
+        redemptionRules: {
+          minOrderAmount: loyaltySettings.minOrderAmountForRedemption,
+          minPoints: loyaltySettings.minPointsForRedemption,
+          maxPercent: loyaltySettings.maxRedemptionPercent,
+          valuePerPoint: loyaltySettings.valuePerPoint,
         },
-        earningInfo: {
-          minOrderAmount: loyaltySettings?.minOrderAmountForEarning || 0,
-          pointsPerAmount: loyaltySettings?.pointsPerAmount || 0,
-          maxPoints: loyaltySettings?.maxEarningPoints || 0,
+        earningRules: {
+          minOrderAmount: loyaltySettings.minOrderAmountForEarning,
+          pointsPerAmount: loyaltySettings.pointsPerAmount,
+          maxPoints: loyaltySettings.maxEarningPoints,
         },
       },
-      // Additional breakdowns
-      comboDiscount: costSummary.comboDiscount?.toFixed(2) || "0.00",
-      loyaltyDiscount: costSummary.loyaltyDiscount?.toFixed(2) || "0.00",
-      combosApplied: costSummary.combosApplied || []
     };
 
     return res.status(200).json({
@@ -1267,7 +1303,7 @@ exports.getOrderPriceSummary = async (req, res) => {
       data: summary,
     });
   } catch (err) {
-    console.error(err);
+    console.error("Error in getOrderPriceSummary:", err);
     return res.status(500).json({
       message: "Server error",
       messageType: "failure",
@@ -3293,6 +3329,7 @@ exports.reorder = async (req, res) => {
     });
   }
 };
+
 
 
 

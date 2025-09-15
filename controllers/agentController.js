@@ -1433,6 +1433,16 @@ const deliveryFlow = [
     // Check if already exists
     const existingEarning = await AgentEarning.findOne({ agentId, orderId });
     if (!existingEarning) {
+
+
+
+
+
+
+
+
+
+
       // Get earnings config (city/global based on your logic)
       const earningsConfig = await AgentEarningSettings.findOne({ mode: 'global' }); 
       if (!earningsConfig) {
@@ -1501,7 +1511,7 @@ const deliveryFlow = [
 
       
       await createAgentIncentive({ agentId });
-       const createMilestoneProgress = await updateAgentMilestoneProgress(agentId, order, false, earningsData.baseEarnings);  
+       
     }
   }
       const response = formatOrder(order, agentId);
