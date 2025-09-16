@@ -11,7 +11,8 @@ const { registerUser, verifyOtp, loginUser,addAddress, deleteAddressById,editadd
            getUserLoyaltyBalance,
            getLoyaltyTransactionHistory,
            getPromoCodesForCustomerAndRestaurant
-} = require("../controllers/userControllers");
+} = require("../controllers/userControllers")
+const {initiateWalletTopUp, verifyAndCreditWallet, getWalletBalance, getUserWalletTransactions,razorpayWebhook,getTransactionStatusByOrderId} = require('../../../../controllers/walletController')
 const bruteForcePrevent = require("../middlewares/bruteforcePrevent");
 const {verifyToken} = require("../middlewares/auth");
 const {protect, checkRole} = require('../middlewares/authMiddleware')
@@ -39,6 +40,13 @@ router.post("/login-otp/verify",verifyLoginOtp)
 router.post("/fav/restaurants",protect,addFavouriteRestaurant)
 router.get("/fav/restaurants",protect,getFavouriteRestaurants)
 router.put('/fav/restaurants/remove',protect,removeFavouriteRestaurant);
+
+router.post("/wallet/initiate", protect, initiateWalletTopUp)
+router.post("/wallet/verify", protect, verifyAndCreditWallet)
+router.get("/wallet/balance", protect, getWalletBalance)
+router.get("/wallet/transactions", protect, getUserWalletTransactions);
+router.get("/wallet/transactions/:orderId", protect, getTransactionStatusByOrderId)
+router.post("/webhook/razorpay",express.raw({ type: "application/json" }),razorpayWebhook);
 
 
 

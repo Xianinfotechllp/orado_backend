@@ -8,7 +8,7 @@ const crypto = require("crypto");
 exports.initiateWalletTopUp = async (req, res) => {
   try {
     const { amount } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     // Validate amount
     if (!amount || amount <= 0) {
@@ -50,13 +50,13 @@ exports.initiateWalletTopUp = async (req, res) => {
 exports.verifyAndCreditWallet = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({ error: "Missing payment details" });
     }
 
-    // Step 1: Verify signature
+    // ✅ Step 1: Verify signature
     const generatedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -66,25 +66,34 @@ exports.verifyAndCreditWallet = async (req, res) => {
       return res.status(400).json({ error: "Payment verification failed" });
     }
 
-    // Step 2: (Optional) Verify order via Razorpay API if needed
+    // ✅ Step 2: Find pending wallet transaction
+    const walletTx = await WalletTransaction.findOne({
+      razorpayOrderId: razorpay_order_id,
+      user: userId,
+      status: "pending",
+    });
 
-    // Step 3: Credit wallet
-    const amountInPaise = parseInt(req.body.amount); // from frontend
+    if (!walletTx) {
+      return res.status(404).json({ error: "Wallet transaction not found or already processed" });
+    }
 
+    // ✅ Step 3: Update wallet & mark transaction success
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    user.walletBalance += amountInPaise / 100;
+    user.walletBalance += walletTx.amount; // use stored amount, not frontend
     await user.save();
 
-    await WalletTransaction.create({
-      user: user._id,
-      type: "credit",
-      amount: amountInPaise / 100,
-      description: `Wallet top-up via Razorpay payment ID: ${razorpay_payment_id}`,
-    });
+    walletTx.status = "success";
+    walletTx.description = `Wallet top-up verified via Razorpay payment ID: ${razorpay_payment_id}`;
+    walletTx.razorpayPaymentId = razorpay_payment_id;
+    await walletTx.save();
 
-    res.status(200).json({ success: true, message: "Wallet credited successfully" });
+    res.status(200).json({
+      success: true,
+      message: "Wallet credited successfully",
+      balance: user.walletBalance,
+    });
   } catch (error) {
     console.error("verifyAndCreditWallet error:", error);
     res.status(500).json({ error: "Failed to verify and credit wallet" });

@@ -15,6 +15,7 @@ const { getApplicableSurgeFee } = require("../services/surgeCalculator");
 const feeService = require("../services/feeService")
 const Permission = require("../../../../models/restaurantPermissionModel")
 const Offer = require("../../../../models/offerModel")
+const TaxAndCharge = require("../../../../models/taxAndChargeModel");
 
 const {assignTask} = require("../../../../services/allocationService")
 const crypto = require("crypto");
@@ -1084,7 +1085,7 @@ exports.getCustomerOrderStatus = async (req, res) => {
 //   }
 // };
 
-exports.getOrderPriceSummary = async (req, res) => {
+ exports.getOrderPriceSummary = async (req, res) => {
   try {
     const { 
       longitude, 
@@ -1126,7 +1127,6 @@ exports.getOrderPriceSummary = async (req, res) => {
     if (!restaurant) {
       return res.status(404).json({
         message: "Restaurant not found",
-
         messageType: "failure",
       });
     }
@@ -1174,24 +1174,21 @@ exports.getOrderPriceSummary = async (req, res) => {
       validTill: { $gte: new Date() },
     }).lean();
 
-    const foodTax = await feeService.getActiveTaxes("food");
-
     const costSummary = await calculateOrderCostV2({
       cartProducts: cart.products,
       tipAmount,
       couponCode,
       promoCode,
       deliveryFee: deliveryFee,
-      userCoords,
       offers,
       revenueShare: { type: "percentage", value: 20 },
-      taxes: foodTax,
       isSurge,
       surgeFeeAmount,
       surgeReason,
-      merchantId: restaurant.merchant,
+      merchantId: restaurant._id,
       userId,
       PromoCode: PromoCode,
+      TaxAndCharge: TaxAndCharge,
       // Loyalty parameters
       useLoyaltyPoints,
       loyaltyPointsAvailable,
@@ -1208,58 +1205,89 @@ exports.getOrderPriceSummary = async (req, res) => {
     const isOffer = costSummary.offersApplied.length > 0 ? "1" : "0";
     const isPromo = costSummary.promoCodeInfo.applied ? "1" : "0";
 
+    // Format taxes for response
+    const taxes = costSummary.taxBreakdown.map((tax) => ({
+      name: tax.name,
+      level: tax.level,
+      type: tax.type,
+      rate: tax.rate,
+      amount: parseFloat(tax.amount.toFixed(2)),
+    }));
+
+    // Format response to match desired structure
     const summary = {
-      deliveryFee: costSummary.deliveryFee.toFixed(2),
-      discount: costSummary.offerDiscount.toFixed(2),
-      distanceKm: distanceKm.toFixed(2),
-      subtotal: costSummary.cartTotal.toFixed(2),
-      tax: costSummary.totalTaxAmount.toFixed(2),
-      totalTaxAmount: costSummary.totalTaxAmount.toFixed(2),
-      surgeFee: costSummary.surgeFee.toFixed(2),
-      total: costSummary.finalAmount.toFixed(2),
-      tipAmount: costSummary.tipAmount.toFixed(2),
-      isSurge: isSurge ? "1" : "0",
-      surgeReason: surgeReason || "",
-      offersApplied: costSummary.offersApplied.length
-        ? costSummary.offersApplied.join(", ")
-        : "",
-      isOffer: isOffer,
-      isPromo: isPromo,
-      promoCodeInfo: {
-        code: costSummary.promoCodeInfo.code || "",
-        applied: isPromo,
-        messages: costSummary.promoCodeInfo.messages || [],
-        discount: costSummary.promoCodeInfo.discount.toFixed(2)
+      subtotal: parseFloat(costSummary.cartTotal.toFixed(2)),
+      deliveryFee: parseFloat(costSummary.deliveryFee.toFixed(2)),
+      tipAmount: parseFloat(costSummary.tipAmount.toFixed(2)),
+      tax: parseFloat(costSummary.totalTaxAmount.toFixed(2)),
+      totalTaxAmount: parseFloat(costSummary.totalTaxAmount.toFixed(2)),
+      surgeFee: parseFloat(costSummary.surgeFee.toFixed(2)),
+      offerDiscount: parseFloat(costSummary.offerDiscount.toFixed(2)),
+      comboDiscount: parseFloat(costSummary.comboDiscount.toFixed(2)),
+      couponDiscount: parseFloat(costSummary.couponDiscount.toFixed(2)),
+      loyaltyDiscount: parseFloat(costSummary.loyaltyDiscount.toFixed(2)),
+      discount: parseFloat(costSummary.totalDiscount.toFixed(2)),
+      totalAdditionalCharges: parseFloat(costSummary.totalAdditionalCharges.toFixed(2)),
+      totalPackingCharge: parseFloat(costSummary.totalPackingCharge.toFixed(2)),
+      finalAmount: parseFloat(costSummary.finalAmount.toFixed(2)),
+      total: parseFloat(costSummary.finalAmount.toFixed(2)),
+      totalPayable: parseFloat(costSummary.finalAmount.toFixed(2)),
+      distanceKm: parseFloat(distanceKm.toFixed(2)),
+      isSurge: isSurge,
+      surgeReason: surgeReason,
+      offersApplied: costSummary.offersApplied,
+      combosApplied: costSummary.combosApplied,
+      taxes: taxes,
+      additionalCharges: {
+        marketplace: costSummary.additionalCharges.marketplace.map(charge => ({
+          ...charge,
+          amount: parseFloat(charge.amount.toFixed(2))
+        })),
+        merchant: costSummary.additionalCharges.merchant.map(charge => ({
+          ...charge,
+          amount: parseFloat(charge.amount.toFixed(2))
+        }))
       },
-      taxes: costSummary.taxBreakdown.map((tax) => ({
-        name: tax.name,
-        percentage: tax.percentage.toFixed(2),
-        amount: tax.amount.toFixed(2),
-      })),
-      totalDiscount: costSummary.totalDiscount.toFixed(2),
-      // Loyalty points information
+      packingCharges: {
+        marketplace: costSummary.packingCharges.marketplace.map(charge => ({
+          ...charge,
+          amount: parseFloat(charge.amount.toFixed(2))
+        })),
+        merchant: costSummary.packingCharges.merchant.map(charge => ({
+          ...charge,
+          amount: parseFloat(charge.amount.toFixed(2))
+        }))
+      },
+      promoCodeInfo: {
+        code: costSummary.promoCodeInfo.code || null,
+        promoCodeId: costSummary.promoCodeInfo.promoCodeId || null,
+        applied: costSummary.promoCodeInfo.applied,
+        messages: costSummary.promoCodeInfo.messages,
+        discount: parseFloat(costSummary.promoCodeInfo.discount.toFixed(2))
+      },
       loyaltyPoints: {
         available: loyaltyPointsAvailable,
-        used: costSummary.loyaltyPoints?.used || 0,
-        potentialEarned: costSummary.loyaltyPoints?.potentialEarned || 0,
-        discount: costSummary.loyaltyPoints?.discount || 0,
-        messages: costSummary.loyaltyPoints?.messages || [],
-        redemptionInfo: {
+        used: costSummary.loyaltyPoints.used,
+        potentialEarned: costSummary.loyaltyPoints.potentialEarned,
+        discount: parseFloat(costSummary.loyaltyPoints.discount.toFixed(2)),
+        messages: costSummary.loyaltyPoints.messages,
+        redemptionRules: {
           minOrderAmount: loyaltySettings?.minOrderAmountForRedemption || 0,
           minPoints: loyaltySettings?.minPointsForRedemption || 0,
           maxPercent: loyaltySettings?.maxRedemptionPercent || 0,
           valuePerPoint: loyaltySettings?.valuePerPoint || 0,
         },
-        earningInfo: {
+        earningRules: {
           minOrderAmount: loyaltySettings?.minOrderAmountForEarning || 0,
           pointsPerAmount: loyaltySettings?.pointsPerAmount || 0,
           maxPoints: loyaltySettings?.maxEarningPoints || 0,
-        },
+        }
       },
-      // Additional breakdowns
-      comboDiscount: costSummary.comboDiscount?.toFixed(2) || "0.00",
-      loyaltyDiscount: costSummary.loyaltyDiscount?.toFixed(2) || "0.00",
-      combosApplied: costSummary.combosApplied || []
+      wallet: {
+        applied: 0,
+        remainingBalance: 0
+      },
+      minimumOrderAmount: restaurant.minimumOrderAmount || 100
     };
 
     return res.status(200).json({

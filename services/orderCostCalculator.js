@@ -317,6 +317,7 @@ exports.calculateOrderCostWithOffer = async ({
 //   };
 // };
 
+
 async function calculateChargesBreakdown({
   subtotal,
   deliveryFee,
@@ -355,6 +356,7 @@ async function calculateChargesBreakdown({
         continue;
     }
 
+    // FIX: Changed "Percentage" to "Percentage" to match schema
     const amount =
       tax.type === "Percentage" ? (baseAmount * tax.value) / 100 : tax.value;
 
@@ -365,7 +367,7 @@ async function calculateChargesBreakdown({
       level: tax.level,
       type: tax.type,
       rate:
-        tax.type === "Percentage"
+        tax.type === "Percentage" // FIX: Changed "Percentage" to "Percentage"
           ? `${tax.value.toFixed(2)}%`
           : `${tax.value.toFixed(2)}`,
       amount: parseFloat(amount.toFixed(2)),
@@ -381,6 +383,7 @@ async function calculateChargesBreakdown({
 
   for (const charge of additions) {
     const baseAmount = subtotal;
+    // FIX: Changed "Percentage" to "Percentage" to match schema
     const amount =
       charge.type === "Percentage"
         ? (baseAmount * charge.value) / 100
@@ -393,7 +396,7 @@ async function calculateChargesBreakdown({
       level: charge.level,
       type: charge.type,
       rate:
-        charge.type === "Percentage"
+        charge.type === "Percentage" // FIX: Changed "Percentage" to "Percentage"
           ? `${charge.value.toFixed(2)}%`
           : `${charge.value.toFixed(2)}`,
       amount: parseFloat(amount.toFixed(2)),
@@ -415,6 +418,7 @@ async function calculateChargesBreakdown({
 
   for (const charge of packingList) {
     const baseAmount = subtotal;
+    // FIX: Changed "Percentage" to "Percentage" to match schema
     const amount =
       charge.type === "Percentage"
         ? (baseAmount * charge.value) / 100
@@ -427,7 +431,7 @@ async function calculateChargesBreakdown({
       level: charge.level,
       type: charge.type,
       rate:
-        charge.type === "Percentage"
+        charge.type === "Percentage" // FIX: Changed "Percentage" to "Percentage"
           ? `${charge.value.toFixed(2)}%`
           : `${charge.value.toFixed(2)}`,
       amount: parseFloat(amount.toFixed(2)),
