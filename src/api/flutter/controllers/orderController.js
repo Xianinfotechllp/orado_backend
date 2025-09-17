@@ -1085,7 +1085,7 @@ exports.getCustomerOrderStatus = async (req, res) => {
 //   }
 // };
 
- exports.getOrderPriceSummary = async (req, res) => {
+exports.getOrderPriceSummary = async (req, res) => {
   try {
     const { 
       longitude, 
@@ -1098,7 +1098,6 @@ exports.getCustomerOrderStatus = async (req, res) => {
       loyaltyPointsToRedeem = null
     } = req.body;
 
-    console.log(req.body);
     const userId = req.user._id;
 
     if (!cartId || !userId) {
@@ -1189,7 +1188,6 @@ exports.getCustomerOrderStatus = async (req, res) => {
       userId,
       PromoCode: PromoCode,
       TaxAndCharge: TaxAndCharge,
-      // Loyalty parameters
       useLoyaltyPoints,
       loyaltyPointsAvailable,
       loyaltySettings,
@@ -1201,9 +1199,6 @@ exports.getCustomerOrderStatus = async (req, res) => {
       turf.point(restaurantCoords),
       { units: "kilometers" }
     );
-
-    const isOffer = costSummary.offersApplied.length > 0 ? "1" : "0";
-    const isPromo = costSummary.promoCodeInfo.applied ? "1" : "0";
 
     // Format taxes for response
     const taxes = costSummary.taxBreakdown.map((tax) => ({
@@ -1235,7 +1230,7 @@ exports.getCustomerOrderStatus = async (req, res) => {
       distanceKm: parseFloat(distanceKm.toFixed(2)),
       isSurge: isSurge,
       surgeReason: surgeReason,
-      offersApplied: costSummary.offersApplied,
+      offersApplied: costSummary.offersApplied, // This now has the requested format
       combosApplied: costSummary.combosApplied,
       taxes: taxes,
       additionalCharges: {

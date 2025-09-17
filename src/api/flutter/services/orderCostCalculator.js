@@ -193,7 +193,7 @@ exports.calculateOrderCostV2 = async ({
 
   let cartTotal = 0;
   let appliedCombos = [];
-  let appliedOffers = []; // Track all applied offers
+  let appliedOffers = []; // This will store offers in the requested format
   let comboDiscount = 0;
 
   // Process combo offers first
@@ -228,17 +228,27 @@ exports.calculateOrderCostV2 = async ({
         }
 
         const comboPriceTotal = combo.comboPrice * matchCount;
-        comboDiscount += actualPrice - comboPriceTotal;
+        const comboDiscountAmount = actualPrice - comboPriceTotal;
+        comboDiscount += comboDiscountAmount;
         cartTotal += comboPriceTotal;
 
-        const comboApplied = {
+        // Add to applied offers array in the requested format
+        appliedOffers.push({
+          type: "combo",
+          offerId: offer._id.toString(),
+          title: combo.name || offer.title,
+          appliedOn: combo.products.map(p => ({
+            productId: p.product.toString(),
+            name: p.name || "Product"
+          })),
+          amount: parseFloat(comboDiscountAmount.toFixed(2))
+        });
+
+        appliedCombos.push({
           title: combo.name || offer.title,
           times: matchCount,
-          saved: actualPrice - comboPriceTotal,
-        };
-        
-        appliedCombos.push(comboApplied);
-        appliedOffers.push(`Combo: ${comboApplied.title} (${comboApplied.times}x)`);
+          saved: comboDiscountAmount,
+        });
       }
     }
   }
@@ -248,6 +258,66 @@ exports.calculateOrderCostV2 = async ({
     if (item.quantity > 0) {
       cartTotal += item.price * item.quantity;
     }
+  }
+
+  // Process Flat/Percentage Offers (excluding combo items)
+  let offerDiscount = 0;
+  const regularOffers = offers.filter(o => o.type === "flat" || o.type === "percentage");
+  
+  for (const offer of regularOffers) {
+    let discount = 0;
+    let applicableItems = [];
+    let appliedOn = [];
+    
+    // Check eligibility (you might want to add more eligibility checks here)
+    if (cartTotal < offer.minOrderValue) continue;
+
+    if (offer.applicableLevel === "Product") {
+      // Filter out combo items from product-level offers
+      applicableItems = cartCopy.filter(cp => 
+        cp.quantity > 0 && 
+        offer.applicableProducts?.some(p => p.toString() === cp.productId.toString())
+      );
+      
+      if (!applicableItems.length) continue;
+      
+      const matchedTotal = applicableItems.reduce((sum, p) => sum + p.price * p.quantity, 0);
+      if (matchedTotal < offer.minOrderValue) continue;
+      
+      // Create appliedOn array for product-level offers
+      appliedOn = applicableItems.map(item => ({
+        productId: item.productId,
+        name: item.name || "Product"
+      }));
+    } else {
+      // For order-level offers
+      appliedOn = ["cart"]; // Indicate this applies to the entire cart
+    }
+    
+    // Calculate discount based on offer type
+    if (offer.type === "flat") {
+      discount = offer.discountValue;
+    } else if (offer.type === "percentage") {
+      const baseAmount = offer.applicableLevel === "Product" ? 
+        applicableItems.reduce((sum, p) => sum + p.price * p.quantity, 0) : 
+        cartTotal;
+      
+      discount = (baseAmount * offer.discountValue) / 100;
+      if (offer.maxDiscount) {
+        discount = Math.min(discount, offer.maxDiscount);
+      }
+    }
+    
+    // Add to applied offers array
+    appliedOffers.push({
+      type: offer.applicableLevel === "Product" ? "product" : "restaurant",
+      offerId: offer._id.toString(),
+      title: offer.title,
+      appliedOn: appliedOn,
+      amount: parseFloat(discount.toFixed(2))
+    });
+    
+    offerDiscount += discount;
   }
 
   // Promo and Coupon Code Validation (merged logic)
@@ -291,7 +361,6 @@ exports.calculateOrderCostV2 = async ({
           }
           isPromoApplied = true;
           promoCodeMessages.push(`Promo code applied: ${promo.code}`);
-          appliedOffers.push(`Promo: ${promo.code} (₹${promoDiscount.toFixed(2)})`);
         }
       } else {
         promoCodeMessages.push("Invalid promo code");
@@ -304,8 +373,6 @@ exports.calculateOrderCostV2 = async ({
 
   // Process coupon code if provided (and no promo code applied)
   if (couponCode && !isPromoApplied) {
-    // In a real implementation, you would query a CouponCode model similar to PromoCode
-    // For now, keeping your existing logic but making it more structured
     const couponMap = {
       "WELCOME50": { discount: 50, message: "Welcome coupon applied", name: "WELCOME50" },
       "FREEDLV": { discount: deliveryFee, message: "Free delivery coupon applied", name: "FREEDLV" }
@@ -316,66 +383,12 @@ exports.calculateOrderCostV2 = async ({
       couponDiscount = coupon.discount;
       couponApplied = couponCode.toUpperCase();
       promoCodeMessages.push(coupon.message);
-      appliedOffers.push(`Coupon: ${coupon.name} (₹${couponDiscount.toFixed(2)})`);
     } else {
       promoCodeMessages.push("Invalid coupon code");
     }
   }
 
-  // Apply Flat/Percentage Offers (excluding combo items)
-  let offerDiscount = 0;
-  let appliedRegularOffer = null;
-
-  const regularOffers = offers.filter(o => o.type === "flat" || o.type === "percentage");
-  
-  for (const offer of regularOffers) {
-    let discount = 0;
-    let applicableItems = [];
-
-    if (offer.applicableLevel === "Product") {
-      // Filter out combo items from product-level offers
-      applicableItems = cartCopy.filter(cp => 
-        cp.quantity > 0 && 
-        offer.applicableProducts?.some(p => p.toString() === cp.productId.toString())
-      );
-      
-      if (!applicableItems.length) continue;
-
-      const matchedTotal = applicableItems.reduce((sum, p) => sum + p.price * p.quantity, 0);
-      if (matchedTotal < offer.minOrderValue) continue;
-    } else {
-      // For order-level offers, use the original cart total
-      if (originalCartTotal < offer.minOrderValue) continue;
-    }
-
-    // Calculate discount based on offer type
-    if (offer.type === "flat") {
-      discount = offer.discountValue;
-    } else if (offer.type === "percentage") {
-      const baseAmount = offer.applicableLevel === "Product" 
-        ? applicableItems.reduce((sum, p) => sum + p.price * p.quantity, 0)
-        : originalCartTotal;
-      
-      discount = (baseAmount * offer.discountValue) / 100;
-      if (offer.maxDiscount) {
-        discount = Math.min(discount, offer.maxDiscount);
-      }
-    }
-
-    // Apply only the best offer (highest discount)
-    if (discount > offerDiscount) {
-      offerDiscount = discount;
-      appliedRegularOffer = offer;
-    }
-  }
-
-  // Add regular offer to applied offers if applicable
-  if (appliedRegularOffer) {
-    appliedOffers.push(`Offer: ${appliedRegularOffer.title} (₹${offerDiscount.toFixed(2)})`);
-  }
-
-  // Calculate taxable amount based on cartTotal (not originalCartTotal)
-  // This represents the amount that is subject to taxes
+  // Calculate taxable amount based on cartTotal
   const taxableAmount = cartTotal - offerDiscount - (isPromoApplied ? promoDiscount : 0) - couponDiscount;
 
   // Charges Breakdown
@@ -536,7 +549,6 @@ exports.calculateOrderCostV2 = async ({
         loyaltyMessages.push(
           `Redeemed ${pointsUsed} points (₹${loyaltyDiscount.toFixed(2)} discount)`
         );
-        appliedOffers.push(`Loyalty: ${pointsUsed} points (₹${loyaltyDiscount.toFixed(2)})`);
       }
     }
   }
@@ -589,7 +601,7 @@ exports.calculateOrderCostV2 = async ({
       couponDiscount + 
       loyaltyDiscount
     ).toFixed(2)),
-    offersApplied: appliedOffers, // Now includes all applied offers
+    offersApplied: appliedOffers, // This now has the requested format
     combosApplied: appliedCombos,
     promoCodeInfo: {
       code: validatedPromo?.code || couponApplied || null,
@@ -598,7 +610,7 @@ exports.calculateOrderCostV2 = async ({
       messages: promoCodeMessages,
       discount: promoDiscount + couponDiscount
     },
-    taxableAmount: parseFloat(taxableAmount.toFixed(2)), // Now based on cartTotal
+    taxableAmount: parseFloat(taxableAmount.toFixed(2)),
     taxBreakdown,
     totalTaxAmount: parseFloat(totalTaxAmount.toFixed(2)),
     packingCharges,
@@ -610,7 +622,6 @@ exports.calculateOrderCostV2 = async ({
     surgeReason,
     finalAmount: parseFloat(finalAmountAfterLoyalty.toFixed(2)),
     revenueShareAmount: parseFloat(revenueShareAmount.toFixed(2)),
-    appliedOffer: appliedRegularOffer,
     loyaltyPoints: {
       used: pointsUsed,
       potentialEarned: potentialPointsEarned,
