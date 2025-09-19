@@ -40,7 +40,9 @@ const loyaltyPointTransactionSchema = new mongoose.Schema(
       enum: ['active', 'redeemed', 'expired'],
       default: 'active',
     },
-
+ amountValue: {
+  type: Number
+ },
     transactionCreatedAt: {
       type: Date,
       default: Date.now,

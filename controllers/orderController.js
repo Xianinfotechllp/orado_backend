@@ -43,7 +43,7 @@ const { awardPoints } = require("../services/loyaltyPointService");
 const { emitNewOrderToAdmin } = require("../services/orderSocketService");
 const { reduceStockForOrder } = require("../services/inventoryService")
 
-
+const loyaliltyPoinService = require("../services/loyaltyPointService")
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -1230,6 +1230,363 @@ const coupons = {
   FLAT50: { type: "flat", value: 50 },
 };
 
+
+
+
+
+exports.getOrderPriceSummaryv2 = async (req, res) => {
+  try {
+    const {
+      longitude,
+      latitude,
+      couponCode,
+      cartId,
+      userId,
+      tipAmount = 0,
+      useLoyaltyPoints = false,
+      loyaltyPointsToRedeem = null,
+      useWallet = false,
+      walletAmount = 0, // Added to support partial wallet payments
+    } = req.body;
+
+    console.log('Request body:', req.body);
+
+    // Basic validation
+    if (!cartId || !userId) {
+      return res.status(400).json({ 
+        error: "cartId and userId are required",
+        messageType: "failure"
+      });
+    }
+
+    // Validate wallet parameters
+    if (useWallet && typeof useWallet !== 'boolean') {
+      return res.status(400).json({ 
+        error: "useWallet must be a boolean value",
+        messageType: "failure"
+      });
+    }
+
+    if (useWallet && (typeof walletAmount !== 'number' || walletAmount < 0)) {
+      return res.status(400).json({ 
+        error: "walletAmount must be a non-negative number when useWallet is true",
+        messageType: "failure"
+      });
+    }
+
+    // Validate mutual exclusivity of wallet and loyalty points
+    if (useWallet && useLoyaltyPoints && loyaltyPointsToRedeem > 0) {
+      return res.status(400).json({ 
+        error: "Cannot use both wallet and loyalty points simultaneously",
+        messageType: "failure"
+      });
+    }
+
+    // Fetch User with wallet balance
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ 
+        error: "User not found",
+        messageType: "failure"
+      });
+    }
+
+    const walletBalance = user.walletBalance || 0;
+
+    // Validate wallet amount doesn't exceed balance
+    if (useWallet && walletAmount > walletBalance) {
+      return res.status(400).json({ 
+        error: "Insufficient wallet balance",
+        messageType: "failure",
+        walletBalance,
+        requestedAmount: walletAmount
+      });
+    }
+
+    // Fetch Cart
+    const cart = await Cart.findOne({ _id: cartId, user: userId });
+    if (!cart) {
+      return res.status(404).json({ 
+        error: "Cart not found for this user",
+        messageType: "failure"
+      });
+    }
+
+    if (!cart.products || cart.products.length === 0) {
+      return res.status(400).json({ 
+        error: "Cart is empty",
+        messageType: "failure"
+      });
+    }
+
+    // Fetch Restaurant
+    const restaurant = await Restaurant.findById(cart.restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ 
+        error: "Restaurant not found",
+        messageType: "failure"
+      });
+    }
+
+    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+    const restaurantCoords = restaurant.location.coordinates;
+
+    // Validate coordinates
+    if (isNaN(userCoords[0]) || isNaN(userCoords[1])) {
+      return res.status(400).json({ 
+        error: "Invalid coordinates provided",
+        messageType: "failure"
+      });
+    }
+
+    // Check if user is inside service area
+    const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
+      userCoords,
+      restaurant._id
+    );
+    if (!isInsideServiceArea) {
+      return res.status(400).json({
+        code: "OUT_OF_DELIVERY_AREA",
+        error: "Out of Delivery Area",
+        message: "Sorry, this restaurant does not deliver to your current location.",
+        messageType: "failure"
+      });
+    }
+
+    // Check minimum order amount
+    const cartSubtotal = cart.products.reduce(
+      (total, item) => total + item.price * item.quantity,
+      0
+    );
+    if (cartSubtotal < restaurant.minOrderAmount) {
+      return res.status(400).json({
+        code: "MIN_ORDER_NOT_MET",
+        message: `Minimum order amount for this restaurant is ₹${restaurant.minOrderAmount.toFixed(2)}`,
+        minOrderAmount: restaurant.minOrderAmount,
+        currentAmount: cartSubtotal,
+        requiredMore: restaurant.minOrderAmount - cartSubtotal,
+        messageType: "failure"
+      });
+    }
+
+    // Loyalty settings
+    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+    if (!loyaltySettings) {
+      return res.status(400).json({ 
+        error: "Loyalty program not configured",
+        messageType: "failure"
+      });
+    }
+
+    // Get active offers
+    const offers = await Offer.find({
+      applicableRestaurants: restaurant._id,
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() },
+    }).lean();
+
+    // Calculate surge fee
+    const surgeObj = await getApplicableSurgeFee(userCoords, cartSubtotal);
+    const isSurge = !!surgeObj;
+    const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
+    const surgeReason = surgeObj?.reason || null;
+
+    // Get city ID for delivery fee calculation
+    const cityId = await geoService.findCityByCoordinates(longitude, latitude);
+
+    // Calculate delivery fee
+    const deliveryFee = await feeService.calculateDeliveryFee(
+      restaurantCoords,
+      userCoords,
+      cityId
+    );
+
+    // Calculate complete order cost
+    const costSummary = await calculateOrderCostV2({
+      cartProducts: cart.products,
+      tipAmount,
+      promoCode: couponCode,
+      deliveryFee,
+      offers,
+      revenueShare: { type: "percentage", value: 20 },
+      isSurge,
+      surgeFeeAmount,
+      surgeReason,
+      merchantId: restaurant._id,
+      cartId,
+      useLoyaltyPoints,
+      loyaltyPointsAvailable: user.loyaltyPoints || 0,
+      loyaltyPointsToRedeem,
+      loyaltySettings,
+      userId,
+      PromoCode: PromoCode,
+    });
+
+    // Apply wallet logic with partial amount support
+    let walletApplied = 0;
+    let walletCoveragePercentage = 0;
+    let canCoverFullAmount = false;
+    let walletExceedsOrderAmount = false;
+
+    if (useWallet && walletAmount > 0) {
+      // Validate wallet amount doesn't exceed order total
+      if (walletAmount > costSummary.finalAmount) {
+        walletExceedsOrderAmount = true;
+        walletApplied = costSummary.finalAmount; // Apply only up to order total
+      } else {
+        walletApplied = walletAmount;
+      }
+      
+      walletCoveragePercentage = (walletApplied / costSummary.finalAmount * 100).toFixed(2);
+      canCoverFullAmount = walletAmount >= costSummary.finalAmount;
+    }
+
+    const finalAmountAfterWallet = costSummary.finalAmount - walletApplied;
+
+    // Prevent negative amounts (safety check)
+    const finalPayableAmount = Math.max(0, finalAmountAfterWallet);
+
+    // Calculate distance
+    const distanceKm = turf.distance(
+      turf.point(userCoords),
+      turf.point(restaurantCoords),
+      { units: "kilometers" }
+    );
+
+    // Enhance promo code information
+    let enhancedPromoInfo = { ...costSummary.promoCodeInfo };
+    if (couponCode && costSummary.promoCodeInfo.applied === false) {
+      if (costSummary.promoCodeInfo.code) {
+        const promo = await PromoCode.findOne({
+          code: couponCode.toUpperCase(),
+          isActive: true
+        });
+        if (promo && costSummary.cartTotal < promo.minOrderValue) {
+          enhancedPromoInfo.amountNeeded = promo.minOrderValue - costSummary.cartTotal;
+          enhancedPromoInfo.minOrderValue = promo.minOrderValue;
+        }
+      }
+    }
+
+    // Build comprehensive summary response
+    const summary = {
+      // Basic amounts
+      subtotal: costSummary.cartTotal,
+      minimumOrderAmount: restaurant.minOrderAmount,
+
+      // Discounts breakdown
+      discount: costSummary.totalDiscount,
+      offerDiscount: costSummary.offerDiscount,
+      couponDiscount: costSummary.promoCodeInfo.discount,
+      comboDiscount: costSummary.comboDiscount,
+      loyaltyDiscount: costSummary.loyaltyDiscount,
+      offersApplied: costSummary.offersApplied,
+      combosApplied: costSummary.combosApplied,
+
+      // Promo code information
+      promoCodeInfo: enhancedPromoInfo,
+
+      // Fees and charges
+      deliveryFee,
+      surgeFee: costSummary.surgeFee,
+      isSurge,
+      surgeReason: costSummary.surgeReason,
+      tipAmount: costSummary.tipAmount,
+
+      // Additional charges
+      packingCharges: costSummary.packingCharges,
+      totalPackingCharge: costSummary.totalPackingCharge,
+      additionalCharges: costSummary.additionalCharges,
+      totalAdditionalCharges: costSummary.totalAdditionalCharges,
+
+      // Taxes
+      tax: costSummary.totalTaxAmount,
+      taxes: costSummary.taxBreakdown,
+      totalTaxAmount: costSummary.totalTaxAmount,
+
+      // Distance
+      distanceKm: distanceKm.toFixed(2),
+
+      // Enhanced wallet information
+      wallet: {
+        applied: walletApplied,
+        requestedAmount: useWallet ? walletAmount : 0,
+        remainingBalance: walletBalance - walletApplied,
+        originalBalance: walletBalance,
+        canCoverFullAmount: canCoverFullAmount,
+        coveragePercentage: walletCoveragePercentage,
+        used: useWallet,
+        exceedsOrderAmount: walletExceedsOrderAmount,
+        maxApplicableAmount: Math.min(walletBalance, costSummary.finalAmount)
+      },
+
+      // Amount breakdown
+      amountBreakdown: {
+        originalTotal: costSummary.finalAmount,
+        walletDeduction: walletApplied,
+        finalPayable: finalPayableAmount,
+        remainingWalletBalance: walletBalance - walletApplied
+      },
+
+      // Final totals
+      total: costSummary.finalAmount,
+      totalPayable: finalPayableAmount,
+      finalAmount: finalPayableAmount,
+
+      // Loyalty points information
+      loyaltyPoints: {
+        available: user.loyaltyPoints || 0,
+        used: costSummary.loyaltyPoints.used,
+        potentialEarned: costSummary.loyaltyPoints.potentialEarned,
+        messages: costSummary.loyaltyPoints.messages,
+        redemptionRules: {
+          minOrderAmount: loyaltySettings.minOrderAmountForRedemption,
+          minPoints: loyaltySettings.minPointsForRedemption,
+          maxPercent: loyaltySettings.maxRedemptionPercent,
+          valuePerPoint: loyaltySettings.valuePerPoint,
+        },
+        earningRules: {
+          minOrderAmount: loyaltySettings.minOrderAmountForEarning,
+          pointsPerAmount: loyaltySettings.pointsPerAmount,
+          maxPoints: loyaltySettings.maxEarningPoints,
+        },
+      },
+
+      // Restaurant information
+      restaurant: {
+        id: restaurant._id,
+        name: restaurant.name,
+        minOrderAmount: restaurant.minOrderAmount
+      }
+    };
+
+    console.log('Wallet application details:', {
+      useWallet,
+      walletBalance,
+      walletAmountRequested: walletAmount,
+      orderTotal: costSummary.finalAmount,
+      walletApplied,
+      finalPayable: finalPayableAmount,
+      exceedsOrderAmount: walletExceedsOrderAmount
+    });
+
+    return res.status(200).json({
+      message: "Bill summary calculated successfully",
+      messageType: "success",
+      data: summary,
+    });
+
+  } catch (err) {
+    console.error("Error in getOrderPriceSummaryv2:", err);
+    res.status(500).json({ 
+      error: "Internal Server Error",
+      message: err.message,
+      messageType: "failure"
+    });
+  }
+};
+
 const TAX_PERCENTAGE = 8; // example 8%
 
 exports.getOrderPriceSummary = async (req, res) => {
@@ -1276,231 +1633,7 @@ exports.getOrderPriceSummary = async (req, res) => {
   }
 };
 
-exports.getOrderPriceSummaryv2 = async (req, res) => {
-  try {
-    const {
-      longitude,
-      latitude,
-      couponCode,
-      cartId,
-      userId,
-      tipAmount = 0,
-      useLoyaltyPoints = false,
-      loyaltyPointsToRedeem = null,
-      useWallet = false, // ✅ new: whether user wants to use wallet
-    } = req.body;
-    console.log(req.body.useWallet);
 
-    if (!cartId || !userId) {
-      return res.status(400).json({ error: "cartId and userId are required" });
-    }
-
-    // Fetch Cart
-    const cart = await Cart.findOne({ _id: cartId, user: userId });
-    if (!cart || !cart.products?.length) {
-      return res.status(404).json({ error: "Cart not found or empty" });
-    }
-
-    // Fetch Restaurant
-    const restaurant = await Restaurant.findById(cart.restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ error: "Restaurant not found" });
-    }
-
-    // Fetch User
-    const user = await User.findById(userId);
-    const walletBalance = user?.walletBalance || 0; // ✅ wallet balance
-    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
-    const restaurantCoords = restaurant.location.coordinates;
-
-    // Check if user is inside service area
-    const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
-      userCoords,
-      restaurant._id
-    );
-    if (!isInsideServiceArea) {
-      return res.status(400).json({
-        code: "OUT_OF_DELIVERY_AREA",
-        error: "Out of Delivery Area",
-        message: "Sorry, this restaurant does not deliver to your current location.",
-      });
-    }
-
-    // Check minimum order
-    const cartSubtotal = cart.products.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0
-    );
-    if (cartSubtotal < restaurant.minOrderAmount) {
-      return res.status(400).json({
-        code: "MIN_ORDER_NOT_MET",
-        message: `Minimum order amount for this restaurant is ₹${restaurant.minOrderAmount.toFixed(2)}`,
-        minOrderAmount: restaurant.minOrderAmount,
-        currentAmount: cartSubtotal,
-        requiredMore: restaurant.minOrderAmount - cartSubtotal
-      });
-    }
-
-    // Loyalty settings
-    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
-    if (!loyaltySettings) {
-      return res.status(400).json({ error: "Loyalty program not configured" });
-    }
-
-    // Step 1: Base cart total
-    const preSurgeOrderAmount = cart.products.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0
-    );
-
-    // Step 2: Get active offers
-    const offers = await Offer.find({
-      applicableRestaurants: restaurant._id,
-      isActive: true,
-      validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() },
-    }).lean();
-
-    // Step 3: Calculate surge fee
-    const surgeObj = await getApplicableSurgeFee(userCoords, preSurgeOrderAmount);
-    const isSurge = !!surgeObj;
-    const surgeFeeAmount = surgeObj ? surgeObj.fee : 0;
-    const surgeReason = surgeObj?.reason || null;
-
-    // Step 4: City ID
-    const cityId = await geoService.findCityByCoordinates(longitude, latitude);
-
-    // Step 5: Delivery fee
-    const deliveryFee = await feeService.calculateDeliveryFee(
-      restaurantCoords,
-      userCoords,
-      cityId
-    );
-
-    // Step 6: Calculate final cost
-    const costSummary = await calculateOrderCostV2({
-      cartProducts: cart.products,
-      tipAmount,
-      promoCode: couponCode,
-      deliveryFee,
-      offers,
-      revenueShare: { type: "percentage", value: 20 },
-      isSurge,
-      surgeFeeAmount,
-      surgeReason,
-      merchantId: restaurant._id,
-      cartId,
-      useLoyaltyPoints,
-      loyaltyPointsAvailable: user.loyaltyPoints || 0,
-      loyaltyPointsToRedeem,
-      loyaltySettings,
-      userId,
-      PromoCode: PromoCode,
-    });
-
-    // Step 7: Apply wallet
-    let walletApplied = 0;
-    if (useWallet && walletBalance > 0) {
-      walletApplied = Math.min(walletBalance, costSummary.finalAmount);
-    }
-    const finalAmountAfterWallet = costSummary.finalAmount - walletApplied;
-     console.log("walletApplied:", walletApplied);
-    console.log("finalAmountAfterWallet:", finalAmountAfterWallet);
-    // Step 8: Distance
-    const distanceKm = turf.distance(
-      turf.point(userCoords),
-      turf.point(restaurantCoords),
-      { units: "kilometers" }
-    );
-
-    // Step 9: Promo info enhancement
-    let enhancedPromoInfo = { ...costSummary.promoCodeInfo };
-    if (couponCode && costSummary.promoCodeInfo.applied === false) {
-      if (costSummary.promoCodeInfo.code) {
-        const promo = await PromoCode.findOne({
-          code: couponCode.toUpperCase(),
-          isActive: true
-        });
-        if (promo && costSummary.cartTotal < promo.minOrderValue) {
-          enhancedPromoInfo.amountNeeded = promo.minOrderValue - costSummary.cartTotal;
-          enhancedPromoInfo.minOrderValue = promo.minOrderValue;
-        }
-      }
-    }
-
-    // Step 10: Build summary
-    const summary = {
-      subtotal: costSummary.cartTotal,
-      minimumOrderAmount: restaurant.minOrderAmount,
-
-      // Discounts
-      discount: costSummary.totalDiscount,
-      offerDiscount: costSummary.offerDiscount,
-      couponDiscount: costSummary.promoCodeInfo.discount,
-      comboDiscount: costSummary.comboDiscount,
-      loyaltyDiscount: costSummary.loyaltyDiscount,
-      offersApplied: costSummary.offersApplied,
-      combosApplied: costSummary.combosApplied,
-
-      promoCodeInfo: enhancedPromoInfo,
-
-      deliveryFee,
-      surgeFee: costSummary.surgeFee,
-      isSurge,
-      surgeReason: costSummary.surgeReason,
-      tipAmount: costSummary.tipAmount,
-
-      packingCharges: costSummary.packingCharges,
-      totalPackingCharge: costSummary.totalPackingCharge,
-      additionalCharges: costSummary.additionalCharges,
-      totalAdditionalCharges: costSummary.totalAdditionalCharges,
-
-      tax: costSummary.totalTaxAmount,
-      taxes: costSummary.taxBreakdown,
-      totalTaxAmount: costSummary.totalTaxAmount,
-
-      distanceKm,
-
-      // Wallet
-      wallet: {
-        applied: walletApplied,
-        remainingBalance: walletBalance - walletApplied,
-      },
-
-      // Final total
-      total: costSummary.finalAmount,
-      totalPayable: finalAmountAfterWallet,
-      finalAmount:finalAmountAfterWallet,
-
-      loyaltyPoints: {
-        available: user.loyaltyPoints || 0,
-        used: costSummary.loyaltyPoints.used,
-        potentialEarned: costSummary.loyaltyPoints.potentialEarned,
-        messages: costSummary.loyaltyPoints.messages,
-        redemptionRules: {
-          minOrderAmount: loyaltySettings.minOrderAmountForRedemption,
-          minPoints: loyaltySettings.minPointsForRedemption,
-          maxPercent: loyaltySettings.maxRedemptionPercent,
-          valuePerPoint: loyaltySettings.valuePerPoint,
-        },
-        earningRules: {
-          minOrderAmount: loyaltySettings.minOrderAmountForEarning,
-          pointsPerAmount: loyaltySettings.pointsPerAmount,
-          maxPoints: loyaltySettings.maxEarningPoints,
-        },
-      },
-    };
-
-    return res.status(200).json({
-      message: "Bill summary calculated successfully",
-      data: summary,
-    });
-
-  } catch (err) {
-    console.error("Error in getOrderPriceSummaryv2:", err);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-};
 
 exports.reassignExpiredOrders = async () => {
   try {
@@ -2162,6 +2295,8 @@ exports.placeOrderV2 = async (req, res) => {
       country = "India",
       useLoyaltyPoints = false,
       loyaltyPointsToRedeem = null,
+      useWallet = false,
+      walletAmount = 0,
     } = req.body;
 
     // Basic validation
@@ -2177,6 +2312,22 @@ exports.placeOrderV2 = async (req, res) => {
     ) {
       return res.status(400).json({
         message: "Required fields are missing",
+        messageType: "failure",
+      });
+    }
+
+    // Validate payment method
+    if (!['cash', 'online', 'wallet'].includes(paymentMethod)) {
+      return res.status(400).json({
+        message: "Invalid payment method",
+        messageType: "failure",
+      });
+    }
+
+    // Wallet validation
+    if (useWallet && (!walletAmount || walletAmount <= 0)) {
+      return res.status(400).json({
+        message: "Invalid wallet amount",
         messageType: "failure",
       });
     }
@@ -2197,27 +2348,38 @@ exports.placeOrderV2 = async (req, res) => {
         messageType: "failure",
       });
     }
-const cartSubtotal = cart.products.reduce(
-  (total, item) => total + item.price * item.quantity,
-  0
-);
 
-if (cartSubtotal < restaurant.minOrderAmount) {
-  return res.status(400).json({
-    code: "MIN_ORDER_NOT_REACHED",
-    message: `Minimum order amount for this store is ₹${restaurant.minOrderAmount}. Please add more items.`,
-    messageType: "failure",
-  });
-}
+    const cartSubtotal = cart.products.reduce(
+      (total, item) => total + item.price * item.quantity,
+      0
+    );
 
+    if (cartSubtotal < restaurant.minOrderAmount) {
+      return res.status(400).json({
+        code: "MIN_ORDER_NOT_REACHED",
+        message: `Minimum order amount for this store is ₹${restaurant.minOrderAmount}. Please add more items.`,
+        messageType: "failure",
+      });
+    }
 
-      
-   const io = req.app.get("io");
-    // Fetch loyalty settings and user
-    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
+    const io = req.app.get("io");
+    
+    // Fetch user with wallet balance
     const user = await User.findById(userId);
     const loyaltyPointsAvailable = user?.loyaltyPoints || 0;
+    const walletBalance = user?.walletBalance || 0;
 
+    // Validate wallet usage
+    if (useWallet) {
+      if (walletAmount > walletBalance) {
+        return res.status(400).json({
+          message: "Insufficient wallet balance",
+          messageType: "failure",
+        });
+      }
+    }
+
+    const loyaltySettings = await LoyalitySettings.findOne({}).lean();
     const userCoords = [parseFloat(longitude), parseFloat(latitude)];
     const restaurantCoords = restaurant.location.coordinates;
     const preSurgeOrderAmount = cart.products.reduce(
@@ -2279,12 +2441,22 @@ if (cartSubtotal < restaurant.minOrderAmount) {
       loyaltyPointsToRedeem,
       loyaltySettings,
       userId,
-      PromoCode, // Make sure this is imported/available
+      PromoCode,
     });
 
+    // Validate wallet amount doesn't exceed order total
+    if (useWallet && walletAmount > costSummary.finalAmount) {
+      return res.status(400).json({
+        message: "Wallet amount cannot exceed order total",
+        messageType: "failure",
+      });
+    }
 
+    // Calculate final amount after wallet deduction
+    const amountAfterWalletDeduction = useWallet 
+      ? costSummary.finalAmount - walletAmount 
+      : costSummary.finalAmount;
 
-    console.log("Cost Summary:", costSummary);
     // Map order items with product images
     const orderItems = await Promise.all(
       cart.products.map(async (item) => {
@@ -2309,7 +2481,7 @@ if (cartSubtotal < restaurant.minOrderAmount) {
       orderStatus = "accepted_by_restaurant";
     }
 
-    // Create and save order with all V2 fields
+    // Create and save order with all V2 fields including wallet info
     const newOrder = new Order({
       customerId: userId,
       restaurantId: cart.restaurantId,
@@ -2343,8 +2515,10 @@ if (cartSubtotal < restaurant.minOrderAmount) {
       isSurge: costSummary.isSurge,
       surgeReason: costSummary.surgeReason,
       tipAmount,
-      totalAmount: costSummary.finalAmount,
+      totalAmount: amountAfterWalletDeduction,
       couponCode,
+      walletUsed: useWallet,
+      walletAmount: useWallet ? walletAmount : 0,
       promoCode: {
         code: costSummary.promoCodeInfo.code,
         discount: costSummary.promoCodeInfo.discount,
@@ -2376,76 +2550,118 @@ if (cartSubtotal < restaurant.minOrderAmount) {
 
     const savedOrder = await newOrder.save();
 
-
-if (paymentMethod === "cash") {
-    await reduceStockForOrder(orderItems,io); // Reduce now
-}
-
-    // Handle online payment (same as before)
-    if (paymentMethod === "online") {
-      const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(costSummary.finalAmount * 100),
-        currency: "INR",
-        receipt: savedOrder._id.toString(),
-        notes: {
-          restaurantName: restaurant.name,
-          userId: userId.toString(),
-          orderId: savedOrder._id.toString(),
-        },
-      });
-
-      savedOrder.onlinePaymentDetails = {
-        razorpayOrderId: razorpayOrder.id,
-      };
-      await savedOrder.save();
-
-
-      const populatedOrder = await Order.findById(savedOrder._id)
-        .populate("customerId", "name email phone")
-        .lean();
-
-      const sanitizeOrderNumbers = (order, fields) => {
-        fields.forEach((key) => {
-          order[key] = Number(order[key]) || 0;
+    // Handle wallet payment
+    if (useWallet) {
+      try {
+        // Deduct from wallet
+        user.walletBalance -= walletAmount;
+        await user.save();
+        
+        // Create wallet transaction record
+        const walletTransaction = new WalletTransaction({
+          user: userId,
+          type: "debit",
+          amount: walletAmount,
+          status: "success",
+          description: `Payment for order #${savedOrder._id}`,
+          walletBalanceAfterTransaction: user.walletBalance
         });
-        return order;
-      };
-
-      sanitizeOrderNumbers(populatedOrder, [
-        "subtotal",
-        "tax",
-        "discountAmount",
-        "deliveryCharge",
-        "offerDiscount",
-        "surgeCharge",
-        "tipAmount",
-        "totalAmount",
-      ]);
-
-      io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
-        "new_order",
-        populatedOrder
-      );
-
-      return res.status(200).json({
-        message: "Order created. Proceed to Razorpay payment.",
-        messageType: "success",
-        orderId: savedOrder._id,
-        razorpayOrderId: razorpayOrder.id,
-        amount: costSummary.finalAmount,
-        currency: "INR",
-        keyId: process.env.RAZORPAY_KEY_ID,
-      });
+        await walletTransaction.save();
+        
+        // If wallet covers the entire amount, mark payment method as wallet
+        if (walletAmount >= costSummary.finalAmount) {
+          savedOrder.paymentMethod = "wallet";
+          await savedOrder.save();
+        }
+      } catch (walletError) {
+        console.error("Wallet transaction failed:", walletError);
+        // Handle wallet transaction failure
+        await Order.findByIdAndDelete(savedOrder._id);
+        return res.status(500).json({
+          message: "Wallet transaction failed",
+          messageType: "failure",
+        });
+      }
     }
 
-    // await awardPoints(userId, savedOrder._id, savedOrder.cartTotal);
+    // Handle cash payment
+    if (paymentMethod === "cash") {
+      await reduceStockForOrder(orderItems, io);
+    }
+
+    // Handle online payment
+    if (paymentMethod === "online") {
+      // For online payments after wallet deduction
+      const onlineAmount = useWallet ? amountAfterWalletDeduction : costSummary.finalAmount;
+      
+      // Only create Razorpay order if there's an amount to pay
+      if (onlineAmount > 0) {
+        const razorpayOrder = await razorpay.orders.create({
+          amount: Math.round(onlineAmount * 100),
+          currency: "INR",
+          receipt: savedOrder._id.toString(),
+          notes: {
+            restaurantName: restaurant.name,
+            userId: userId.toString(),
+            orderId: savedOrder._id.toString(),
+          },
+        });
+
+        savedOrder.onlinePaymentDetails = {
+          razorpayOrderId: razorpayOrder.id,
+        };
+        await savedOrder.save();
+
+        const populatedOrder = await Order.findById(savedOrder._id)
+          .populate("customerId", "name email phone")
+          .lean();
+
+        const sanitizeOrderNumbers = (order, fields) => {
+          fields.forEach((key) => {
+            order[key] = Number(order[key]) || 0;
+          });
+          return order;
+        };
+
+        sanitizeOrderNumbers(populatedOrder, [
+          "subtotal",
+          "tax",
+          "discountAmount",
+          "deliveryCharge",
+          "offerDiscount",
+          "surgeCharge",
+          "tipAmount",
+          "totalAmount",
+        ]);
+
+        io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+          "new_order",
+          populatedOrder
+        );
+
+        return res.status(200).json({
+          message: "Order created. Proceed to Razorpay payment.",
+          messageType: "success",
+          orderId: savedOrder._id,
+          razorpayOrderId: razorpayOrder.id,
+          amount: onlineAmount,
+          walletAmount: useWallet ? walletAmount : 0,
+          currency: "INR",
+          keyId: process.env.RAZORPAY_KEY_ID,
+        });
+      } else {
+        // Wallet covered the entire amount, update payment method to wallet
+        savedOrder.paymentMethod = "wallet";
+        await savedOrder.save();
+      }
+    }
+
+    // Process loyalty points
+    await loyaliltyPoinService.redeemLoyaltyPoints(savedOrder.customerId, savedOrder);
 
     const populatedOrder = await Order.findById(savedOrder._id)
       .populate("customerId", "name email phone")
       .lean();
-
-
-
 
     const sanitizeOrderNumbers = (order, fields) => {
       fields.forEach((key) => {
@@ -2470,34 +2686,16 @@ if (paymentMethod === "cash") {
       populatedOrder
     );
 
-
-     await emitNewOrderToAdmin(io, savedOrder._id);
+    await emitNewOrderToAdmin(io, savedOrder._id);
+    
     // Try to assign an agent
     let assignmentResult;
     try {
       assignmentResult = await assignTask(savedOrder._id);
       console.log("Agent assignment result:", assignmentResult);
 
-      console.log(`Emitting to restaurant_${savedOrder.restaurantId}`);
-      //   const updatedOrder = await Order.findByIdAndUpdate(orderId, {
-      //     $set: { assignedAgent: agentId, agentAssignmentStatus: "accepted", agentAcceptedAt: new Date() }
-      //   })
-      //   .populate("customerId", "name email")
-      //   .populate("assignedAgent", "fullName phoneNumber email")
-
-      // const orderObj = updatedOrder.toObject();
-
       if (assignmentResult.success) {
-        // Update only agent assignment fields, not main order status
-
-        //  io.to(`restaurant_${orderObj.restaurantId}`).emit("new_order", {
-        //   success: true,
-        //   message: "Agent assigned to order",
-        //   updateType: "agent_assigned",
-        //   order: mapOrder(orderObj)
-        // });
-
-        // Notify all parties about assignment (not pickup)
+        // Notify all parties about assignment
         io.to(`agent_${assignmentResult.agentId}`).emit("delivery_assigned", {
           orderId: savedOrder._id,
           action: "assignment",
@@ -2508,7 +2706,7 @@ if (paymentMethod === "cash") {
           orderId: savedOrder._id,
           updateType: "agent_assigned",
           agentId: assignmentResult.agentId,
-          currentStatus: savedOrder.orderStatus, // Original status remains
+          currentStatus: savedOrder.orderStatus,
         });
 
         io.to(`restaurant_${savedOrder.restaurantId}`).emit("order_update", {
@@ -2529,8 +2727,6 @@ if (paymentMethod === "cash") {
           "New Delivery Assignment",
           "You have been assigned a new delivery"
         );
-      } else {
-        // No agent available - update only assignment status
       }
     } catch (error) {
       console.error("Error during agent assignment:", error);
@@ -2541,15 +2737,13 @@ if (paymentMethod === "cash") {
       });
     }
 
-    // Fetch the latest order state
-    const currentOrder = await Order.findById(savedOrder._id);
-
-   
     return res.status(201).json({
       message: "Order placed successfully",
       orderId: savedOrder._id,
       totalAmount: savedOrder.totalAmount,
+      walletAmount: useWallet ? walletAmount : 0,
       orderStatus: savedOrder.orderStatus,
+      paymentMethod: savedOrder.paymentMethod,
       messageType: "success",
       loyaltyPoints: {
         used: costSummary.loyaltyPoints.used,
@@ -2564,6 +2758,48 @@ if (paymentMethod === "cash") {
       messageType: "failure",
       error: err.message,
     });
+  }
+};
+
+exports.getOrderPriceSummary = async (req, res) => {
+  try {
+    const { longitude, latitude, couponCode, cartId, userId } = req.body;
+
+    if (!cartId || !userId) {
+      return res.status(400).json({ error: "cartId and userId are required" });
+    }
+
+    const cart = await Cart.findOne({ _id: cartId, user: userId });
+
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found for this user" });
+    }
+
+    if (!cart.products || cart.products.length === 0) {
+      return res.status(400).json({ error: "Cart is empty" });
+    }
+
+    const restaurant = await Restaurant.findById(cart.restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
+    const userCoords = [parseFloat(longitude), parseFloat(latitude)];
+
+    const costSummary = calculateOrderCost({
+      cartProducts: cart.products,
+      restaurant,
+      userCoords,
+      couponCode,
+    });
+
+    return res.status(200).json({
+      message: "Bill summary calculated successfully",
+      data: costSummary,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };
 
