@@ -1437,7 +1437,7 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
         await loyaltyService.awardPoints(
           order.customerId._id,   // userId
           order._id,              // orderId
-          order.totalAmount       // totalAmount
+          order.subtotal       // totalAmount
         );
       } catch (err) {
         console.error("Failed to award loyalty points:", err.message);
