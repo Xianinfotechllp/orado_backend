@@ -12,6 +12,7 @@ const {
   calculateOrderCost,
   calculateOrderCostV2,
 } = require("../services/orderCostCalculator");
+const WalletTransaction = require("../models/WalletTransaction")
 const razorpay = require("../utils/razorpay");
 const crypto = require("crypto");
 const { uploadOnCloudinary } = require("../utils/cloudinary");

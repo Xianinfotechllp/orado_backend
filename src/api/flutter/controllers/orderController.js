@@ -1161,7 +1161,7 @@ exports.getOrderPriceSummary = async (req, res) => {
     const isInsideServiceArea = await geoService.isPointInsideServiceAreas(
       userCoords,
       restaurant._id
-    );
+  );
     if (!isInsideServiceArea) {
       return res.status(200).json({
         code: "OUT_OF_DELIVERY_AREA",
