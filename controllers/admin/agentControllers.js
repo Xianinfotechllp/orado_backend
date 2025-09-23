@@ -13,7 +13,7 @@ const { calculateEarningsBreakdown } = require("../../utils/agentEarningCalculat
 const mongoose = require("mongoose");
 const  getRedisClient  = require("../../config/redisClient");
 const redis = getRedisClient();
-
+const Product = require("../../models/productModel");
 
 exports.getAllList = async (req, res) => {
   try {
@@ -460,7 +460,6 @@ exports.manualAssignAgent = async (req, res) => {
     const order = await Order.findById(orderId)
       .populate("restaurantId", "name address location phone")
       .populate("customerId", "name phone email")
-      .populate("items.productId");
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
