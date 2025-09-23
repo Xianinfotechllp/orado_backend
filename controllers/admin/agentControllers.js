@@ -10,7 +10,7 @@ const AgentEarning = require("../../models/AgentEarningModel");
 const AgentIncentiveEarning = require("../../models/AgentIncentiveEarningModel");
 const { findApplicableSurgeZones } = require("../../utils/surgeCalculator");
 const { calculateEarningsBreakdown } = require("../../utils/agentEarningCalculator");
-
+const mongoose = require("mongoose");
 const  getRedisClient  = require("../../config/redisClient");
 const redis = getRedisClient();
 
