@@ -9,12 +9,13 @@ const AgentDeviceInfo = require("../../models/AgentDeviceInfoModel")
 const AgentEarning = require("../../models/AgentEarningModel");
 const AgentIncentiveEarning = require("../../models/AgentIncentiveEarningModel");
 const { findApplicableSurgeZones } = require("../../utils/surgeCalculator");
-const { calculateEarningsBreakdown } = require("../../utils/agentEarningCalculator");
+const  calculateEarningsBreakdown  = require("../../utils/agentEarningCalculator");
 const mongoose = require("mongoose");
 const  getRedisClient  = require("../../config/redisClient");
 const redis = getRedisClient();
 const Product = require("../../models/productModel");
 const geolib = require('geolib');
+const AgentEarningSettings = require("../../models/AgentEarningSettingModel")
 exports.getAllList = async (req, res) => {
   try {
     // First get all agents with basic info
