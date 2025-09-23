@@ -571,6 +571,8 @@ exports.manualAssignAgent = async (req, res) => {
       showAcceptReject,
     };
 
+    console.log("Manual assignment popup payload:", popupPayload);
+
     // 9️⃣ Emit notification & Socket events
     const io = req.app.get("io");
 
@@ -580,6 +582,24 @@ exports.manualAssignAgent = async (req, res) => {
       body: `You've been assigned to deliver from ${order.restaurantId?.name} to ${order.deliveryAddress?.street || 'an address'}. Order total: ₹${order.totalAmount || 0}`,
       data: {},
     });
+
+
+
+    io.to(`user_${order.customerId._id.toString()}`).emit("agentAssigned", {
+
+ orderId: order._id,
+
+ agent: {
+
+ agentId:agent._id,
+
+ fullName: agent.fullName,
+
+ phoneNumber: agent.phoneNumber,
+
+ },
+
+ });
 
     io.to(`agent_${agent._id}`).emit("order:new", popupPayload);
     io.to(`agent_${agent._id}`).emit("orderAssigned", { status: "success", assignedOrders: [order] });
@@ -1673,3 +1693,27 @@ exports.getAgentPayouts = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch agent payouts" });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
