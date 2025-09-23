@@ -459,13 +459,10 @@ exports.manualAssignAgent = async (req, res) => {
 
     // 1️⃣ Fetch order
     const order = await Order.findById(orderId)
-      .populate("restaurantId", "name address address phone")
-      .populate("customerId", "name phone email")
+      .populate("restaurantId", "name address location")
+      .populate("customerId", "name phone email");
 
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
+    if (!order) return res.status(404).json({ message: "Order not found" });
     if (["completed", "delivered", "cancelled_by_customer"].includes(order.orderStatus)) {
       return res.status(400).json({ message: "Order already completed or invalid for assignment." });
     }
@@ -474,61 +471,35 @@ exports.manualAssignAgent = async (req, res) => {
     const agent = await Agent.findById(agentId);
     if (!agent) return res.status(404).json({ message: "Agent not found." });
 
-    if (agent.agentStatus?.status !== "AVAILABLE") {
-      console.warn("Warning: Assigning to an agent who is not marked AVAILABLE.");
-    }
-
     // 3️⃣ Update order assignment
     order.assignedAgent = agentId;
     order.agentAssignmentStatus = "manually_assigned_by_admin";
     order.agentAssignmentTimestamp = new Date();
     await order.save();
 
-    // // 4️⃣ Update agent status & history
-    // if (!agent.deliveryStatus) {
-    //   agent.deliveryStatus = { currentOrderId: [], currentOrderCount: 0, status: "ORDER_ASSIGNED" };
-    // }
-    // if (!agent.deliveryStatus.currentOrderId.includes(order._id)) {
-    //   agent.deliveryStatus.currentOrderId.push(order._id);
-    //   agent.deliveryStatus.currentOrderCount += 1;
-    // }
-    // agent.agentStatus.status = "ORDER_ASSIGNED";
-    // agent.lastAssignedAt = new Date();
-    // agent.lastManualAssignmentAt = new Date();
-    // agent.lastAssignmentType = "manual";
-
-    // if (!Array.isArray(agent.agentAssignmentStatusHistory)) agent.agentAssignmentStatusHistory = [];
-    // agent.agentAssignmentStatus = "manually_assigned_by_admin";
-    // agent.agentAssignmentStatusHistory.push({ status: "manually_assigned_by_admin", changedAt: new Date() });
-
-    // await agent.save();
-
-    // 5️⃣ Calculate distance
-    let distanceKm = 0;
+    // 4️⃣ Calculate distance
     let mapboxDistance = 0;
     if (Array.isArray(order.restaurantId?.location?.coordinates) && Array.isArray(order.deliveryLocation?.coordinates)) {
       const fromCoords = order.restaurantId.location.coordinates;
       const toCoords = order.deliveryLocation.coordinates;
 
-      // Straight line distance
-      const from = { latitude: fromCoords[1], longitude: fromCoords[0] };
-      const to = { latitude: toCoords[1], longitude: toCoords[0] };
-      const distanceInMeters = geolib.getDistance(from, to);
-      distanceKm = distanceInMeters / 1000;
-
       // Mapbox driving distance
-     const accessToken = 'pk.eyJ1IjoiYW1hcm5hZGg2NSIsImEiOiJjbWJ3NmlhcXgwdTh1MmlzMWNuNnNvYmZ3In0.kXrgLZhaz0cmbuCvyxOd6w';
+      const accessToken = process.env.MAPBOX_ACCESS_TOKEN;
       try {
         const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?geometries=geojson&access_token=${accessToken}`;
         const response = await axios.get(url);
-        mapboxDistance = response.data.routes[0].distance / 1000;
+        mapboxDistance = Number((response.data.routes[0].distance / 1000).toFixed(2));
       } catch (err) {
         console.warn("Mapbox distance fetch failed, using straight line distance");
-        mapboxDistance = distanceKm;
+        const distanceInMeters = geolib.getDistance(
+          { latitude: fromCoords[1], longitude: fromCoords[0] },
+          { latitude: toCoords[1], longitude: toCoords[0] }
+        );
+        mapboxDistance = Number((distanceInMeters / 1000).toFixed(2));
       }
     }
 
-    // 6️⃣ Calculate surge zones
+    // 5️⃣ Calculate surge zones
     let applicableSurges = [];
     try {
       applicableSurges = await findApplicableSurgeZones({
@@ -540,7 +511,7 @@ exports.manualAssignAgent = async (req, res) => {
       console.warn("Failed to fetch surge zones:", err.message);
     }
 
-    // 7️⃣ Calculate earnings
+    // 6️⃣ Calculate earnings
     const earningsConfig = await AgentEarningSettings.findOne({ mode: "global" });
     const earningsBreakdown = calculateEarningsBreakdown({
       distanceKm: mapboxDistance,
@@ -548,72 +519,76 @@ exports.manualAssignAgent = async (req, res) => {
       surgeZones: applicableSurges,
     });
 
-    // 8️⃣ Construct payload for Socket.IO popup
-    const requestExpirySec = 30;
-    const showAcceptReject = false; // manual assignment
-
+    // 7️⃣ Construct payload for Flutter OrderPayload model
     const popupPayload = {
       orderDetails: {
-        id: order._id,
-        totalPrice: order.totalAmount,
-        deliveryAddress: order.deliveryAddress,
-        deliveryLocation: { lat: order.deliveryLocation?.coordinates?.[1] || 0, long: order.deliveryLocation?.coordinates?.[0] || 0 },
-        createdAt: order.createdAt,
-        paymentMethod: order.paymentMethod,
-        orderItems: order.orderItems || [],
-        estimatedEarning: earningsBreakdown.total || 0,
-        distanceKm: mapboxDistance.toFixed(2),
-        customer: { name: order.customerId?.name || "", phone: order.customerId?.phone || "", email: order.customerId?.email || "" },
-        restaurant: { name: order.restaurantId?.name || "", address: order.restaurantId?.address || "", location: { lat: order.restaurantId?.location?.coordinates?.[1] || 0, long: order.restaurantId?.location?.coordinates?.[0] || 0 } },
+        id: order._id.toString(),
+        totalPrice: Number(order.totalAmount || 0),
+        deliveryAddress: order.deliveryAddress || "",
+        deliveryLocation: {
+          lat: Number(order.deliveryLocation?.coordinates?.[1] || 0),
+          long: Number(order.deliveryLocation?.coordinates?.[0] || 0),
+        },
+        createdAt: order.createdAt.toISOString(),
+        paymentMethod: order.paymentMethod || "",
+        orderItems: (order.orderItems || []).map(item => ({
+          name: item.name || "",
+          qty: Number(item.qty || 0),
+          price: Number(item.price || 0),
+        })),
+        estimatedEarning: Number(earningsBreakdown.total || 0),
+        distanceKm: mapboxDistance,
+        customer: {
+          name: order.customerId?.name || "",
+          phone: order.customerId?.phone || "",
+          email: order.customerId?.email || "",
+        },
+        restaurant: {
+          name: order.restaurantId?.name || "",
+          address: order.restaurantId?.address || "",
+          location: {
+            lat: Number(order.restaurantId?.location?.coordinates?.[1] || 0),
+            long: Number(order.restaurantId?.location?.coordinates?.[0] || 0),
+          },
+        },
       },
       allocationMethod: "manual_assignment",
-      requestExpirySec,
-      showAcceptReject,
+      requestExpirySec: 30,
+      showAcceptReject: false,
     };
-
-    console.log("Manual assignment popup payload:", popupPayload);
-
-    // 9️⃣ Emit notification & Socket events
+   console.log("Manual assignment - constructed popup payload:", popupPayload);
+    // 8️⃣ Emit notifications
     const io = req.app.get("io");
 
     await sendNotificationToAgent({
       agentId,
       title: "New Order Assignment",
-      body: `You've been assigned to deliver from ${order.restaurantId?.name} to ${order.deliveryAddress?.street || 'an address'}. Order total: ₹${order.totalAmount || 0}`,
+      body: `You've been assigned to deliver from ${order.restaurantId?.name} to ${order.deliveryAddress}. Total: ₹${order.totalAmount}`,
       data: {},
     });
 
-
-
-    io.to(`user_${order.customerId._id.toString()}`).emit("agentAssigned", {
-
- orderId: order._id,
-
- agent: {
-
- agentId:agent._id,
-
- fullName: agent.fullName,
-
- phoneNumber: agent.phoneNumber,
-
- },
-
- });
+    io.to(`user_${order.customerId._id}`).emit("agentAssigned", {
+      orderId: order._id.toString(),
+      agent: {
+        agentId: agent._id.toString(),
+        fullName: agent.fullName,
+        phoneNumber: agent.phoneNumber,
+      },
+    });
 
     io.to(`agent_${agent._id}`).emit("order:new", popupPayload);
     io.to(`agent_${agent._id}`).emit("orderAssigned", { status: "success", assignedOrders: [order] });
 
-    console.log("📦 order:new emitted to agent popup:", agent._id);
+    console.log("📦 Order popup payload sent to agent:", agent._id);
 
-    // 10️⃣ Response
+    // 9️⃣ Response
     res.status(200).json({ message: "Agent manually assigned successfully.", order, agent });
-
   } catch (error) {
     console.error("❌ Manual assignment error:", error);
     res.status(500).json({ message: "Internal server error.", error: error.message });
   }
 };
+
 
 
 
