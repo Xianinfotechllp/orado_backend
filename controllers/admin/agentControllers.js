@@ -14,7 +14,7 @@ const mongoose = require("mongoose");
 const  getRedisClient  = require("../../config/redisClient");
 const redis = getRedisClient();
 const Product = require("../../models/productModel");
-
+const geolib = require('geolib');
 exports.getAllList = async (req, res) => {
   try {
     // First get all agents with basic info
@@ -458,7 +458,7 @@ exports.manualAssignAgent = async (req, res) => {
 
     // 1️⃣ Fetch order
     const order = await Order.findById(orderId)
-      .populate("restaurantId", "name address location phone")
+      .populate("restaurantId", "name address address phone")
       .populate("customerId", "name phone email")
 
     if (!order) {
