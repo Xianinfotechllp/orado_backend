@@ -82,6 +82,7 @@ orderItems: [{
   name: String,
   totalPrice: Number,
   image: String,
+  costPrice: Number,
 }],
 
 // Payment

@@ -130,52 +130,67 @@ exports.addRestaurantEarnings = async (orderId) => {
 
 
 
-exports.calculateRestaurantEarnings = async ({ restaurantId, storeType, orderAmounts }) => {
-  const { subtotal, tax, finalAmount } = orderAmounts;
+exports.calculateRestaurantEarnings = async ({ 
+  restaurantId, 
+  storeType, 
+  orderAmounts,
+  orderItems // array of items with costPrice and quantity
+}) => {
+  const { subtotal, tax, finalAmount, deliveryCharges = 0, tips = 0 } = orderAmounts;
 
-  // Step 1: Try to get merchant-specific commission config
-  let commissionConfig = await MerchantCommissionSetting.findOne({
-    restaurantId
-  });
+  // Step 1: Get merchant-specific commission config
+  let commissionConfig = await MerchantCommissionSetting.findOne({ restaurantId });
 
   // Step 2: Fallback to default config
   if (!commissionConfig) {
-    commissionConfig = await MerchantCommissionSetting.findOne({
-      isDefault: true
-    });
+    commissionConfig = await MerchantCommissionSetting.findOne({ isDefault: true });
   }
 
   if (!commissionConfig) {
-    throw new Error('Commission configuration not found for this store type.');
+    throw new Error("Commission configuration not found for this store type.");
   }
 
   const { commissionType, commissionValue, commissionBase } = commissionConfig;
 
-  // Step 3: Choose base amount
-  let baseAmount = 0;
+  // Step 3: Decide earning base
+  let earningBase = 0;
   switch (commissionBase) {
-    case 'subtotal+tax':
-      baseAmount = subtotal + tax;
+    case "subtotal+tax":
+      earningBase = subtotal + tax;
       break;
-    case 'finalAmount':
-      baseAmount = finalAmount;
+    case "finalAmount":
+      earningBase = finalAmount;
       break;
-    case 'subtotal':
+    case "subtotal":
     default:
-      baseAmount = subtotal;
+      earningBase = subtotal;
       break;
   }
 
   // Step 4: Calculate commission
   let commissionAmount = 0;
-  if (commissionType === 'percentage') {
-    commissionAmount = (baseAmount * commissionValue) / 100;
-  } else if (commissionType === 'fixed') {
+
+  if (commissionType === "percentage") {
+    commissionAmount = (earningBase * commissionValue) / 100;
+  } else if (commissionType === "fixed") {
     commissionAmount = commissionValue;
+  } else if (commissionType === "costPrice") {
+    // Sum costPrice of all items in the order
+    // Expecting orderItems = [{ costPrice, quantity }, ...]
+    if (!orderItems || !orderItems.length) {
+      throw new Error("Order items are required to calculate costPrice commission.");
+    }
+
+    commissionAmount = orderItems.reduce((total, item) => {
+      return total + (item.costPrice * (item.quantity || 1));
+    }, 0);
   }
 
-  // Step 5: Calculate merchant earnings
-  const merchantEarning = finalAmount - commissionAmount;
+  // Step 5: Merchant earning = (base - commission) + add-ons
+  let merchantEarning = earningBase - commissionAmount;
+
+  // Optionally add delivery charges and tips back
+  // merchantEarning += deliveryCharges + tips;
 
   return {
     commissionAmount,
@@ -185,9 +200,16 @@ exports.calculateRestaurantEarnings = async ({ restaurantId, storeType, orderAmo
       commissionValue,
       commissionBase,
     },
+    breakdown: {
+      subtotal,
+      tax,
+      finalAmount,
+      deliveryCharges,
+      tips,
+      earningBase,
+    }
   };
 };
-
 
 
 
@@ -198,7 +220,14 @@ exports.createRestaurantEarning = async (order) => {
     const restaurant = await Restaurant.findById(order.restaurantId);
     if (!restaurant) throw new Error("Restaurant not found for earning calculation.");
 
-    const { subtotal, tax, totalAmount: finalAmount } = order;
+    const { subtotal, tax, totalAmount: finalAmount, orderItems } = order;
+
+    // === Prevent duplicate earnings for the same order ===
+    const existingEarning = await RestaurantEarning.findOne({ orderId: order._id });
+    if (existingEarning) {
+      console.log(`⚠️ Restaurant earning already exists for order ${order._id}`);
+      return existingEarning; // Return existing record instead of creating a new one
+    }
 
     // Use centralized commission config logic
     const earningData = await exports.calculateRestaurantEarnings({
@@ -208,7 +237,8 @@ exports.createRestaurantEarning = async (order) => {
         subtotal,
         tax,
         finalAmount
-      }
+      },
+      orderItems // pass the items for costPrice commission calculation
     });
 
     const newEarning = new RestaurantEarning({
@@ -221,7 +251,9 @@ exports.createRestaurantEarning = async (order) => {
       totalOrderAmount: finalAmount,
       commissionAmount: earningData.commissionAmount,
       commissionType: earningData.usedCommissionConfig.commissionType,
-      commissionValue: earningData.usedCommissionConfig.commissionValue,
+      commissionValue: earningData.usedCommissionConfig.commissionType === 'costPrice'
+        ? null
+        : earningData.usedCommissionConfig.commissionValue,
       restaurantNetEarning: earningData.merchantEarning,
       date: order.createdAt || new Date(),
       payoutStatus: 'pending',
@@ -239,6 +271,7 @@ exports.createRestaurantEarning = async (order) => {
     throw error;
   }
 };
+
 
 
 

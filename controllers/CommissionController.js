@@ -101,16 +101,24 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
     } = req.body;
 
     // === Validate Required Fields ===
-    if (!commissionType || commissionValue == null) {
+    if (!commissionType) {
       return res.status(400).json({
         success: false,
-        message: "commissionType and commissionValue are required.",
+        message: "commissionType is required.",
+      });
+    }
+
+    // commissionValue is required only if commissionType is not 'costPrice'
+    if (commissionType !== "costPrice" && (commissionValue == null)) {
+      return res.status(400).json({
+        success: false,
+        message: "commissionValue is required for percentage or fixed commission types.",
       });
     }
 
     let storeType = null;
 
-    // === If not default, we must have restaurantId ===
+    // === If not default, restaurantId must be provided ===
     if (!isDefault) {
       if (!restaurantId) {
         return res.status(400).json({
@@ -132,12 +140,7 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
     }
 
     // === Determine Scope ===
-    let filter = {};
-    if (isDefault) {
-      filter = { isDefault: true };
-    } else {
-      filter = { restaurantId };
-    }
+    let filter = isDefault ? { isDefault: true } : { restaurantId };
 
     // === Check Existing Entry ===
     const existingSetting = await MerchantCommissionSetting.findOne(filter);
@@ -145,9 +148,9 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
     if (existingSetting) {
       // Update existing
       existingSetting.commissionType = commissionType;
-      existingSetting.commissionValue = commissionValue;
+      existingSetting.commissionValue = commissionType === "costPrice" ? null : commissionValue;
       existingSetting.commissionBase = commissionBase;
-      existingSetting.storeType = storeType; // Update storeType too
+      existingSetting.storeType = storeType;
 
       await existingSetting.save();
 
@@ -164,7 +167,7 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
         restaurantId: isDefault ? null : restaurantId,
         storeType: isDefault ? null : storeType,
         commissionType,
-        commissionValue,
+        commissionValue: commissionType === "costPrice" ? null : commissionValue,
         commissionBase,
         isDefault,
       });
@@ -185,6 +188,7 @@ exports.createOrUpdateCommissionSetting = async (req, res) => {
     });
   }
 };
+
 exports.getCommissionSettings = async (req, res) => {
   try {
     const { restaurantId, storeType, isDefault } = req.query;

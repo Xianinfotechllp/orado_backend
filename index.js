@@ -875,6 +875,62 @@ app.get("/socket-test", (req, res) => {
 
 
 
+app.get("/mock-agent/start", (req, res) => {
+
+
+  // Mock agentId
+  const agentId = "68939bfa90c0e1b8df79ebff";
+
+  let lat = 12.9716; // Starting point (Bangalore)
+  let lng = 77.5946;
+
+  // Clear previous interval if running
+  if (global.mockAgentTimer) {
+    clearInterval(global.mockAgentTimer);
+  }
+
+  /**
+   * Simulate 10 minutes in ~30 seconds
+   * → 10 min = 600 sec
+   * → compress to 30 sec (20x faster)
+   * → send update every 500ms = ~60 updates
+   */
+  let steps = 0;
+  global.mockAgentTimer = setInterval(() => {
+    if (steps > 60) {
+      clearInterval(global.mockAgentTimer);
+      console.log("✅ Mock agent movement finished");
+      return;
+    }
+
+    // Random movement each step
+    lat += (Math.random() - 0.5) * 0.002;
+    lng += (Math.random() - 0.5) * 0.002;
+
+    // Emit update via socket
+    io.emit("admin:updateLocation", {
+      agentId,
+      lat,
+      lng,
+      deviceInfo: { platform: "mock-simulator", battery: "100%" },
+    });
+
+    console.log(`📤 Mock Agent ${agentId} moved step ${steps}:`, { lat, lng });
+
+    steps++;
+  }, 500);
+
+  return res.json({
+    message: "🚀 Mock agent movement started (10min fast-forward)",
+  });
+});
+
+
+
+
+
+
+
 
 
 

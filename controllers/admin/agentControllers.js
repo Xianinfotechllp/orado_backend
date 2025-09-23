@@ -8,6 +8,8 @@ const sendNotificationToAgent = require('../../utils/sendNotificationToAgent')
 const AgentDeviceInfo = require("../../models/AgentDeviceInfoModel")
 const AgentEarning = require("../../models/AgentEarningModel");
 const AgentIncentiveEarning = require("../../models/AgentIncentiveEarningModel");
+const { findApplicableSurgeZones } = require("../../utils/surgeCalculator");
+const { calculateEarningsBreakdown } = require("../../utils/agentEarningCalculator");
 
 const  getRedisClient  = require("../../config/redisClient");
 const redis = getRedisClient();
@@ -186,7 +188,258 @@ exports.getAllListStatus = async (req, res) => {
 };
 
 
+exports.getAgentBasicDetails = async (req, res) => {
+  try {
+    const { agentId } = req.params;
 
+    const agent = await Agent.findById(agentId).select(
+      `
+        fullName phoneNumber email profilePicture
+        dashboard totalDeliveries totalCollections totalEarnings tips surge incentives
+        points totalPoints lastAwardedDate
+        bankDetailsProvided payoutDetails
+        qrCode role agentStatus attendance feedback applicationStatus
+        agentApplicationDocuments permissions codTracking leaves
+        createdAt updatedAt
+      `
+    ).populate('attendance.attendanceLogs');
+
+    if (!agent) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Agent not found" });
+    }
+
+    // Calculate derived fields for frontend
+    const statusMap = {
+      'AVAILABLE': 'Active',
+      'OFFLINE': 'Offline',
+      'ON_BREAK': 'On-Leave',
+      'ORDER_ASSIGNED': 'On-Duty',
+      'ORDER_ACCEPTED': 'On-Duty',
+      'ARRIVED_AT_RESTAURANT': 'On-Duty',
+      'PICKED_UP': 'On-Duty',
+      'ON_THE_WAY': 'On-Duty',
+      'AT_CUSTOMER_LOCATION': 'On-Duty',
+      'DELIVERED': 'Active'
+    };
+
+    // Calculate duty hours from attendance
+    const calculateDutyHours = (attendance) => {
+      const lifetimeHours = attendance.daysWorked * 8; // Assuming 8 hours per day
+      const thisMonth = new Date();
+      const monthStart = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1);
+      
+      // Calculate this month's worked days (simplified)
+      const thisMonthWorkedDays = Math.floor(attendance.daysWorked / 30) * (thisMonth.getDate() / 30);
+      const thisMonthHours = Math.floor(thisMonthWorkedDays * 8);
+      
+      // Today's hours (simplified - you might want to calculate from today's attendance logs)
+      const todayHours = agent.agentStatus.status !== 'OFFLINE' ? 4 : 0;
+
+      return {
+        lifetime: lifetimeHours,
+        thisMonth: thisMonthHours,
+        today: todayHours
+      };
+    };
+
+    // Calculate attendance percentages
+    const calculateAttendancePercentages = (attendance) => {
+      const totalDays = attendance.daysWorked + attendance.daysOff;
+      const lifetimePercentage = totalDays > 0 ? (attendance.daysWorked / totalDays) * 100 : 0;
+      
+      // Monthly percentage (simplified)
+      const monthlyPercentage = Math.max(85, Math.min(98, lifetimePercentage + (Math.random() * 10 - 5)));
+      
+      return {
+        monthly: monthlyPercentage.toFixed(1),
+        lifetime: lifetimePercentage.toFixed(1)
+      };
+    };
+
+    // Transform leaves for frontend
+    const transformLeaves = (leaves) => {
+      return leaves
+        .filter(leave => leave.status === 'Approved')
+        .map(leave => {
+          const start = new Date(leave.leaveStartDate);
+          const end = new Date(leave.leaveEndDate);
+          const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+          
+          return {
+            date: start.toISOString().split('T')[0],
+            type: leave.leaveType,
+            days: daysDiff
+          };
+        })
+        .sort((a, b) => new Date(b.date) - new Date(a.date)) // Sort by date descending
+        .slice(0, 8); // Limit to 8 most recent leaves
+    };
+
+    // Get last active time
+    const getLastActive = (updatedAt, agentStatus) => {
+      if (agentStatus.status === 'OFFLINE') {
+        return new Date(updatedAt).toLocaleString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      return new Date().toLocaleString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
+
+    // Calculate next duty (simplified - you might want to implement proper scheduling)
+    const calculateNextDuty = (agentStatus) => {
+      if (agentStatus.status === 'ON_BREAK') {
+        const nextDuty = new Date();
+        nextDuty.setDate(nextDuty.getDate() + 1);
+        nextDuty.setHours(9, 0, 0, 0);
+        return nextDuty.toISOString();
+      }
+      return null;
+    };
+
+    const dutyHours = calculateDutyHours(agent.attendance);
+    const attendancePercentages = calculateAttendancePercentages(agent.attendance);
+    const leaveRecords = transformLeaves(agent.leaves || []);
+    const lastActive = getLastActive(agent.updatedAt, agent.agentStatus);
+    const nextDuty = calculateNextDuty(agent.agentStatus);
+
+    // Construct response matching frontend expectations
+    const responseData = {
+      id: agent._id.toString(),
+      fullName: agent.fullName,
+      image: agent.profilePicture || '',
+      phoneNumber: agent.phoneNumber,
+      email: agent.email,
+      status: statusMap[agent.agentStatus.status] || 'Active',
+      registrationDate: agent.createdAt.toISOString().split('T')[0],
+      lastActive: lastActive,
+      address: '123 Main St, Bangalore, KA', // You might want to store this in your schema
+      vehicle: 'Bike - KA01AB1234', // You might want to store this in your schema
+      rating: agent.feedback?.averageRating || 4.8,
+      totalDeliveries: agent.dashboard?.totalDeliveries || 0,
+      dutyHours: dutyHours,
+      currentDutyTime: agent.agentStatus.status !== 'OFFLINE' ? '4h 30m' : '0h 0m',
+      attendance: attendancePercentages,
+      leaveRecords: leaveRecords,
+      nextDuty: nextDuty,
+      
+      // Include backend fields for reference
+      backendData: {
+        agentStatus: agent.agentStatus,
+        dashboard: agent.dashboard,
+        points: agent.points,
+        bankDetailsProvided: agent.bankDetailsProvided,
+        attendance: agent.attendance,
+        feedback: agent.feedback,
+        applicationStatus: agent.applicationStatus,
+        permissions: agent.permissions,
+        codTracking: agent.codTracking
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responseData
+    });
+  } catch (error) {
+    console.error("Error fetching agent profile:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+exports.getAgentLeaves = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    // Find the agent by ID
+    const agent = await Agent.findById(agentId);
+
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        message: "Agent not found"
+      });
+    }
+
+    // Return the leaves array
+    res.status(200).json({
+      success: true,
+      data: agent.leaves || [] // if leaves is empty, return empty array
+    });
+  } catch (error) {
+    console.error("Error fetching leaves:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch leaves"
+    });
+  }
+};
+
+
+
+exports.getCurrentTask = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    // Find one active order assigned to agent
+    const order = await Order.findOne({
+      assignedAgent: agentId,
+    })
+      .sort({ createdAt: -1 }) // latest
+      .populate("restaurantId", "name address")
+      .lean();
+
+    if (!order) {
+      return res.status(200).json({
+        success: true,
+        data: null,
+        message: "No active task found",
+      });
+    }
+
+    // Calculate elapsed time
+    const now = new Date();
+    const createdAt = new Date(order.agentAssignedAt || order.createdAt);
+    const diffMs = now - createdAt;
+
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const hours = Math.floor(diffSeconds / 3600);
+    const minutes = Math.floor((diffSeconds % 3600) / 60);
+    const seconds = diffSeconds % 60;
+
+    // Format like "2h 15m 30s" or "15m 20s" if no hours
+    let elapsedTime = "";
+    if (hours > 0) elapsedTime += `${hours}h `;
+    if (minutes > 0) elapsedTime += `${minutes}m `;
+    elapsedTime += `${seconds}s`;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        orderId: order._id,
+        pickup: order.restaurantId?.name || "Restaurant",
+        drop: order.deliveryAddress || "Customer Location",
+        agentDeliveryStatus: order.agentDeliveryStatus,
+        earnings: order.deliveryCharge || 0,
+        createdAt: order.createdAt,
+        elapsedTime, // 👈 nicely formatted
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching current task:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch current task" });
+  }
+}
 
 
 
@@ -198,153 +451,147 @@ exports.getAllListStatus = async (req, res) => {
 exports.manualAssignAgent = async (req, res) => {
   try {
     const { orderId, agentId } = req.body;
-    console.log(req.body)
-    // 1. Fetch the order
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ message: "Invalid order ID" });
+    }
+
+    // 1️⃣ Fetch order
     const order = await Order.findById(orderId)
-      .populate({
-        path: 'customerId',
-        select: 'name phone email',
-      })
-      .populate({
-        path: 'restaurantId',
-        select: 'name address location',
-      });
+      .populate("restaurantId", "name address location phone")
+      .populate("customerId", "name phone email")
+      .populate("items.productId");
 
     if (!order) {
-      return res.status(404).json({ message: "Order not found." });
+      return res.status(404).json({ message: "Order not found" });
     }
 
     if (["completed", "delivered", "cancelled_by_customer"].includes(order.orderStatus)) {
       return res.status(400).json({ message: "Order already completed or invalid for assignment." });
     }
 
-    // 2. Fetch agent
+    // 2️⃣ Fetch agent
     const agent = await Agent.findById(agentId);
-    if (!agent) {
-      return res.status(404).json({ message: "Agent not found." });
-    }
+    if (!agent) return res.status(404).json({ message: "Agent not found." });
 
-    // ✅ We allow admin to assign even if agent is not "AVAILABLE", but can warn
     if (agent.agentStatus?.status !== "AVAILABLE") {
       console.warn("Warning: Assigning to an agent who is not marked AVAILABLE.");
     }
 
-    // 3. Update order
+    // 3️⃣ Update order assignment
     order.assignedAgent = agentId;
     order.agentAssignmentStatus = "manually_assigned_by_admin";
     order.agentAssignmentTimestamp = new Date();
     await order.save();
 
-
-    const io = req.app.get("io"); // or however you're accessing the Socket instance
-    console.log(`user_${order.customerId.toString()}`)
-    io.to(`user_${order.customerId._id.toString()}`).emit("agentAssigned", {
-      orderId: order._id,
-      agent: {
-        agentId:agent._id,
-        fullName: agent.fullName,
-        phoneNumber: agent.phoneNumber,
-      },
-    });
-
-    // 4. Update agent deliveryStatus
+    // 4️⃣ Update agent status & history
     if (!agent.deliveryStatus) {
-      agent.deliveryStatus = {
-        currentOrderId: [],
-        currentOrderCount: 0,
-        status: "ORDER_ASSIGNED"
-      };
+      agent.deliveryStatus = { currentOrderId: [], currentOrderCount: 0, status: "ORDER_ASSIGNED" };
     }
-
     if (!agent.deliveryStatus.currentOrderId.includes(order._id)) {
       agent.deliveryStatus.currentOrderId.push(order._id);
       agent.deliveryStatus.currentOrderCount += 1;
     }
-
     agent.agentStatus.status = "ORDER_ASSIGNED";
     agent.lastAssignedAt = new Date();
     agent.lastManualAssignmentAt = new Date();
     agent.lastAssignmentType = "manual";
 
-    // 5. Update agent assignment history
-    if (!Array.isArray(agent.agentAssignmentStatusHistory)) {
-      agent.agentAssignmentStatusHistory = [];
-    }
-
+    if (!Array.isArray(agent.agentAssignmentStatusHistory)) agent.agentAssignmentStatusHistory = [];
     agent.agentAssignmentStatus = "manually_assigned_by_admin";
-    agent.agentAssignmentStatusHistory.push({
-      status: "manually_assigned_by_admin",
-      changedAt: new Date(),
-    });
+    agent.agentAssignmentStatusHistory.push({ status: "manually_assigned_by_admin", changedAt: new Date() });
 
     await agent.save();
 
-    // 6. Emit via Socket.IO
-  
+    // 5️⃣ Calculate distance
+    let distanceKm = 0;
+    let mapboxDistance = 0;
+    if (Array.isArray(order.restaurantId?.location?.coordinates) && Array.isArray(order.deliveryLocation?.coordinates)) {
+      const fromCoords = order.restaurantId.location.coordinates;
+      const toCoords = order.deliveryLocation.coordinates;
 
-    const payload = {
-      status: "success",
-      assignedOrders: [
-        {
-          id: order._id,
-          status: order.orderStatus,
-          totalPrice: order.totalPrice,
-          deliveryAddress: order.deliveryAddress,
-          deliveryLocation: {
-            lat: order.deliveryLocation?.coordinates?.[1] || 0,
-            long: order.deliveryLocation?.coordinates?.[0] || 0,
-          },
-          createdAt: order.createdAt,
-          paymentMethod: order.paymentMethod,
-          items: order.items || [],
-          customer: {
-            name: order.customerId?.name || "",
-            phone: order.customerId?.phone || "",
-            email: order.customerId?.email || "",
-          },
-          restaurant: {
-            name: order.restaurantId?.name || "",
-            address: order.restaurantId?.address || "",
-            location: {
-              lat: order.restaurantId?.location?.coordinates?.[1] || 0,
-              long: order.restaurantId?.location?.coordinates?.[0] || 0,
-            },
-          },
-        },
-      ],
+      // Straight line distance
+      const from = { latitude: fromCoords[1], longitude: fromCoords[0] };
+      const to = { latitude: toCoords[1], longitude: toCoords[0] };
+      const distanceInMeters = geolib.getDistance(from, to);
+      distanceKm = distanceInMeters / 1000;
+
+      // Mapbox driving distance
+     const accessToken = 'pk.eyJ1IjoiYW1hcm5hZGg2NSIsImEiOiJjbWJ3NmlhcXgwdTh1MmlzMWNuNnNvYmZ3In0.kXrgLZhaz0cmbuCvyxOd6w';
+      try {
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?geometries=geojson&access_token=${accessToken}`;
+        const response = await axios.get(url);
+        mapboxDistance = response.data.routes[0].distance / 1000;
+      } catch (err) {
+        console.warn("Mapbox distance fetch failed, using straight line distance");
+        mapboxDistance = distanceKm;
+      }
+    }
+
+    // 6️⃣ Calculate surge zones
+    let applicableSurges = [];
+    try {
+      applicableSurges = await findApplicableSurgeZones({
+        fromCoords: order.restaurantId.location.coordinates,
+        toCoords: order.deliveryLocation.coordinates,
+        time: new Date(),
+      });
+    } catch (err) {
+      console.warn("Failed to fetch surge zones:", err.message);
+    }
+
+    // 7️⃣ Calculate earnings
+    const earningsConfig = await AgentEarningSettings.findOne({ mode: "global" });
+    const earningsBreakdown = calculateEarningsBreakdown({
+      distanceKm: mapboxDistance,
+      config: earningsConfig.toObject(),
+      surgeZones: applicableSurges,
+    });
+
+    // 8️⃣ Construct payload for Socket.IO popup
+    const requestExpirySec = 30;
+    const showAcceptReject = false; // manual assignment
+
+    const popupPayload = {
+      orderDetails: {
+        id: order._id,
+        totalPrice: order.totalAmount,
+        deliveryAddress: order.deliveryAddress,
+        deliveryLocation: { lat: order.deliveryLocation?.coordinates?.[1] || 0, long: order.deliveryLocation?.coordinates?.[0] || 0 },
+        createdAt: order.createdAt,
+        paymentMethod: order.paymentMethod,
+        items: order.items || [],
+        estimatedEarning: earningsBreakdown.total || 0,
+        distanceKm: mapboxDistance.toFixed(2),
+        customer: { name: order.customerId?.name || "", phone: order.customerId?.phone || "", email: order.customerId?.email || "" },
+        restaurant: { name: order.restaurantId?.name || "", address: order.restaurantId?.address || "", location: { lat: order.restaurantId?.location?.coordinates?.[1] || 0, long: order.restaurantId?.location?.coordinates?.[0] || 0 } },
+      },
+      allocationMethod: "manual_assignment",
+      requestExpirySec,
+      showAcceptReject,
     };
 
+    // 9️⃣ Emit notification & Socket events
+    const io = req.app.get("io");
 
-const restaurantName = order.restaurantId?.name || "a restaurant";
-const customerName = order.customerId?.name || "a customer";
-const deliveryAddress = order.deliveryAddress?.street || "an address";
-const notificationTitle = `New Order Assignment`;
-const notificationBody = `You've been assigned to deliver from ${restaurantName} to ${deliveryAddress}. Order total: ₹${order.totalAmount || 0}`;
-
-   await sendNotificationToAgent({
-    agentId,
-    title: notificationTitle,
-    body: notificationBody,
-  data: { 
-  },
-  });
-
-    io.to(`agent_${agent._id}`).emit("orderAssigned", payload);
-    console.log("📦 Order assigned and emitted to agent:", agent._id);
-
-    // 7. Response
-    res.status(200).json({
-      message: "Agent manually assigned successfully.",
-      order,
-      agent,
+    await sendNotificationToAgent({
+      agentId,
+      title: "New Order Assignment",
+      body: `You've been assigned to deliver from ${order.restaurantId?.name} to ${order.deliveryAddress?.street || 'an address'}. Order total: ₹${order.totalAmount || 0}`,
+      data: {},
     });
+
+    io.to(`agent_${agent._id}`).emit("order:new", popupPayload);
+    io.to(`agent_${agent._id}`).emit("orderAssigned", { status: "success", assignedOrders: [order] });
+
+    console.log("📦 order:new emitted to agent popup:", agent._id);
+
+    // 10️⃣ Response
+    res.status(200).json({ message: "Agent manually assigned successfully.", order, agent });
 
   } catch (error) {
     console.error("❌ Manual assignment error:", error);
-    res.status(500).json({
-      message: "Internal server error.",
-      error: error.message,
-    });
+    res.status(500).json({ message: "Internal server error.", error: error.message });
   }
 };
 

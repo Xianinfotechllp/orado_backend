@@ -29,7 +29,11 @@ const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveAp
   getAllListStatus,
   getCODMonitoring,
   updateAgentCODLimit,
-  getAgentPayouts
+  getAgentPayouts,
+  getAgentBasicDetails,
+  getAgentLeaves,
+  getCurrentTask
+
 } = require("../controllers/admin/agentControllers")
 const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
@@ -76,6 +80,8 @@ router.get("/agent-requests", protect, checkPermission('agents.manage'), getPend
 router.post("/agent-application/:userId/approve", protect, checkPermission('agents.manage'), approveAgentApplication);
 router.get('/agent-permissions/requests', protect, checkPermission('agents.manage'), getAllAgentPermissionRequests);
 router.post('/agent-permissions/review', protect, checkPermission('agents.manage'), handleAgentPermissionRequest);
+
+
 
 // Restaurant management routes
 router.get("/restaurant-requests", protect, checkPermission('merchants.manage'), getPendingRestaurantApprovals);
@@ -216,11 +222,12 @@ router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)
 
 router.get("/agent/list",getAllList)
 router.get("/agent/list-status",getAllListStatus)
-
+router.get("/agent/:agentId/basic",getAgentBasicDetails)
+router.get("/agent/:agentId/leaves",getAgentLeaves)
+router.get("/agent/:agentId/current-task",getCurrentTask)
 router.post("/agent/send-notification",sendNotificationToAgent)
 // alowcation controller for agent 
 router.post("/agent/manual-assign",manualAssignAgent)
-
 
 
 router.put("/allocation-settings", updateAllocationSettings);

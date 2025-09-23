@@ -44,16 +44,19 @@ offerDiscount: {
     required: true
   },
 
-  commissionType: {
-    type: String,
-    enum: ['percentage', 'fixed'],
-    required: true
-  },
+commissionType: {
+  type: String,
+  enum: ['percentage', 'fixed', 'costPrice'], // added 'costPrice'
+  required: true
+},
 
   commissionValue: {
-    type: Number, // percentage (like 10) or fixed amount (like ₹50)
-    required: true
-  },
+  type: Number,
+  required: function() {
+    // Only required if commissionType is not 'costPrice'
+    return this.commissionType !== 'costPrice';
+  }
+},
 
   // 💸 Net payout to restaurant after commission
   restaurantNetEarning: {

@@ -183,7 +183,8 @@ exports.getOrderDetails = async (req, res) => {
   const earningsInfo = await calculateRestaurantEarnings({
   restaurantId: order.restaurantId._id,
   storeType: order.restaurantId.storeType || "restaurant", // assuming this field exists
-  orderAmounts:{subtotal:order.subtotal,tax:order.tax,finalAmount:order.totalAmount}
+  orderAmounts:{subtotal:order.subtotal,tax:order.tax,finalAmount:order.totalAmount },
+  orderItems:order.orderItems
 });
 
     // clean up sensitive / unnecessary fields

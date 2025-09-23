@@ -2459,19 +2459,21 @@ exports.placeOrderV2 = async (req, res) => {
       : costSummary.finalAmount;
 
     // Map order items with product images
-    const orderItems = await Promise.all(
-      cart.products.map(async (item) => {
-        const product = await Product.findById(item.productId).select("images");
-        return {
-          productId: item.productId,
-          quantity: item.quantity,
-          price: item.price,
-          name: item.name,
-          totalPrice: item.price * item.quantity,
-          image: product?.images?.[0] || null,
-        };
-      })
-    );
+ const orderItems = await Promise.all(
+  cart.products.map(async (item) => {
+    const product = await Product.findById(item.productId).select("images costPrice"); // include costPrice
+
+    return {
+      productId: item.productId,
+      quantity: item.quantity,
+      price: item.price,
+      name: item.name,
+      totalPrice: item.price * item.quantity,
+      costPrice: product?.costPrice || 0, // add costPrice, default to 0 if not set
+      image: product?.images?.[0] || null,
+    };
+  })
+);
 
     // Determine initial order status based on restaurant permissions
     let orderStatus = "pending";
