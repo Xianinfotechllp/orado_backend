@@ -559,7 +559,7 @@ exports.manualAssignAgent = async (req, res) => {
         deliveryLocation: { lat: order.deliveryLocation?.coordinates?.[1] || 0, long: order.deliveryLocation?.coordinates?.[0] || 0 },
         createdAt: order.createdAt,
         paymentMethod: order.paymentMethod,
-        items: order.items || [],
+        orderItems: order.orderItems || [],
         estimatedEarning: earningsBreakdown.total || 0,
         distanceKm: mapboxDistance.toFixed(2),
         customer: { name: order.customerId?.name || "", phone: order.customerId?.phone || "", email: order.customerId?.email || "" },
