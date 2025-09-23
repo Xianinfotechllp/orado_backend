@@ -483,24 +483,24 @@ exports.manualAssignAgent = async (req, res) => {
     order.agentAssignmentTimestamp = new Date();
     await order.save();
 
-    // 4️⃣ Update agent status & history
-    if (!agent.deliveryStatus) {
-      agent.deliveryStatus = { currentOrderId: [], currentOrderCount: 0, status: "ORDER_ASSIGNED" };
-    }
-    if (!agent.deliveryStatus.currentOrderId.includes(order._id)) {
-      agent.deliveryStatus.currentOrderId.push(order._id);
-      agent.deliveryStatus.currentOrderCount += 1;
-    }
-    agent.agentStatus.status = "ORDER_ASSIGNED";
-    agent.lastAssignedAt = new Date();
-    agent.lastManualAssignmentAt = new Date();
-    agent.lastAssignmentType = "manual";
+    // // 4️⃣ Update agent status & history
+    // if (!agent.deliveryStatus) {
+    //   agent.deliveryStatus = { currentOrderId: [], currentOrderCount: 0, status: "ORDER_ASSIGNED" };
+    // }
+    // if (!agent.deliveryStatus.currentOrderId.includes(order._id)) {
+    //   agent.deliveryStatus.currentOrderId.push(order._id);
+    //   agent.deliveryStatus.currentOrderCount += 1;
+    // }
+    // agent.agentStatus.status = "ORDER_ASSIGNED";
+    // agent.lastAssignedAt = new Date();
+    // agent.lastManualAssignmentAt = new Date();
+    // agent.lastAssignmentType = "manual";
 
-    if (!Array.isArray(agent.agentAssignmentStatusHistory)) agent.agentAssignmentStatusHistory = [];
-    agent.agentAssignmentStatus = "manually_assigned_by_admin";
-    agent.agentAssignmentStatusHistory.push({ status: "manually_assigned_by_admin", changedAt: new Date() });
+    // if (!Array.isArray(agent.agentAssignmentStatusHistory)) agent.agentAssignmentStatusHistory = [];
+    // agent.agentAssignmentStatus = "manually_assigned_by_admin";
+    // agent.agentAssignmentStatusHistory.push({ status: "manually_assigned_by_admin", changedAt: new Date() });
 
-    await agent.save();
+    // await agent.save();
 
     // 5️⃣ Calculate distance
     let distanceKm = 0;
