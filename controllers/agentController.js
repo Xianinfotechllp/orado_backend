@@ -2468,14 +2468,39 @@ exports.submitCOD = async (req, res) => {
 exports.getCODHistory = async (req, res) => {
   try {
     const { agentId } = req.params;
+    const { from, to, method, status } = req.query; // filters
 
     const agent = await Agent.findById(agentId).lean();
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
     }
 
-    // Sort history latest first
-    const history = (agent.codSubmissionLogs || []).sort(
+    // Start with all logs
+    let history = agent.codSubmissionLogs || [];
+
+    // Filter: Date Range
+    if (from || to) {
+      const fromDate = from ? new Date(from) : new Date("1970-01-01");
+      const toDate = to ? new Date(to) : new Date();
+      history = history.filter(
+        (log) =>
+          new Date(log.droppedAt) >= fromDate &&
+          new Date(log.droppedAt) <= toDate
+      );
+    }
+
+    // Filter: Method
+    if (method) {
+      history = history.filter((log) => log.dropMethod === method);
+    }
+
+    // Filter: Status
+    if (status) {
+      history = history.filter((log) => (log.status || "Pending") === status);
+    }
+
+    // Sort latest first
+    history = history.sort(
       (a, b) => new Date(b.droppedAt) - new Date(a.droppedAt)
     );
 
@@ -2493,7 +2518,7 @@ exports.getCODHistory = async (req, res) => {
         amount: log.droppedAmount,
         method: log.dropMethod,
         notes: log.dropNotes,
-        status: log.status || "Pending", // default if no status
+        status: log.status || "Pending",
         droppedAt: log.droppedAt,
       })),
     });
