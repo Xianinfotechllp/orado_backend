@@ -566,7 +566,10 @@ exports.manualAssignAgent = async (req, res) => {
       agentId,
       title: "New Order Assignment",
       body: `You've been assigned to deliver from ${order.restaurantId?.name} to ${order.deliveryAddress}. Total: ₹${order.totalAmount}`,
-      data: {},
+      data: {   type: "order_assignment",
+    orderId: order._id.toString(),
+    totalAmount: (order.totalAmount || 0).toString(),
+    restaurantName: order.restaurantId?.name || ""},
     });
 
     // Emit to customer

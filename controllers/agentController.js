@@ -2362,3 +2362,143 @@ async function getDrivingDistance(fromCoords, toCoords) {
     return null;
   }
 }
+
+
+// Get COD dashboard for an agent
+exports.getCODDashboard = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const agent = await Agent.findById(agentId).lean();
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const currentCashHeld = agent.codTracking?.currentCODHolding || 0;
+    const codLimit = agent.permissions?.maxCODAmount || 0;
+    const codUsagePercent = codLimit
+      ? ((currentCashHeld / codLimit) * 100).toFixed(0)
+      : 0;
+    const limitExceeded = codUsagePercent > 100;
+
+    res.json({
+      currentCashHeld,
+      codLimit,
+      codUsagePercent,
+      limitExceeded,
+    });
+  } catch (error) {
+    console.error("Error fetching COD dashboard:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+exports.submitCOD = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { droppedAmount, dropMethod, dropNotes, dropLocation } = req.body;
+
+    // Validate droppedAmount
+    if (!droppedAmount || droppedAmount <= 0) {
+      return res.status(400).json({ message: "Dropped amount must be greater than 0" });
+    }
+
+    // Validate dropMethod
+    const validMethods = [
+      "CashDropAtHub",
+      "OnlineTransfer",
+      "POSMachine",
+      "CourierPickup",
+      "ManualAdjustment",
+      "AutoDeductFromPayout",
+      "ThirdPartyCollection"
+    ];
+    if (!validMethods.includes(dropMethod)) {
+      return res.status(400).json({ message: "Invalid drop method" });
+    }
+
+    // Find agent
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    // Create submission log
+    const newSubmission = {
+      droppedAmount,
+      dropMethod,
+      dropNotes,
+      dropLocation, // optional GeoJSON { type: "Point", coordinates: [lng, lat] }
+      droppedAt: new Date(),
+    };
+
+    agent.codSubmissionLogs.push(newSubmission);
+
+    // Deduct from COD holding
+    agent.codTracking.currentCODHolding =
+      (agent.codTracking.currentCODHolding || 0) - droppedAmount;
+
+    if (agent.codTracking.currentCODHolding < 0) {
+      agent.codTracking.currentCODHolding = 0; // prevent negative
+    }
+
+    agent.codTracking.lastUpdated = new Date();
+
+    await agent.save();
+
+    res.status(200).json({
+      message: "COD submitted successfully",
+      codTracking: agent.codTracking,
+      lastSubmission: newSubmission,
+    });
+  } catch (error) {
+    console.error("Error submitting COD:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+
+
+exports.getCODHistory = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const agent = await Agent.findById(agentId).lean();
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    // Sort history latest first
+    const history = (agent.codSubmissionLogs || []).sort(
+      (a, b) => new Date(b.droppedAt) - new Date(a.droppedAt)
+    );
+
+    res.status(200).json({
+      agentId,
+      currentCODHolding: agent.codTracking?.currentCODHolding || 0,
+      codLimit: agent.codTracking?.codLimit || 0,
+      usagePercent:
+        agent.codTracking?.codLimit > 0
+          ? ((agent.codTracking?.currentCODHolding || 0) /
+              agent.codTracking.codLimit) *
+            100
+          : 0,
+      history: history.map((log) => ({
+        amount: log.droppedAmount,
+        method: log.dropMethod,
+        notes: log.dropNotes,
+        status: log.status || "Pending", // default if no status
+        droppedAt: log.droppedAt,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching COD history:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
