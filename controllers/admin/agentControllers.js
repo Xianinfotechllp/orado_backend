@@ -447,9 +447,6 @@ exports.getCurrentTask = async (req, res) => {
 
 
 
-
-
-// Updated manualAssignAgent function with type safety
 exports.manualAssignAgent = async (req, res) => {
   try {
     const { orderId, agentId } = req.body;
@@ -478,27 +475,21 @@ exports.manualAssignAgent = async (req, res) => {
     order.agentAssignmentTimestamp = new Date();
     await order.save();
 
-    // 4️⃣ Calculate distance with type safety
+    // 4️⃣ Calculate distance
     let mapboxDistance = 0.0;
-    if (Array.isArray(order.restaurantId?.location?.coordinates) && 
-        Array.isArray(order.deliveryLocation?.coordinates)) {
-      
+    if (Array.isArray(order.restaurantId?.location?.coordinates) && Array.isArray(order.deliveryLocation?.coordinates)) {
       const fromCoords = order.restaurantId.location.coordinates;
       const toCoords = order.deliveryLocation.coordinates;
 
-      // Validate coordinates
       if (fromCoords.length === 2 && toCoords.length === 2) {
         const accessToken = process.env.MAPBOX_ACCESS_TOKEN;
         try {
           const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?geometries=geojson&access_token=${accessToken}`;
           const response = await axios.get(url);
-          
           if (response.data.routes && response.data.routes.length > 0) {
-            const distanceMeters = response.data.routes[0].distance;
-            mapboxDistance = parseFloat((distanceMeters / 1000).toFixed(2));
+            mapboxDistance = parseFloat((response.data.routes[0].distance / 1000).toFixed(2));
           }
         } catch (err) {
-          console.warn("Mapbox distance fetch failed, using straight line distance");
           const distanceInMeters = geolib.getDistance(
             { latitude: fromCoords[1], longitude: fromCoords[0] },
             { latitude: toCoords[1], longitude: toCoords[0] }
@@ -520,7 +511,7 @@ exports.manualAssignAgent = async (req, res) => {
       console.warn("Failed to fetch surge zones:", err.message);
     }
 
-    // 6️⃣ Calculate earnings with type safety
+    // 6️⃣ Calculate earnings
     const earningsConfig = await AgentEarningSettings.findOne({ mode: "global" });
     const earningsBreakdown = calculateEarningsBreakdown({
       distanceKm: mapboxDistance,
@@ -528,10 +519,10 @@ exports.manualAssignAgent = async (req, res) => {
       surgeZones: applicableSurges,
     });
 
-    // 7️⃣ Construct payload with STRICT TYPE SAFETY
+    // 7️⃣ Construct payload
     const popupPayload = {
       orderDetails: {
-        id: order._id.toString(),
+        id: order._id?.toString() || "",
         totalPrice: parseFloat(order.totalAmount || 0),
         deliveryAddress: order.deliveryAddress || "",
         deliveryLocation: {
@@ -566,9 +557,9 @@ exports.manualAssignAgent = async (req, res) => {
       showAcceptReject: false,
     };
 
-    console.log("Manual assignment - constructed popup payload:", JSON.stringify(popupPayload, null, 2));
+    const safePayload = validatePayload(popupPayload);
 
-    // 8️⃣ Emit notifications with error handling
+    // 8️⃣ Emit notifications
     const io = req.app.get("io");
 
     await sendNotificationToAgent({
@@ -589,66 +580,66 @@ exports.manualAssignAgent = async (req, res) => {
         },
       });
     }
-
-    // Emit to agent with validation
+console.log("Emitting to agent:", `agent_${agent._id}`, "Payload:", safePayload);
+    // Emit to agent
     if (agent._id) {
-      try {
-        // Validate payload before sending
-        const validatedPayload = validatePayload(popupPayload);
-        
-        io.to(`agent_${agent._id}`).emit("order:new", validatedPayload);
-        io.to(`agent_${agent._id}`).emit("orderAssigned", { 
-          status: "success", 
-          assignedOrders: [{
-            id: order._id.toString(),
-            totalAmount: parseFloat(order.totalAmount || 0),
-            // Add other required fields
-          }] 
-        });
-
-        console.log("📦 Order popup payload sent to agent:", agent._id);
-      } catch (emitError) {
-        console.error("❌ Socket emit error:", emitError);
-      }
+      io.to(`agent_${agent._id}`).emit("order:new", safePayload);
+      io.to(`agent_${agent._id}`).emit("orderAssigned", {
+        status: "success",
+        assignedOrders: [{
+          id: order._id.toString(),
+          totalAmount: parseFloat(order.totalAmount || 0),
+        }],
+      });
     }
 
     // 9️⃣ Response
-    res.status(200).json({ 
-      message: "Agent manually assigned successfully.", 
+    res.status(200).json({
+      message: "Agent manually assigned successfully.",
       order: {
         id: order._id.toString(),
         status: order.orderStatus,
-        totalAmount: parseFloat(order.totalAmount || 0)
-      }, 
+        totalAmount: parseFloat(order.totalAmount || 0),
+      },
       agent: {
         id: agent._id.toString(),
-        name: agent.fullName
-      } 
+        name: agent.fullName || "",
+      },
     });
+
   } catch (error) {
     console.error("❌ Manual assignment error:", error);
     res.status(500).json({ message: "Internal server error.", error: error.message });
   }
 };
 
-// Add validation function
+// Payload validation function
 function validatePayload(payload) {
   const validated = JSON.parse(JSON.stringify(payload));
-  
-  // Ensure all numbers are properly typed
+
   validated.orderDetails.totalPrice = parseFloat(validated.orderDetails.totalPrice) || 0;
   validated.orderDetails.distanceKm = parseFloat(validated.orderDetails.distanceKm) || 0;
   validated.orderDetails.estimatedEarning = parseFloat(validated.orderDetails.estimatedEarning) || 0;
+
   validated.orderDetails.deliveryLocation.lat = parseFloat(validated.orderDetails.deliveryLocation.lat) || 0;
   validated.orderDetails.deliveryLocation.long = parseFloat(validated.orderDetails.deliveryLocation.long) || 0;
+
   validated.orderDetails.restaurant.location.lat = parseFloat(validated.orderDetails.restaurant.location.lat) || 0;
   validated.orderDetails.restaurant.location.long = parseFloat(validated.orderDetails.restaurant.location.long) || 0;
-  
-  // Ensure arrays
-  validated.orderDetails.orderItems = validated.orderDetails.orderItems || [];
-  
+
+  validated.orderDetails.orderItems = (validated.orderDetails.orderItems || []).map(item => ({
+    name: item.name || "",
+    qty: parseInt(item.qty || 0),
+    price: parseFloat(item.price || 0),
+  }));
+
   return validated;
 }
+
+
+
+
+
 
 
 
