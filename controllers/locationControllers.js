@@ -1,5 +1,5 @@
 
-
+const moment = require("moment");
 
 const Restaurant = require("../models/restaurantModel");
 const mongoose = require('mongoose');
@@ -1069,10 +1069,10 @@ exports.getNearbyStores = async (req, res) => {
     const {
       latitude,
       longitude,
-      radius = 5000, // meters
+      radius = 5000,
       limit = 10,
       page = 1,
-      storeType // "pharmacy", "meat", "grocery", etc.
+      storeType
     } = req.query;
 
     const lat = parseFloat(latitude);
@@ -1088,8 +1088,7 @@ exports.getNearbyStores = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    // ✅ Fetch nearby stores with geoNear
-    const stores = await Restaurant.aggregate([
+    let stores = await Restaurant.aggregate([
       {
         $geoNear: {
           near: { type: "Point", coordinates: [lon, lat] },
@@ -1121,8 +1120,44 @@ exports.getNearbyStores = async (req, res) => {
       { $limit: parseInt(limit) }
     ]);
 
-    // ✅ Count total documents using geoWithin (no $near!)
-    const earthRadiusInMeters = 6378137; // WGS84 standard earth radius
+    // ✅ Add open/close check
+    const now = moment();
+    const currentDay = now.format("dddd").toLowerCase(); // "monday"
+    const currentTime = now.format("HH:mm"); // 24h
+
+    stores = stores.map(store => {
+      const todayHours = store.openingHours.find(h => h.day === currentDay);
+      let isOpen = false;
+      let message = "";
+
+      if (!todayHours || todayHours.isClosed) {
+        isOpen = false;
+        message = "Closed today";
+      } else {
+        const openTime24 = todayHours.openingTime;
+        const closeTime24 = todayHours.closingTime;
+
+        // Convert to AM/PM format
+        const openTime12 = moment(openTime24, "HH:mm").format("hh:mm A");
+        const closeTime12 = moment(closeTime24, "HH:mm").format("hh:mm A");
+
+        if (currentTime >= openTime24 && currentTime <= closeTime24) {
+          isOpen = true;
+          message = `Open now (closes at ${closeTime12})`;
+        } else if (currentTime < openTime24) {
+          isOpen = false;
+          message = `Opens at ${openTime12}`;
+        } else {
+          isOpen = false;
+          message = `Closed (opens tomorrow at ${openTime12})`;
+        }
+      }
+
+      return { ...store, isOpen, message };
+    });
+
+    // ✅ Count total stores
+    const earthRadiusInMeters = 6378137;
     const total = await Restaurant.countDocuments({
       storeType,
       approvalStatus: "approved",
