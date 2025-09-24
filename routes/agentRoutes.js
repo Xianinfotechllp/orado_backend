@@ -128,6 +128,6 @@ router.get('/incentive/summary',protectAgent, getAgentIncentiveSummary);
 
 
 router.get("/:agentId/cod-dashboard",protectAgent, getCODDashboard);
-router.post("/:agentId/cod/submit", protectAgent, submitCOD);
+router.post("/:agentId/cod-submit", protectAgent, submitCOD);
 router.get("/:agentId/cod-history", protectAgent, getCODHistory);
 module.exports = router;
