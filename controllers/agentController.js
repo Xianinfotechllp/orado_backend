@@ -2778,17 +2778,21 @@ exports.getAgentMilestones = async (req, res) => {
           (m) => m.milestoneId?.toString() === milestone._id.toString()
         ) || {};
 
-      // Calculate overall progress across all conditions
+      // Calculate overall progress across conditions
       const conditions = milestone.conditions || {};
       const progressConditions = progress.conditionsProgress || {};
       const conditionProgressList = [];
       let overallProgress = 0;
+      let validConditionCount = 0;
 
       for (const key of Object.keys(conditions)) {
         const target = conditions[key] || 0;
+        if (target <= 0) continue; // Skip conditions with zero target
+
         const done = progressConditions[key] || 0;
-        const percent = target > 0 ? Math.min((done / target) * 100, 100) : 0;
+        const percent = Math.min((done / target) * 100, 100);
         overallProgress += percent;
+        validConditionCount++;
 
         conditionProgressList.push({
           name: key,
@@ -2798,10 +2802,7 @@ exports.getAgentMilestones = async (req, res) => {
         });
       }
 
-      overallProgress =
-        conditionProgressList.length > 0
-          ? Math.round(overallProgress / conditionProgressList.length)
-          : 0;
+      overallProgress = validConditionCount > 0 ? Math.round(overallProgress / validConditionCount) : 0;
 
       // Determine claimable status safely
       const claimable =
@@ -2814,7 +2815,7 @@ exports.getAgentMilestones = async (req, res) => {
         status: progress.status || "Locked",
         reward: milestone.reward || {},
         overallProgress,
-        conditions: conditionProgressList,
+        conditions: conditionProgressList, // only conditions with target > 0
         claimable,
         levelImageUrl: milestone.levelImageUrl || null, // optional
       };
@@ -2840,7 +2841,6 @@ exports.getAgentMilestones = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 
 
