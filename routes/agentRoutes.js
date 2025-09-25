@@ -23,8 +23,10 @@ const { registerAgent,loginAgent, agentUpdatesOrderStatus, toggleAvailability, g
    getAgentIncentiveSummary,
    getCODDashboard,
    submitCOD,
-   getCODHistory
-
+   getCODHistory,
+   getIncentivesForAgent
+,getAgentMilestones,
+    updateAgentLocation
 } = require("../controllers/agentController")
 const { upload } = require('../middlewares/multer');
 const { protect, checkRole, protectAgent } = require('../middlewares/authMiddleware');
@@ -124,10 +126,17 @@ router.get('/:agentId',protectAgent, getAgentBasicDetails)
 
 router.get('/earning/summary',protectAgent, getAgentEarningsSummary);
 router.get('/incentive/summary',protectAgent, getAgentIncentiveSummary);
-
+router.get("/:agentId/incentive",protectAgent, getIncentivesForAgent);
+router.get("/:agentId/milestones", protectAgent, getAgentMilestones);
 
 
 router.get("/:agentId/cod-dashboard",protectAgent, getCODDashboard);
 router.post("/:agentId/cod-submit", protectAgent, submitCOD);
 router.get("/:agentId/cod-history", protectAgent, getCODHistory);
+
+
+
+
+
+router.post("/:agentId/update-location", protectAgent, updateAgentLocation);
 module.exports = router;

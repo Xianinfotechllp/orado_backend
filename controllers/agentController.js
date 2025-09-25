@@ -14,6 +14,13 @@ const AgentIncentiveProgress = require("../models/agentIncentiveProgress")
   const { createAgentIncentive  } = require('../services/incentiveService');
 const loyaltyService = require("../services/loyaltyPointService")
 const geolib = require('geolib');
+const  getRedisClient  = require("../config/redisClient");
+const redis = getRedisClient();
+
+const MilestoneReward = require("../models/MilestoneRewardModel");
+const AgentMilestoneProgress = require("../models/AgentIncentiveEarningModel");
+
+
 const {
   addAgentEarnings,
   addRestaurantEarnings,
@@ -2279,7 +2286,7 @@ exports.getAgentIncentiveSummary = async (req, res) => {
   period: type
   
 });
-console.log(rule)
+
     if (!rule) {
       return res.status(200).json({
         type,
@@ -2524,6 +2531,264 @@ exports.getCODHistory = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching COD history:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+exports.getIncentivesForAgent = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const periodFilter = req.query.period || 'daily';
+
+    // Fetch agent name for debug
+    const agent = await Agent.findById(agentId).lean();
+    const agentName = agent?.name || 'Unknown';
+    console.log(`🔹 Fetching incentives for Agent: ${agentName} (${agentId}), Period: ${periodFilter}`);
+
+    // Determine date range
+    const now = moment();
+    let startDate, endDate = now;
+
+    switch (periodFilter) {
+      case 'weekly':
+        startDate = now.clone().startOf('isoWeek');
+        break;
+      case 'monthly':
+        startDate = now.clone().startOf('month');
+        break;
+      case 'daily':
+      default:
+        startDate = now.clone().startOf('day');
+        break;
+    }
+    console.log(`🔹 Earnings period: ${startDate.format()} to ${endDate.format()}`);
+
+    // Fetch agent earnings (all components)
+    const earningsAgg = await AgentEarning.aggregate([
+      {
+        $match: {
+          agentId: new mongoose.Types.ObjectId(agentId),
+          createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          base_fee: { $sum: "$baseDeliveryFee" },
+          extra_distance_fee: { $sum: "$extraDistanceFee" },
+          tip: { $sum: "$tipAmount" },
+          surge: { $sum: "$surgeAmount" },
+          incentive: { $sum: "$incentiveAmount" },
+          total: { $sum: { $add: ["$baseDeliveryFee", "$extraDistanceFee", "$tipAmount", "$surgeAmount", "$incentiveAmount"] } }
+        }
+      }
+    ]);
+
+    const summary = earningsAgg[0] || {
+      base_fee: 0,
+      extra_distance_fee: 0,
+      tip: 0,
+      surge: 0,
+      incentive: 0,
+      total: 0
+    };
+    const totalEarned = summary.total;
+
+    // Delivery stats
+    const totalDeliveries = await Order.countDocuments({
+      assignedAgent: new mongoose.Types.ObjectId(agentId),
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+    });
+
+    const completedDeliveries = await Order.countDocuments({
+      assignedAgent: new mongoose.Types.ObjectId(agentId),
+      agentDeliveryStatus: 'delivered',
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+    });
+
+    console.log(`🔹 Agent total earnings: ${totalEarned}, completed deliveries: ${completedDeliveries}`);
+
+    // Fetch all active incentive plans
+    let planQuery = { isActive: true };
+    if (periodFilter !== 'all') planQuery.period = periodFilter;
+    const plans = await IncentivePlan.find(planQuery).lean();
+    console.log(`🔹 Found ${plans.length} active incentive plans`);
+
+    // Determine eligible plans
+    const eligiblePlans = [];
+    for (const plan of plans) {
+      for (const cond of plan.conditions) {
+        let eligible = false;
+        if (cond.conditionType === 'earnings' && totalEarned >= cond.threshold) eligible = true;
+        if (cond.conditionType === 'deliveries' && completedDeliveries >= cond.threshold) eligible = true;
+
+        if (eligible) eligiblePlans.push({ ...plan, eligibleCondition: cond });
+      }
+    }
+
+    eligiblePlans.sort((a,b) => b.eligibleCondition.incentiveAmount - a.eligibleCondition.incentiveAmount);
+    const highestEligible = eligiblePlans[0] || null;
+    if (highestEligible) console.log(`🔹 Highest eligible incentive: ${highestEligible.name} - ${highestEligible.eligibleCondition.incentiveAmount}`);
+    else console.log(`🔹 No eligible incentive for this period`);
+
+    // Prepare incentive plans response
+    const incentivePlans = plans.map(plan => {
+      const cond = plan.conditions[0]; // assuming single condition per plan
+      let currentValue = 0;
+      if (cond.conditionType === 'earnings') currentValue = totalEarned;
+      if (cond.conditionType === 'deliveries') currentValue = completedDeliveries;
+
+      const percent = Math.min((currentValue / cond.threshold) * 100, 100);
+      const eligible = currentValue >= cond.threshold;
+
+      return {
+        id: plan._id,
+        name: plan.name,
+        description: plan.description,
+        period: plan.period,
+        conditionType: cond.conditionType,
+        minValue: cond.threshold,
+        incentive: cond.incentiveAmount,
+        currentValue,
+        percent,
+        eligible
+      };
+    });
+
+    return res.json({
+      period: periodFilter,
+      totalEarned,
+      completedDeliveries,
+      highestEligibleIncentive: highestEligible
+        ? {
+            name: highestEligible.name,
+            amount: highestEligible.eligibleCondition.incentiveAmount
+          }
+        : null,
+      incentivePlans
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching incentives:', error);
+    return res.status(500).json({ message: "Something went wrong" });
+  }
+};
+
+
+exports.getAgentMilestones = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    // 1️⃣ Fetch all active milestones
+    const milestones = await MilestoneReward.find({ active: true }).sort({ level: 1 }).lean();
+
+    // 2️⃣ Fetch agent's progress
+    let agentProgress = await AgentMilestoneProgress.findOne({ agentId }).lean();
+
+    // If agent has no progress yet, initialize empty structure
+    if (!agentProgress) {
+      agentProgress = { milestones: [] };
+    }
+
+    // 3️⃣ Build response for UI
+    const milestoneList = milestones.map(milestone => {
+      // Find agent progress for this milestone level
+      const progress = agentProgress.milestones.find(m => m.milestoneId.toString() === milestone._id.toString());
+
+      // Calculate overall progress
+      let overallProgress = 0;
+      const conditions = milestone.conditions;
+      const progressConditions = progress?.conditionsProgress || {};
+
+      // For multiple conditions
+      const conditionProgressList = [];
+      for (const key of Object.keys(conditions)) {
+        const target = conditions[key] || 0;
+        const done = progressConditions[key] || 0;
+        const percent = target > 0 ? Math.min((done / target) * 100, 100) : 0;
+        overallProgress += percent;
+        conditionProgressList.push({
+          name: key,
+          done,
+          target,
+          percent
+        });
+      }
+      overallProgress = conditionProgressList.length ? Math.round(overallProgress / conditionProgressList.length) : 0;
+
+      return {
+        level: milestone.level,
+        title: milestone.title,
+        status: progress?.status || "Locked",
+        reward: milestone.reward,
+        overallProgress,
+        conditions: conditionProgressList,
+        claimable: progress?.status === "Completed" && !progress?.rewardClaimed?.claimed
+      };
+    });
+
+    // 4️⃣ Determine current level (first In Progress or Completed)
+    const currentLevel = milestoneList.find(m => m.status === "In Progress" || m.status === "Completed") || milestoneList[0];
+
+    res.json({
+      currentLevel: {
+        level: currentLevel.level,
+        title: currentLevel.title,
+        overallProgress: currentLevel.overallProgress
+      },
+      milestoneList
+    });
+
+  } catch (err) {
+    console.error("Error fetching agent milestones:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+exports.updateLocation = async (req, res) => {
+  try {
+    const { agentId, lat, lng, deviceInfo } = req.body;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(agentId) ||
+      typeof lat !== "number" ||
+      typeof lng !== "number"
+    ) {
+      return res.status(400).json({ message: "Invalid agent location data" });
+    }
+
+    console.log(`📍 Agent ${agentId} location update (HTTP):`, { lat, lng });
+
+    // Save to Redis
+    await redis.set(`agent_last_seen:${agentId}`, Date.now(), "EX", 60);
+    await redis.set(
+      `agent_location:${agentId}`,
+      JSON.stringify({ lat, lng }),
+      "EX",
+      60
+    );
+
+    // ------------------------------
+    // Emit to connected clients (like admin dashboards)
+    // ------------------------------
+    const io = req.app.get("io");
+    if (io) {
+      // Broadcast to everyone except the sender (like socket.broadcast.emit)
+      io.emit("admin:updateLocation", {
+        agentId,
+        lat,
+        lng,
+        deviceInfo,
+      });
+    }
+
+    res.status(200).json({ message: "Location updated successfully" });
+  } catch (err) {
+    console.error("Error updating agent location:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 };
