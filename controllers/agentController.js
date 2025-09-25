@@ -2756,92 +2756,75 @@ exports.getAgentMilestones = async (req, res) => {
     const { agentId } = req.params;
 
     // 1️⃣ Fetch all active milestones, sorted by level
-    const milestones = await MilestoneReward.find({ active: true })
-      .sort({ level: 1 })
-      .lean();
+    const milestones = await MilestoneReward.find({ active: true }).sort({ level: 1 }).lean();
 
     // 2️⃣ Fetch agent's progress
     let agentProgress = await AgentMilestoneProgress.findOne({ agentId }).lean();
+    if (!agentProgress) agentProgress = { milestones: [] };
 
-    // Ensure milestones array exists
-    if (!agentProgress) {
-      agentProgress = { milestones: [] };
-    } else if (!Array.isArray(agentProgress.milestones)) {
-      agentProgress.milestones = [];
-    }
+    // 3️⃣ Build milestone list for frontend
+    const milestoneList = milestones.map(milestone => {
+      const progress = (agentProgress.milestones || []).find(
+        m => m.milestoneId?.toString() === milestone._id.toString()
+      ) || {};
 
-    // 3️⃣ Build milestone list for UI
-    const milestoneList = milestones.map((milestone) => {
-      // Find agent progress for this milestone safely
-      const progress =
-        (agentProgress.milestones || []).find(
-          (m) => m.milestoneId?.toString() === milestone._id.toString()
-        ) || {};
-
-      // Calculate overall progress across conditions
       const conditions = milestone.conditions || {};
       const progressConditions = progress.conditionsProgress || {};
       const conditionProgressList = [];
       let overallProgress = 0;
-      let validConditionCount = 0;
 
+      // Only include conditions with target > 0
       for (const key of Object.keys(conditions)) {
         const target = conditions[key] || 0;
-        if (target <= 0) continue; // Skip conditions with zero target
-
-        const done = progressConditions[key] || 0;
-        const percent = Math.min((done / target) * 100, 100);
-        overallProgress += percent;
-        validConditionCount++;
-
-        conditionProgressList.push({
-          name: key,
-          done,
-          target,
-          percent,
-        });
+        if (target > 0) {
+          const done = progressConditions[key] || 0;
+          const percent = Math.min((done / target) * 100, 100);
+          overallProgress += percent;
+          conditionProgressList.push({
+            name: key,
+            done,
+            target,
+            percent
+          });
+        }
       }
 
-      overallProgress = validConditionCount > 0 ? Math.round(overallProgress / validConditionCount) : 0;
-
-      // Determine claimable status safely
-      const claimable =
-        progress.status === "Completed" &&
-        !(progress.rewardClaimed?.claimed ?? false);
+      overallProgress = conditionProgressList.length
+        ? Math.round(overallProgress / conditionProgressList.length)
+        : 0;
 
       return {
         level: milestone.level,
         title: milestone.title,
+        description: milestone.description || "",
         status: progress.status || "Locked",
         reward: milestone.reward || {},
         overallProgress,
-        conditions: conditionProgressList, // only conditions with target > 0
-        claimable,
-        levelImageUrl: milestone.levelImageUrl || null, // optional
+        conditions: conditionProgressList,
+        claimable: progress.status === "Completed" && !(progress.rewardClaimed?.claimed ?? false),
+        levelImageUrl: milestone.levelImageUrl || null
       };
     });
 
     // 4️⃣ Determine current level (first In Progress or Completed)
-    const currentLevel =
-      milestoneList.find((m) => m.status === "In Progress" || m.status === "Completed") ||
-      milestoneList[0] ||
-      {};
+    const currentLevel = milestoneList.find(m => m.status === "In Progress" || m.status === "Completed") 
+                         || milestoneList[0] || {};
 
-    // 5️⃣ Send response
+    // 5️⃣ Send structured response for frontend
     res.json({
       currentLevel: {
         level: currentLevel.level || 1,
         title: currentLevel.title || "",
         overallProgress: currentLevel.overallProgress || 0,
       },
-      milestoneList,
+      milestoneList
     });
+
   } catch (err) {
     console.error("❌ Error fetching agent milestones:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 
 exports.updateAgentLocation = async (req, res) => {
