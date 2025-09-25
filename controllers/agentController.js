@@ -2751,7 +2751,8 @@ exports.getAgentMilestones = async (req, res) => {
 
 exports.updateAgentLocation = async (req, res) => {
   try {
-    const { agentId, lat, lng, deviceInfo } = req.body;
+    const { agentId } = req.params;
+    const { lat, lng, deviceInfo } = req.body;
 
     if (
       !mongoose.Types.ObjectId.isValid(agentId) ||
