@@ -2749,7 +2749,7 @@ exports.getAgentMilestones = async (req, res) => {
 };
 
 
-exports.updateLocation = async (req, res) => {
+exports.updateAgentLocation = async (req, res) => {
   try {
     const { agentId, lat, lng, deviceInfo } = req.body;
 
