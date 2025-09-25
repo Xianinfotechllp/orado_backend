@@ -2639,10 +2639,7 @@ exports.getIncentivesForAgent = async (req, res) => {
     for (const plan of plans) {
       for (const cond of plan.conditions) {
         let eligible = false;
-        if (
-          cond.conditionType === "earnings" &&
-          totalEarned >= cond.threshold
-        )
+        if (cond.conditionType === "earnings" && totalEarned >= cond.threshold)
           eligible = true;
         if (
           cond.conditionType === "deliveries" &&
@@ -2656,10 +2653,10 @@ exports.getIncentivesForAgent = async (req, res) => {
       }
     }
 
+    // Sort to find highest eligible
     eligiblePlans.sort(
       (a, b) =>
-        b.eligibleCondition.incentiveAmount -
-        a.eligibleCondition.incentiveAmount
+        b.eligibleCondition.incentiveAmount - a.eligibleCondition.incentiveAmount
     );
     const highestEligible = eligiblePlans[0] || null;
 
@@ -2673,22 +2670,14 @@ exports.getIncentivesForAgent = async (req, res) => {
 
     // Build incentivePlans response
     const incentivePlans = [];
-
     for (const plan of plans) {
       for (const cond of plan.conditions) {
-        let currentValue = 0;
-        if (cond.conditionType === "earnings") currentValue = totalEarned;
-        if (cond.conditionType === "deliveries")
-          currentValue = completedDeliveries;
-
+        let currentValue = cond.conditionType === "earnings" ? totalEarned : completedDeliveries;
         const percent = Math.min((currentValue / cond.threshold) * 100, 100);
 
         let status = "🔒 Not Yet Reached";
-        if (currentValue >= cond.threshold) {
-          status = "✅ Completed";
-        } else if (currentValue > 0) {
-          status = "In Progress";
-        }
+        if (currentValue >= cond.threshold) status = "✅ Completed";
+        else if (currentValue > 0) status = "In Progress";
 
         // Highlight check
         const highlighted =
@@ -2712,14 +2701,44 @@ exports.getIncentivesForAgent = async (req, res) => {
       }
     }
 
+    // Full response
     return res.json({
       period: periodFilter,
       totalEarned,
       completedDeliveries,
       highestEligibleIncentive: highestEligible
         ? {
+            id: highestEligible._id,
             name: highestEligible.name,
-            amount: highestEligible.eligibleCondition.incentiveAmount,
+            description: highestEligible.description,
+            period: highestEligible.period,
+            conditionType: highestEligible.eligibleCondition.conditionType,
+            minValue: highestEligible.eligibleCondition.threshold,
+            incentive: highestEligible.eligibleCondition.incentiveAmount,
+            currentValue:
+              highestEligible.eligibleCondition.conditionType === "earnings"
+                ? totalEarned
+                : completedDeliveries,
+            percent: Math.min(
+              (
+                (highestEligible.eligibleCondition.conditionType === "earnings"
+                  ? totalEarned
+                  : completedDeliveries) /
+                highestEligible.eligibleCondition.threshold
+              ) * 100,
+              100
+            ),
+            status:
+              (highestEligible.eligibleCondition.conditionType === "earnings"
+                ? totalEarned
+                : completedDeliveries) >= highestEligible.eligibleCondition.threshold
+                ? "✅ Completed"
+                : (highestEligible.eligibleCondition.conditionType === "earnings"
+                    ? totalEarned
+                    : completedDeliveries) > 0
+                ? "In Progress"
+                : "🔒 Not Yet Reached",
+            highlighted: true,
           }
         : null,
       incentivePlans,
