@@ -2541,38 +2541,43 @@ exports.getCODHistory = async (req, res) => {
 exports.getIncentivesForAgent = async (req, res) => {
   try {
     const { agentId } = req.params;
-    const periodFilter = req.query.period || 'daily';
+    const periodFilter = req.query.period || "daily";
 
-    // Fetch agent name for debug
+    // Fetch agent (for debug logs)
     const agent = await Agent.findById(agentId).lean();
-    const agentName = agent?.name || 'Unknown';
-    console.log(`🔹 Fetching incentives for Agent: ${agentName} (${agentId}), Period: ${periodFilter}`);
+    const agentName = agent?.name || "Unknown";
+    console.log(
+      `🔹 Fetching incentives for Agent: ${agentName} (${agentId}), Period: ${periodFilter}`
+    );
 
-    // Determine date range
+    // Period calculation
     const now = moment();
-    let startDate, endDate = now;
+    let startDate,
+      endDate = now;
 
     switch (periodFilter) {
-      case 'weekly':
-        startDate = now.clone().startOf('isoWeek');
+      case "weekly":
+        startDate = now.clone().startOf("isoWeek");
         break;
-      case 'monthly':
-        startDate = now.clone().startOf('month');
+      case "monthly":
+        startDate = now.clone().startOf("month");
         break;
-      case 'daily':
+      case "daily":
       default:
-        startDate = now.clone().startOf('day');
+        startDate = now.clone().startOf("day");
         break;
     }
-    console.log(`🔹 Earnings period: ${startDate.format()} to ${endDate.format()}`);
+    console.log(
+      `🔹 Earnings period: ${startDate.format()} to ${endDate.format()}`
+    );
 
-    // Fetch agent earnings (all components)
+    // Earnings aggregation
     const earningsAgg = await AgentEarning.aggregate([
       {
         $match: {
           agentId: new mongoose.Types.ObjectId(agentId),
-          createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
-        }
+          createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
+        },
       },
       {
         $group: {
@@ -2582,9 +2587,19 @@ exports.getIncentivesForAgent = async (req, res) => {
           tip: { $sum: "$tipAmount" },
           surge: { $sum: "$surgeAmount" },
           incentive: { $sum: "$incentiveAmount" },
-          total: { $sum: { $add: ["$baseDeliveryFee", "$extraDistanceFee", "$tipAmount", "$surgeAmount", "$incentiveAmount"] } }
-        }
-      }
+          total: {
+            $sum: {
+              $add: [
+                "$baseDeliveryFee",
+                "$extraDistanceFee",
+                "$tipAmount",
+                "$surgeAmount",
+                "$incentiveAmount",
+              ],
+            },
+          },
+        },
+      },
     ]);
 
     const summary = earningsAgg[0] || {
@@ -2593,70 +2608,109 @@ exports.getIncentivesForAgent = async (req, res) => {
       tip: 0,
       surge: 0,
       incentive: 0,
-      total: 0
+      total: 0,
     };
     const totalEarned = summary.total;
 
     // Delivery stats
     const totalDeliveries = await Order.countDocuments({
       assignedAgent: new mongoose.Types.ObjectId(agentId),
-      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
     });
 
     const completedDeliveries = await Order.countDocuments({
       assignedAgent: new mongoose.Types.ObjectId(agentId),
-      agentDeliveryStatus: 'delivered',
-      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() }
+      agentDeliveryStatus: "delivered",
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
     });
 
-    console.log(`🔹 Agent total earnings: ${totalEarned}, completed deliveries: ${completedDeliveries}`);
+    console.log(
+      `🔹 Agent total earnings: ${totalEarned}, completed deliveries: ${completedDeliveries}`
+    );
 
-    // Fetch all active incentive plans
+    // Fetch active incentive plans
     let planQuery = { isActive: true };
-    if (periodFilter !== 'all') planQuery.period = periodFilter;
+    if (periodFilter !== "all") planQuery.period = periodFilter;
     const plans = await IncentivePlan.find(planQuery).lean();
     console.log(`🔹 Found ${plans.length} active incentive plans`);
 
-    // Determine eligible plans
+    // Find all eligible plans
     const eligiblePlans = [];
     for (const plan of plans) {
       for (const cond of plan.conditions) {
         let eligible = false;
-        if (cond.conditionType === 'earnings' && totalEarned >= cond.threshold) eligible = true;
-        if (cond.conditionType === 'deliveries' && completedDeliveries >= cond.threshold) eligible = true;
+        if (
+          cond.conditionType === "earnings" &&
+          totalEarned >= cond.threshold
+        )
+          eligible = true;
+        if (
+          cond.conditionType === "deliveries" &&
+          completedDeliveries >= cond.threshold
+        )
+          eligible = true;
 
-        if (eligible) eligiblePlans.push({ ...plan, eligibleCondition: cond });
+        if (eligible) {
+          eligiblePlans.push({ ...plan, eligibleCondition: cond });
+        }
       }
     }
 
-    eligiblePlans.sort((a,b) => b.eligibleCondition.incentiveAmount - a.eligibleCondition.incentiveAmount);
+    eligiblePlans.sort(
+      (a, b) =>
+        b.eligibleCondition.incentiveAmount -
+        a.eligibleCondition.incentiveAmount
+    );
     const highestEligible = eligiblePlans[0] || null;
-    if (highestEligible) console.log(`🔹 Highest eligible incentive: ${highestEligible.name} - ${highestEligible.eligibleCondition.incentiveAmount}`);
-    else console.log(`🔹 No eligible incentive for this period`);
 
-    // Prepare incentive plans response
-    const incentivePlans = plans.map(plan => {
-      const cond = plan.conditions[0]; // assuming single condition per plan
-      let currentValue = 0;
-      if (cond.conditionType === 'earnings') currentValue = totalEarned;
-      if (cond.conditionType === 'deliveries') currentValue = completedDeliveries;
+    if (highestEligible) {
+      console.log(
+        `🔹 Highest eligible incentive: ${highestEligible.name} - ${highestEligible.eligibleCondition.incentiveAmount}`
+      );
+    } else {
+      console.log(`🔹 No eligible incentive for this period`);
+    }
 
-      const percent = Math.min((currentValue / cond.threshold) * 100, 100);
-      const eligible = currentValue >= cond.threshold;
+    // Build incentivePlans response
+    const incentivePlans = [];
 
-      return {
-        id: plan._id,
-        name: plan.name,
-        description: plan.description,
-        period: plan.period,
-        conditionType: cond.conditionType,
-        minValue: cond.threshold,
-        incentive: cond.incentiveAmount,
-        currentValue,
-        percent,
-        eligible
-      };
-    });
+    for (const plan of plans) {
+      for (const cond of plan.conditions) {
+        let currentValue = 0;
+        if (cond.conditionType === "earnings") currentValue = totalEarned;
+        if (cond.conditionType === "deliveries")
+          currentValue = completedDeliveries;
+
+        const percent = Math.min((currentValue / cond.threshold) * 100, 100);
+
+        let status = "🔒 Not Yet Reached";
+        if (currentValue >= cond.threshold) {
+          status = "✅ Completed";
+        } else if (currentValue > 0) {
+          status = "In Progress";
+        }
+
+        // Highlight check
+        const highlighted =
+          highestEligible &&
+          highestEligible._id.equals(plan._id) &&
+          highestEligible.eligibleCondition._id.equals(cond._id);
+
+        incentivePlans.push({
+          id: plan._id,
+          name: plan.name,
+          description: plan.description,
+          period: plan.period,
+          conditionType: cond.conditionType,
+          minValue: cond.threshold,
+          incentive: cond.incentiveAmount,
+          currentValue,
+          percent,
+          status,
+          highlighted,
+        });
+      }
+    }
 
     return res.json({
       period: periodFilter,
@@ -2665,14 +2719,13 @@ exports.getIncentivesForAgent = async (req, res) => {
       highestEligibleIncentive: highestEligible
         ? {
             name: highestEligible.name,
-            amount: highestEligible.eligibleCondition.incentiveAmount
+            amount: highestEligible.eligibleCondition.incentiveAmount,
           }
         : null,
-      incentivePlans
+      incentivePlans,
     });
-
   } catch (error) {
-    console.error('❌ Error fetching incentives:', error);
+    console.error("❌ Error fetching incentives:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
