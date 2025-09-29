@@ -28,6 +28,8 @@ exports.createStore = async (req, res) => {
       openingHours,
     } = req.body;
 
+
+    console.log(req.body)
     // Field validation
     if (!name || !ownerId || !phone || !address || !storeType || !city) {
       return res.status(400).json({

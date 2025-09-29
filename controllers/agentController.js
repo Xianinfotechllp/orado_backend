@@ -1146,18 +1146,16 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
       });
     }
 
-    const order = await Order.findById(orderId).populate("customerId");
+    // Load order
+    let order = await Order.findById(orderId).populate("customerId");
     if (!order) {
-      return res.status(404).json({
-        status: "error",
-        message: "Order not found",
-      });
+      return res.status(404).json({ status: "error", message: "Order not found" });
     }
 
+    // Candidate check
     const candidateIndex = order.agentCandidates.findIndex(
       (c) => c.agent.toString() === agentId.toString()
     );
-
     if (candidateIndex === -1) {
       return res.status(403).json({
         status: "error",
@@ -1167,26 +1165,81 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
     const candidate = order.agentCandidates[candidateIndex];
 
-    if (!["sent", "pending"].includes(candidate.status) || !candidate.isCurrentCandidate) {
-      return res.status(403).json({
-        status: "error",
-        message: "You are not the active candidate for this order",
-      });
-    }
-
-    if (candidate.respondedAt) {
-      return res.status(400).json({
-        status: "error",
-        message: "You have already responded to this assignment",
-      });
-    }
-
-    candidate.respondedAt = new Date();
-    candidate.responseTime = candidate.respondedAt - candidate.notifiedAt;
-    candidate.isCurrentCandidate = false;
-
+    // --- Handle ACCEPT ---
     if (action === "accept") {
+      // 🟢 Case 1: Send-to-All allocation
+      if (order.allocationMethod === "send_to_all") {
+        // Use atomic check (so only first agent can set assignedAgent)
+        const updatedOrder = await Order.findOneAndUpdate(
+          { _id: orderId, assignedAgent: { $exists: false } }, // only if not assigned
+          {
+            $set: {
+              assignedAgent: agentId,
+              agentAssignmentStatus: "accepted_by_agent",
+              agentAcceptedAt: new Date(),
+              "agentCandidates.$[this].status": "accepted",
+              "agentCandidates.$[this].respondedAt": new Date(),
+            },
+          },
+          {
+            new: true,
+            arrayFilters: [{ "this.agent": agentId }],
+          }
+        ).populate("customerId");
+
+        if (!updatedOrder) {
+          return res.status(400).json({
+            status: "error",
+            message: "Order already taken by another agent",
+          });
+        }
+
+        // Reject others
+        updatedOrder.agentCandidates.forEach((c) => {
+          if (c.agent.toString() !== agentId.toString() && ["notified", "pending", "sent"].includes(c.status)) {
+            c.status = "rejected";
+            c.respondedAt = new Date();
+          }
+        });
+        await updatedOrder.save();
+
+        // Emit event to customer
+        const io = req.app.get("io");
+        const agent = req.user;
+        io.to(`user_${updatedOrder.customerId._id.toString()}`).emit("agentAssigned", {
+          orderId: updatedOrder._id.toString(),
+          agent: {
+            agentId: agent._id.toString(),
+            fullName: agent.fullName,
+            phoneNumber: agent.phoneNumber,
+          },
+        });
+
+        return res.status(200).json({
+          status: "success",
+          message: "Order accepted successfully",
+        });
+      }
+
+      // 🟢 Case 2: Sequential allocation (one-by-one / queued)
+      if (!["sent", "pending"].includes(candidate.status) || !candidate.isCurrentCandidate) {
+        return res.status(403).json({
+          status: "error",
+          message: "You are not the active candidate for this order",
+        });
+      }
+
+      if (candidate.respondedAt) {
+        return res.status(400).json({
+          status: "error",
+          message: "You have already responded to this assignment",
+        });
+      }
+
       candidate.status = "accepted";
+      candidate.respondedAt = new Date();
+      candidate.responseTime = candidate.respondedAt - candidate.notifiedAt;
+      candidate.isCurrentCandidate = false;
 
       order.assignedAgent = agentId;
       order.agentAssignmentStatus = "accepted_by_agent";
@@ -1201,10 +1254,8 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
 
       await order.save();
 
-      // ✅ Emit event to customer about the assigned agent
-      const io = req.app.get("io"); // Access your socket.io instance
-      const agent = req.user; // Assuming agent details are in req.user
-
+      const io = req.app.get("io");
+      const agent = req.user;
       io.to(`user_${order.customerId._id.toString()}`).emit("agentAssigned", {
         orderId: order._id.toString(),
         agent: {
@@ -1218,28 +1269,31 @@ exports.agentAcceptOrRejectOrder = async (req, res) => {
         status: "success",
         message: "Order accepted successfully",
       });
-    } else {
-      candidate.status = "rejected";
-      candidate.rejectionReason = reason || "No reason provided";
+    }
 
-      order.agentAssignmentStatus = "awaiting_agent_acceptance";
+    // --- Handle REJECT ---
+    candidate.status = "rejected";
+    candidate.rejectionReason = reason || "No reason provided";
+    candidate.respondedAt = new Date();
+    candidate.isCurrentCandidate = false;
+
+    order.agentAssignmentStatus = "awaiting_agent_acceptance";
 
       order.rejectionHistory = order.rejectionHistory || [];
-      order.rejectionHistory.push({
-        agentId,
-        rejectedAt: new Date(),
-        reason: candidate.rejectionReason,
-      });
+     order.rejectionHistory.push({
+      agentId,
+      rejectedAt: new Date(),
+      reason: candidate.rejectionReason,
+    });
 
-      await order.save();
+    await order.save();
 
-      await notifyNextPendingAgent(order);
+    await notifyNextPendingAgent(order);
 
-      return res.status(200).json({
-        status: "success",
-        message: "Order rejected successfully",
-      });
-    }
+    return res.status(200).json({
+      status: "success",
+      message: "Order rejected successfully",
+    });
   } catch (error) {
     console.error("❌ Error in agentAcceptOrRejectOrder:", error);
     return res.status(500).json({
@@ -1422,11 +1476,18 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     }
 
     order.agentDeliveryStatus = status;
-    await order.save();
 
     // ===============================
-    // ✅ When delivered, handle payouts + loyalty
+    // ✅ When delivered, set deliveredAt and handle payouts + loyalty
     // ===============================
+    if (status === "delivered") {
+      order.deliveredAt = new Date(); // <-- set delivery timestamp
+    }
+
+    await order.save();
+
+    
+
     if (status === "delivered") {
       // Set agent back to AVAILABLE
       await Agent.updateOne(
@@ -1442,9 +1503,9 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
       // Award Loyalty Points (safe call)
       try {
         await loyaltyService.awardPoints(
-          order.customerId._id,   // userId
-          order._id,              // orderId
-          order.subtotal       // totalAmount
+          order.customerId._id, // userId
+          order._id,            // orderId
+          order.subtotal        // totalAmount
         );
       } catch (err) {
         console.error("Failed to award loyalty points:", err.message);
@@ -1497,15 +1558,6 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
           rainBonus: 0,
         };
 
-        // Earnings breakdown
-        const earningsData = calculateEarningsBreakdown({
-          distanceKm,
-          config: earningsConfig.toObject(),
-          surgeZones,
-          tipAmount: order.tipAmount || 0,
-          incentiveBonuses,
-        });
-
         // Create earning record
         await createAgentEarning({
           agentId,
@@ -1534,6 +1586,7 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 

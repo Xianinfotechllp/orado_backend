@@ -67,6 +67,12 @@ const agentCandidateSchema = new mongoose.Schema(
       default: false,
       comment: "True if currently waiting for this agent's response",
     },
+
+    freeDurationMs: {
+  type: Number,
+  default: null,
+  comment: "Agent's free duration in milliseconds for FIFO sorting",
+},
   },
   { timestamps: true }
 );
@@ -191,7 +197,7 @@ deliveryAddress: {
 // Agent assignment
 allocationMethod: {
   type: String,
-  enum: ['manual', 'one_by_one', 'nearest', 'fifo', 'broadcast',"send_to_all"],
+  enum: ['manual', 'one_by_one', 'nearest', 'fifo', 'broadcast',"send_to_all","round_robin"],
   default: 'one_by_one',
 },
 
@@ -265,12 +271,15 @@ orderStatus: {
     'cancelled_by_customer', 'awaiting_agent_assignment', 'rejected_by_agent'
   ]
 },
+
+
+
 orderTime: { type: Date, default: Date.now },
 scheduledTime: Date,
 preparationTime: { type: Number, default: 20 },
 preparationDelayReason: { type: String, default: "" },
 orderPreparationDelay: Boolean,
-
+deliveredAt: Date, 
 // Reviews & cancellation
 customerReview: String,
 customerReviewImages: [String],

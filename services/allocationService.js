@@ -7,7 +7,7 @@ const sendNotificationToAgent = require("../utils/sendNotificationToAgent");
 /**
  * Assign an agent to an order based on the current allocation method
  */
-exports.assignTask = async (orderId) => {
+assignTask = async (orderId) => {
   try {
     const settings = await AllocationSettings.findOne({});
     if (!settings) throw new Error("Allocation settings not configured");
@@ -35,6 +35,10 @@ exports.assignTask = async (orderId) => {
 
       case "send_to_all":
         return await assignSendToAll(orderId, settings.sendToAllSettings);
+
+
+       case "fifo":
+        return await assignFIFO(orderId, settings.fifoSettings);
 
       // Add other cases when needed...
       default:
@@ -108,7 +112,8 @@ const assignNearestAvailable = async (orderId, config) => {
 
 /**
  * One by One Agent Assignment Logic
- */const assignOneByOne = async (orderId) => {
+ */
+const assignOneByOne = async (orderId) => {
   console.log("📌 Starting One-by-One Agent Assignment...");
 
   try {
@@ -202,47 +207,75 @@ const assignRoundRobin = async (orderId, config) => {
   // Fetch order
   const order = await Order.findById(orderId);
   if (!order) throw new Error("Order not found");
+  console.log(`📝 Order fetched: ${order._id}`);
+
+  if (order.assignedAgent) {
+    console.log("⚠️ Order already has an assigned agent:", order.assignedAgent);
+    return { status: "already_assigned" };
+  }
 
   // Fetch restaurant location
   const restaurant = await Restaurant.findById(order.restaurantId);
-  if (!restaurant) throw new Error("Restaurant not found");
+  if (!restaurant?.location) throw new Error("Restaurant location not found.");
+  console.log(`🏪 Restaurant location: ${JSON.stringify(restaurant.location)}`);
 
-  // Fetch available agents within radius
-  const availableAgents = await Agent.find({
-    "agentStatus.status": "AVAILABLE",
-    "agentStatus.availabilityStatus": "AVAILABLE",
-    location: {
-      $near: {
-        $geometry: restaurant.location,
-        $maxDistance: config.radiusKm * 1000, // convert to meters
+  // Start radius search
+  let radius = config.radiusKm || 3;
+  let availableAgents = [];
+
+  while (radius <= (config.maximumRadiusKm || 10) && availableAgents.length === 0) {
+    console.log(`🔍 Searching agents within ${radius} km...`);
+
+    availableAgents = await Agent.find({
+      "agentStatus.status": "AVAILABLE",
+      "agentStatus.availabilityStatus": "AVAILABLE",
+      location: {
+        $near: {
+          $geometry: restaurant.location,
+          $maxDistance: radius * 1000,
+        },
       },
-    },
-  }).sort({ lastAssignedAt: 1 }); // Round Robin: oldest assigned agent first
+    });
 
-  if (!availableAgents.length) {
-    console.log("❌ No available agents in radius.");
-    return { status: "unassigned", reason: "No agents available in range" };
+    console.log(`🔹 Found ${availableAgents.length} agents in radius ${radius} km`);
+
+    if (!availableAgents.length) {
+      radius += config.radiusIncrementKm || 2;
+      console.log(`🔄 Expanding search radius to ${radius} km`);
+    }
   }
 
-  // Filter agents who haven't hit max tasks
-  const eligibleAgents = [];
+  if (!availableAgents.length) {
+    console.log("❌ No available agents found in any radius.");
+    return { status: "unassigned", reason: "No agents available in radius" };
+  }
 
+  // Filter agents below maxTasksAllowed using agentDeliveryStatus
+  const eligibleAgents = [];
   for (const agent of availableAgents) {
-    const orderCount = await Order.countDocuments({
+    const activeTaskCount = await Order.countDocuments({
       assignedAgent: agent._id,
-      status: {
+      agentAssignmentStatus: "assigned",
+      agentDeliveryStatus: {
         $in: [
-          "ORDER_ASSIGNED",
-          "ORDER_ACCEPTED",
-          "PICKED_UP",
-          "ON_THE_WAY",
-          "AT_CUSTOMER_LOCATION",
+          "start_journey_to_restaurant",
+          "reached_restaurant",
+          "picked_up",
+          "out_for_delivery",
+          "reached_customer",
         ],
       },
     });
 
-    if (orderCount < config.maxTasksAllowed) {
-      eligibleAgents.push({ agent, orderCount });
+    console.log(
+      `👤 Agent ${agent.fullName} has ${activeTaskCount} active tasks`
+    );
+
+    if (activeTaskCount < (config.maxTasksAllowed || 20)) {
+      eligibleAgents.push(agent);
+      console.log(`✅ Agent ${agent.fullName} eligible`);
+    } else {
+      console.log(`❌ Agent ${agent.fullName} at max capacity`);
     }
   }
 
@@ -251,94 +284,116 @@ const assignRoundRobin = async (orderId, config) => {
     return { status: "unassigned", reason: "All agents at max capacity" };
   }
 
-  // Prioritize by rating if enabled
-  let selectedAgent;
+  // Sort by rating if enabled
   if (config.considerAgentRating) {
-    selectedAgent = eligibleAgents.sort(
-      (a, b) =>
-        (b.agent.feedback.averageRating || 0) -
-        (a.agent.feedback.averageRating || 0)
-    )[0].agent;
-  } else {
-    selectedAgent = eligibleAgents[0].agent;
+    eligibleAgents.sort(
+      (a, b) => (b.feedback?.averageRating || 0) - (a.feedback?.averageRating || 0)
+    );
+    console.log(
+      "⭐ Agents sorted by rating:",
+      eligibleAgents.map(a => `${a.fullName} (${a.feedback?.averageRating || 0})`)
+    );
   }
 
-  // Assign agent to order
+  // Round Robin: least recently assigned first
+  eligibleAgents.sort((a, b) => (a.lastAssignedAt || 0) - (b.lastAssignedAt || 0));
+  console.log(
+    "🔄 Agents sorted by lastAssignedAt:",
+    eligibleAgents.map(a => `${a.fullName} (${a.lastAssignedAt})`)
+  );
+
+  const selectedAgent = eligibleAgents[0];
+  console.log(`🎯 Selected agent: ${selectedAgent.fullName}`);
+
+  // Assign order
   order.assignedAgent = selectedAgent._id;
   order.agentAssignmentStatus = "assigned";
+  order.allocationMethod = "round_robin";
   await order.save();
+  console.log(`📌 Order ${order._id} assigned to ${selectedAgent.fullName}`);
 
   // Update agent status & lastAssignedAt
   selectedAgent.agentStatus.status = "ORDER_ASSIGNED";
   selectedAgent.lastAssignedAt = new Date();
   await selectedAgent.save();
+  console.log(`🔹 Agent ${selectedAgent.fullName} status updated`);
 
-  console.log(`✅ Assigned to agent: ${selectedAgent.fullName}`);
+  // Send notification
+  await sendNotificationToAgent({
+    agentId: selectedAgent._id,
+    title: "📦 New Delivery Task (Round Robin)",
+    body: "You have been assigned a new delivery task.",
+    data: {
+      type: "ORDER_ASSIGNMENT",
+      orderId: order._id.toString(),
+      customerName: order.customerName || "Customer",
+      address: order.deliveryAddress?.formatted || "",
+    },
+  });
+
+  console.log("📨 Notification sent to agent");
 
   return { status: "assigned", agent: selectedAgent };
 };
 
 
-exports.notifyNextPendingAgent = async (order) => {
-  try {
-    // Re-fetch fresh order from DB to avoid stale document issues
-    const freshOrder = await Order.findById(order._id);
 
+
+
+
+const notifyNextPendingAgent = async (order, agenda) => {
+  try {
+    // Re-fetch fresh order to avoid stale data
+    const freshOrder = await Order.findById(order._id);
     if (!freshOrder) {
-      console.log(`❌ Order ${order._id} not found when notifying next agent.`);
+      console.log(`❌ Order ${order._id} not found`);
       return { status: "order_not_found" };
     }
 
-    // Find next candidate with status 'queued' or 'waiting' (not yet notified)
+    // Find the next agent candidate who is queued/waiting
     const nextCandidate = freshOrder.agentCandidates.find(
       (c) => c.status === "queued" || c.status === "waiting"
     );
 
     if (!nextCandidate) {
       console.log("❌ No more agents left to notify.");
+      
+      // Update order status if no more candidates
+      freshOrder.agentAssignmentStatus = "unassigned";
+      await freshOrder.save();
+      
       return { status: "no_more_candidates" };
     }
 
-    // Clear isCurrentCandidate flag from any previously current candidate
-    freshOrder.agentCandidates.forEach((candidate) => {
-      if (candidate.isCurrentCandidate) {
-        candidate.isCurrentCandidate = false;
-      }
-    });
+    // Clear previous current candidate
+    freshOrder.agentCandidates.forEach((c) => (c.isCurrentCandidate = false));
 
-    // Update next candidate to pending and set timestamps
-    nextCandidate.status = "pending"; // waiting for response now
+    // Update next candidate to pending
+    nextCandidate.status = "pending";
     nextCandidate.assignedAt = new Date();
     nextCandidate.notifiedAt = new Date();
     nextCandidate.isCurrentCandidate = true;
+    nextCandidate.attemptNumber = (nextCandidate.attemptNumber || 0) + 1;
 
-    // Save freshOrder with updates
+    // Save updated order
     await freshOrder.save();
 
-    // Fetch agent details for notification
+    // Fetch agent details
     const nextAgent = await Agent.findById(nextCandidate.agent);
     if (!nextAgent) {
-      console.log("⚠️ Pending agent not found in DB.");
-      return { status: "agent_not_found" };
+      console.log(`⚠️ Agent ${nextCandidate.agent} not found in DB`);
+      
+      // Mark as failed and try next one
+      nextCandidate.status = "failed";
+      await freshOrder.save();
+      
+      // Recursively try next agent
+      return await notifyNextPendingAgent(freshOrder, agenda);
     }
 
-    // Send notification to agent
-    await sendNotificationToAgent({
-      agentId: nextAgent._id,
-      title: "📦 New Delivery Task",
-      body: `You have a new delivery request.`,
-      data: {
-        orderId: freshOrder._id.toString(),
-        type: "order_allocation",
-      },
-    });
-
-    console.log(`🔁 Agent ${nextAgent.fullName} notified for order ${freshOrder._id}`);
-
-    // Fetch allocation settings to get expiry time dynamically
+    // Determine expiry time dynamically based on allocation method
     const allocationSettings = await AllocationSettings.findOne({});
-
-    let expirySec = 120; // default fallback 2 mins
+    let expirySec = 25; // fallback default
 
     switch (freshOrder.allocationMethod) {
       case "one_by_one":
@@ -348,24 +403,41 @@ exports.notifyNextPendingAgent = async (order) => {
         expirySec = allocationSettings?.sendToAllSettings?.requestExpirySec || expirySec;
         break;
       case "fifo":
-        expirySec = allocationSettings?.fifoSettings?.requestTimeSec || expirySec;
+        expirySec = allocationSettings?.fifoSettings?.requestExpirySec || expirySec;
         break;
-      // Add other methods if needed
-      default:
-        expirySec = 120;
     }
 
-    // Schedule timeout job dynamically using expirySec
+    console.log(`🔁 Notifying next agent in FIFO: ${nextAgent.fullName} (Attempt: ${nextCandidate.attemptNumber}) for ${expirySec}s`);
+
+    // Send push/notification to agent
+    await sendNotificationToAgent({
+      agentId: nextAgent._id,
+      title: "📦 New Delivery Task (FIFO)",
+      body: "You have a new delivery request. Please accept or decline.",
+      data: {
+        orderId: freshOrder._id.toString(),
+        type: "order_allocation",
+        expirySec,
+        allocationMethod: "fifo",
+      },
+    });
+
+    // Schedule timeout job
     await agenda.schedule(`in ${expirySec} seconds`, "checkAgentResponseTimeout", {
       orderId: freshOrder._id.toString(),
       agentId: nextAgent._id.toString(),
     });
 
-    console.log(`⏳ Timeout job scheduled for Agent ${nextAgent.fullName} on Order ${freshOrder._id} with expiry ${expirySec} seconds`);
+    console.log(`⏳ Timeout scheduled for ${nextAgent.fullName} in ${expirySec}s`);
 
-    return { status: "next_agent_notified", agentId: nextAgent._id };
+    return { 
+      status: "next_agent_notified", 
+      agentId: nextAgent._id, 
+      expirySec,
+      candidateIndex: freshOrder.agentCandidates.findIndex(c => c.agent.toString() === nextAgent._id.toString())
+    };
   } catch (err) {
-    console.error("🚨 Error in notifyNextPendingAgent:", err);
+    console.error("🚨 notifyNextPendingAgent error:", err);
     return { status: "notification_failed", error: err.message || err.toString() };
   }
 };
@@ -373,78 +445,347 @@ exports.notifyNextPendingAgent = async (order) => {
 
 
 
- const assignSendToAll = async (orderId, config) => {
-  console.log("📢 Send to All Agent Assignment started...");
+
+const assignSendToAll = async (orderId) => {
+  console.log("📢 [Send-to-All] Assignment started...", { orderId });
 
   const order = await Order.findById(orderId);
-  if (!order) throw new Error("Order not found");
-  if (order.assignedAgent) return { status: "already_assigned" };
+  if (!order) throw new Error("❌ [Send-to-All] Order not found");
+  if (order.assignedAgent) {
+    console.log("⚠️ [Send-to-All] Order already assigned, skipping...");
+    return { status: "already_assigned" };
+  }
 
   const restaurant = await Restaurant.findById(order.restaurantId);
-  if (!restaurant?.location) throw new Error("Restaurant location not found.");
+  if (!restaurant?.location) throw new Error("❌ [Send-to-All] Restaurant location not found");
 
-  const nearbyAgents = await Agent.find({
-    "agentStatus.status": "AVAILABLE",
-    "agentStatus.availabilityStatus": "AVAILABLE",
-    location: {
-      $near: {
-        $geometry: restaurant.location,
-        $maxDistance: 50000, // 10km default or config.radius if needed
+  // 🔹 Load settings from DB (allocation settings or order-specific config)
+  const allocationSettings = await AllocationSettings.findOne({}); // Or per-merchant if needed
+  const config = allocationSettings?.sendToAllSettings || {};
+
+  // 🔹 Apply defaults if missing
+  let radiusKm = config.radiusKm || 5;
+  const maxRadius = config.maximumRadiusKm || 20;
+  const radiusIncrement = config.radiusIncrementKm || 2;
+  const maxAgents = config.maxAgents || 500;
+  const requestExpirySec = config.requestExpirySec || 30;
+
+  let availableAgents = [];
+  console.log(
+    `🔍 [Send-to-All] Searching agents (start=${radiusKm}km, max=${maxRadius}km, step=${radiusIncrement}km)...`
+  );
+
+  // Expand radius until agents found or max radius reached
+  while (radiusKm <= maxRadius && availableAgents.length === 0) {
+    console.log(`➡️ [Send-to-All] Checking within ${radiusKm} km...`);
+    availableAgents = await Agent.find({
+      "agentStatus.status": "AVAILABLE",
+      "agentStatus.availabilityStatus": "AVAILABLE",
+      location: {
+        $near: {
+          $geometry: restaurant.location,
+          $maxDistance: radiusKm * 1000,
+        },
       },
-    },
-  }).limit(config.maxAgents || 500);
+    }).limit(maxAgents);
 
-  if (!nearbyAgents.length) {
-    console.log("❌ No available agents to notify.");
+    if (!availableAgents.length) {
+      console.log(`❌ [Send-to-All] No agents found in ${radiusKm} km, expanding...`);
+      radiusKm += radiusIncrement;
+    }
+  }
+
+  if (!availableAgents.length) {
+    console.log("❌ [Send-to-All] No available agents found after full search.");
     return { status: "unassigned", reason: "No agents found" };
   }
 
+  console.log(`✅ [Send-to-All] Found ${availableAgents.length} agents (within ${radiusKm} km)`);
+
   const now = new Date();
+  order.agentCandidates = availableAgents.map(agent => ({
+  agent: agent._id,
+  status: "broadcasted",  // ✅ valid enum
+  assignedAt: now,
+  respondedAt: null,
+  isCurrentCandidate: true,
+}));
 
-  const candidates = nearbyAgents.map((agent) => ({
-    agent: agent._id,
-    status: "notified",
-    assignedAt: now,
-    respondedAt: null,
-  }));
-
-  order.agentCandidates = candidates;
   order.agentAssignmentStatus = "awaiting_agent_acceptance";
-  order.allocationMethod = 'send_to_all';
+  order.allocationMethod = "send_to_all";
   await order.save();
 
-  // Send push notifications to all
-  for (const agent of nearbyAgents) {
-    await sendNotificationToAgent({
-      agentId: agent._id,
-      title: "📦 New Task Available",
-      body: "You have a new delivery task. Accept before others do!",
-      data: {
-        type: "ORDER_ASSIGNMENT",
-        orderId: order._id.toString(),
-        customerName: order.customerName || "Customer",
-        address: order.deliveryAddress?.formatted || "",
-      },
-    });
+  console.log(`📝 [Send-to-All] Updated order ${orderId} with ${availableAgents.length} candidates`);
+
+  // 🔔 Notify all agents
+  for (const agent of availableAgents) {
+    console.log(`📨 [Send-to-All] Sending notification to agent ${agent.fullName}`);
+  await sendNotificationToAgent({
+  agentId: agent._id,
+  title: "📦 New Task Available",
+  body: "You have a new delivery task. Accept before others do!",
+  data: {
+    type: "ORDER_ASSIGNMENT",
+    orderId: order._id.toString(),
+    customerName: order.customerName || "Customer",
+    address: order.deliveryAddress?.formatted || "",
+    expirySec: String(requestExpirySec),   // convert number to string
+    allocationMethod: "send_to_all",
+  },
+});
   }
 
-  console.log(`📨 Notified ${nearbyAgents.length} agents for order ${orderId}`);
+  console.log(`✅ [Send-to-All] Notified ${availableAgents.length} agents for order ${orderId}`);
 
-  // Optional: Auto-cancel job scheduling
-  if (config.autoCancelSettings?.enabled) {
+  // ⏳ Auto-cancel if no one accepts within expiry
+  if (requestExpirySec) {
     await agenda.schedule(
-      `in ${config.autoCancelSettings.timeForAutoCancelOnFailSec || 30} seconds`,
+      `in ${requestExpirySec} seconds`,
       "checkOrderAssignmentTimeout",
       { orderId: order._id.toString() }
     );
-    console.log("⏳ Auto-cancel job scheduled.");
+    console.log(`⏳ [Send-to-All] Auto-cancel scheduled after ${requestExpirySec}s`);
   }
+
+  console.log("🏁 [Send-to-All] Assignment process completed.", {
+    orderId,
+    notifiedAgents: availableAgents.length,
+    radiusUsed: radiusKm,
+  });
 
   return {
     status: "notified_all",
-    notifiedAgents: nearbyAgents.length,
+    notifiedAgents: availableAgents.length,
+    radiusUsed: radiusKm,
   };
 };
 
 
 
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return "0s ago";
+  const sec = Math.floor(ms / 1000);
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+
+  if (day > 0) return `${day}d ago`;
+  if (hr > 0) return `${hr}h ago`;
+  if (min > 0) return `${min}m ago`;
+  return `${sec}s ago`;
+}
+
+// FIFO Assignment
+const assignFIFO = async (orderId, config) => {
+  console.log(`\n🎯 ========== FIFO ASSIGNMENT STARTED ==========`);
+  console.log(`📦 Order ID: ${orderId}`);
+  console.log(`⚙️  Config: autoAcceptOrders=${config.autoAcceptOrders}, startRadiusKm=${config.startRadiusKm}, maxRadiusKm=${config.maximumRadiusKm}`);
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    console.log(`❌ ORDER NOT FOUND: ${orderId}`);
+    throw new Error("Order not found");
+  }
+  console.log(`✅ Order found: ${order._id}`);
+
+  const restaurant = await Restaurant.findById(order.restaurantId);
+  if (!restaurant) {
+    console.log(`❌ RESTAURANT NOT FOUND: ${order.restaurantId}`);
+    throw new Error("Restaurant not found");
+  }
+  console.log(`✅ Restaurant found: ${restaurant.name}`);
+
+  let radiusKm = config.startRadiusKm || 3;
+  const maxRadius = config.maximumRadiusKm || 10;
+  const radiusIncrement = config.radiusIncrementKm || 2;
+
+  let availableAgents = [];
+  let searchAttempts = 0;
+
+  console.log(`\n🔍 STARTING AGENT SEARCH...`);
+  console.log(`📍 Search radius: ${radiusKm}km to ${maxRadius}km (increment: ${radiusIncrement}km)`);
+
+  // Search agents within radius
+  while (radiusKm <= maxRadius && availableAgents.length === 0) {
+    searchAttempts++;
+    console.log(`\n📡 Search attempt ${searchAttempts}: Radius ${radiusKm}km`);
+    
+    const agents = await Agent.find({
+      "agentStatus.status": "AVAILABLE",
+      "agentStatus.availabilityStatus": "AVAILABLE",
+      location: {
+        $near: {
+          $geometry: restaurant.location,
+          $maxDistance: radiusKm * 1000,
+        },
+      },
+    });
+
+    console.log(`📊 Found ${agents.length} agents within ${radiusKm}km radius`);
+
+    availableAgents = await Promise.all(
+      agents.map(async (agent) => {
+        if (!agent) return null;
+
+        const lastDeliveredOrder = await Order.findOne({
+          assignedAgent: agent._id,
+          agentDeliveryStatus: "delivered",
+        }).sort({ deliveredAt: -1 });
+
+        let freeDurationMs;
+        let humanReadable;
+
+        if (lastDeliveredOrder?.deliveredAt) {
+          freeDurationMs = Math.max(new Date() - new Date(lastDeliveredOrder.deliveredAt), 0);
+          humanReadable = formatDuration(freeDurationMs);
+        } else {
+          freeDurationMs = Number.MAX_SAFE_INTEGER;
+          humanReadable = "🆕 New Agent (never delivered)";
+        }
+
+        console.log(`   👤 Agent: ${agent.fullName || "Unknown"}, Free Time: ${humanReadable}`);
+        return { ...agent.toObject(), freeDurationMs, humanReadable };
+      })
+    );
+
+    availableAgents = availableAgents.filter(a => a !== null);
+    
+    if (availableAgents.length === 0) {
+      console.log(`➡️  No available agents in ${radiusKm}km radius, expanding search...`);
+      radiusKm += radiusIncrement;
+    } else {
+      console.log(`✅ Found ${availableAgents.length} available agents in ${radiusKm}km radius`);
+    }
+  }
+
+  if (!availableAgents.length) {
+    console.log(`\n❌ NO AGENTS FOUND: No available agents within ${maxRadius}km radius`);
+    return { 
+      status: "unassigned", 
+      reason: "No agents available",
+      searchRadius: maxRadius,
+      searchAttempts 
+    };
+  }
+
+  console.log(`\n📊 SORTING AGENTS BY FREE DURATION (FIFO)...`);
+  // Sort by longest free duration (FIFO)
+  availableAgents.sort((a, b) => b.freeDurationMs - a.freeDurationMs);
+
+  console.log(`📋 Sorted agent list:`);
+  availableAgents.forEach((a, i) => {
+    console.log(`   ${i + 1}. ${a.fullName} - Free Time: ${a.humanReadable} (${a.freeDurationMs}ms)`);
+  });
+
+  // Tie-breaker using rating if enabled
+  if (config.considerAgentRating) {
+    console.log(`\n⭐ APPLYING RATING TIE-BREAKER...`);
+    availableAgents.sort((a, b) => {
+      if (a.freeDurationMs === b.freeDurationMs) {
+        const ratingA = a.feedback?.averageRating || 0;
+        const ratingB = b.feedback?.averageRating || 0;
+        console.log(`   🔄 Tie between ${a.fullName} (${ratingA}) and ${b.fullName} (${ratingB})`);
+        return ratingB - ratingA;
+      }
+      return 0;
+    });
+  }
+
+  const now = new Date();
+  console.log(`\n👥 BUILDING AGENT CANDIDATE QUEUE...`);
+
+  // Build agent candidate queue
+  order.agentCandidates = availableAgents.map((agent, idx) => ({
+    agent: agent._id,
+    status: idx === 0 && !config.autoAcceptOrders ? "pending" : "queued",
+    assignedAt: now,
+    notifiedAt: idx === 0 && !config.autoAcceptOrders ? now : null,
+    respondedAt: null,
+    isCurrentCandidate: idx === 0 && !config.autoAcceptOrders,
+    attemptNumber: 1,
+    freeDurationMs: agent.freeDurationMs,
+  }));
+
+  console.log(`📋 Candidate queue created:`);
+  order.agentCandidates.forEach((c, i) => {
+    console.log(`   ${i + 1}. Agent ${c.agent} - Status: ${c.status}, Current: ${c.isCurrentCandidate}`);
+  });
+
+  order.agentAssignmentStatus = config.autoAcceptOrders ? "assigned" : "awaiting_agent_acceptance";
+  order.allocationMethod = "fifo";
+  order.assignedAgent = config.autoAcceptOrders ? availableAgents[0]._id : null;
+  
+  await order.save();
+  console.log(`💾 Order saved with assignment status: ${order.agentAssignmentStatus}`);
+
+  if (config.autoAcceptOrders) {
+    console.log(`\n🤖 AUTO-ACCEPT FLOW (autoAcceptOrders=true)`);
+    const firstAgent = availableAgents[0];
+    
+    console.log(`✅ Auto-assigning to agent: ${firstAgent.fullName}`);
+    await Agent.findByIdAndUpdate(firstAgent._id, {
+      "agentStatus.status": "ORDER_ASSIGNED",
+      lastAssignedAt: new Date(),
+    });
+    
+    console.log(`📨 Sending auto-accept notification to ${firstAgent.fullName}`);
+    await sendNotificationToAgent({
+      agentId: firstAgent._id,
+      title: "New Delivery Task (FIFO)",
+      body: "You have a new delivery assignment (auto-accepted).",
+      data: {
+        type: "ORDER_ASSIGNMENT",
+        orderId: order._id.toString(),
+      },
+    });
+    
+    console.log(`🎉 AUTO-ASSIGNMENT COMPLETE: ${firstAgent.fullName}`);
+    
+    return { 
+      status: "assigned", 
+      agent: firstAgent,
+      autoAccepted: true,
+      totalCandidates: availableAgents.length
+    };
+  } else {
+    console.log(`\n🔔 ONE-BY-ONE NOTIFICATION FLOW (autoAcceptOrders=false)`);
+    const firstAgent = availableAgents[0];
+    
+    console.log(`📨 Sending notification to first agent: ${firstAgent.fullName}`);
+    await sendNotificationToAgent({
+      agentId: firstAgent._id,
+      title: "📦 New Delivery Task (FIFO)",
+      body: "You have a new delivery request. Please accept or decline.",
+      data: {
+        orderId: order._id.toString(),
+        type: "order_allocation",
+        expirySec: String(config.requestExpirySec || 25),
+        allocationMethod: "fifo",
+      },
+    });
+
+    const expirySec = config.requestExpirySec || 25;
+    console.log(`⏰ Scheduling timeout job for ${expirySec} seconds`);
+    await agenda.schedule(`in ${expirySec} seconds`, "checkAgentResponseTimeout", {
+      orderId: order._id.toString(),
+      agentId: firstAgent._id.toString(),
+    });
+
+    console.log(`✅ FIRST AGENT NOTIFIED: ${firstAgent.fullName}`);
+    console.log(`⏳ Waiting for response (timeout: ${expirySec}s)`);
+    console.log(`📊 Total candidates in queue: ${availableAgents.length}`);
+
+    return {
+      status: "first_agent_notified",
+      agentId: firstAgent._id,
+      agentName: firstAgent.fullName,
+      candidateCount: availableAgents.length,
+      expirySec: expirySec,
+      searchRadius: radiusKm,
+      searchAttempts: searchAttempts
+    };
+  }
+};
+
+
+module.exports = {assignTask, notifyNextPendingAgent };

@@ -19,12 +19,27 @@ const parseCoordinates = require("../utils/parseCoordinates");
 
 exports.createRestaurant = async (req, res) => {
   try {
-    // 1️⃣ Required fields validation (removed password, ownerName, email, phone)
+    // 0️⃣ Parse stringified address if needed
+    let address = req.body.address;
+    if (typeof address === "string") {
+      try {
+        address = JSON.parse(address);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid address format. Must be valid JSON",
+          code: "INVALID_ADDRESS_FORMAT",
+        });
+      }
+    }
+
+    req.body.address = address; // overwrite with parsed object
+
+    // 1️⃣ Required fields validation
     const requiredFields = [
       "name",
       "ownerId",
       "fssaiNumber",
-      "ownerId",
       "gstNumber",
       "aadharNumber",
       "address.street",
@@ -53,7 +68,7 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-    // 2️⃣ Get owner details from database using ownerId
+    // 2️⃣ Get owner details
     const owner = await User.findById(req.body.ownerId);
     if (!owner) {
       return res.status(404).json({
@@ -63,6 +78,7 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
+    // 3️⃣ Validate foodType and storeType
     const validFoodTypes = ["veg", "non-veg", "both"];
     if (!validFoodTypes.includes(req.body.foodType.trim())) {
       return res.status(400).json({
@@ -80,20 +96,8 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
-
-    const validateTimeFormat = (time) =>
-      /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
-    const validDays = [
-      "monday",
-      "tuesday",
-      "wednesday",
-      "thursday",
-      "friday",
-      "saturday",
-      "sunday",
-    ];
+    // 4️⃣ Parse openingHours
     let openingHours = [];
-
     if (req.body.openingHours) {
       try {
         openingHours =
@@ -107,79 +111,9 @@ exports.createRestaurant = async (req, res) => {
           code: "INVALID_OPENING_HOURS_FORMAT",
         });
       }
-
-      if (!Array.isArray(openingHours)) {
-        return res.status(400).json({
-          success: false,
-          message: "openingHours must be an array",
-          code: "OPENING_HOURS_NOT_ARRAY",
-        });
-      }
-
-      const errors = [];
-      const seenDays = new Set();
-
-      openingHours.forEach((daySchedule) => {
-        const dayError = { day: daySchedule.day, errors: [] };
-
-        if (seenDays.has(daySchedule.day)) {
-          dayError.errors.push(`Duplicate entry for ${daySchedule.day}`);
-          errors.push(dayError);
-          return;
-        }
-        seenDays.add(daySchedule.day);
-
-        if (!validDays.includes(daySchedule.day)) {
-          dayError.errors.push(
-            `Invalid day name. Allowed: ${validDays.join(", ")}`
-          );
-        }
-
-        if (daySchedule.isClosed) {
-          if (dayError.errors.length > 0) errors.push(dayError);
-          return;
-        }
-
-        if (
-          !daySchedule.openingTime ||
-          !validateTimeFormat(daySchedule.openingTime)
-        ) {
-          dayError.errors.push("openingTime must be in HH:MM format");
-        }
-
-        if (
-          !daySchedule.closingTime ||
-          !validateTimeFormat(daySchedule.closingTime)
-        ) {
-          dayError.errors.push("closingTime must be in HH:MM format");
-        }
-
-        if (daySchedule.openingTime && daySchedule.closingTime) {
-          if (
-            daySchedule.closingTime <= "04:00" &&
-            daySchedule.openingTime > daySchedule.closingTime
-          ) {
-            // Overnight case — valid
-          } else if (daySchedule.openingTime >= daySchedule.closingTime) {
-            dayError.errors.push("closingTime must be after openingTime");
-          }
-        }
-
-        if (dayError.errors.length > 0) {
-          errors.push(dayError);
-        }
-      });
-
-      if (errors.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid opening hours data",
-          code: "INVALID_OPENING_HOURS_DATA",
-          errors,
-        });
-      }
     }
 
+    // 5️⃣ Required documents validation
     const requiredDocs = {
       fssaiDoc: "FSSAI License",
       gstDoc: "GST Certificate",
@@ -198,15 +132,14 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
+    // 6️⃣ Payment methods
     const allowedPaymentMethods = ["online", "cod", "wallet"];
     let paymentMethods = req.body.paymentMethods;
-
     if (typeof paymentMethods === "string") {
       paymentMethods = paymentMethods.split(",").map((m) => m.trim());
     } else if (!paymentMethods) {
       paymentMethods = ["online"];
     }
-
     const invalidMethods = paymentMethods.filter(
       (m) => !allowedPaymentMethods.includes(m)
     );
@@ -219,16 +152,13 @@ exports.createRestaurant = async (req, res) => {
       });
     }
 
+    // 7️⃣ Upload documents to Cloudinary
     const fssaiDoc = await uploadOnCloudinary(req.files.fssaiDoc[0].path);
     const gstDoc = await uploadOnCloudinary(req.files.gstDoc[0].path);
     const aadharDoc = await uploadOnCloudinary(req.files.aadharDoc[0].path);
 
-    if (!fssaiDoc || !gstDoc || !aadharDoc) {
-      throw new Error("Document upload failed");
-    }
-
     let imageUrls = [];
-    if (req.files && req.files.images && Array.isArray(req.files.images)) {
+    if (req.files?.images) {
       for (const file of req.files.images) {
         const uploaded = await uploadOnCloudinary(file.path);
         if (uploaded?.secure_url) imageUrls.push(uploaded.secure_url);
@@ -238,18 +168,15 @@ exports.createRestaurant = async (req, res) => {
     // 8️⃣ Slug generation
     const slug = `${req.body.name
       .toLowerCase()
-      .replace(
-        /[^a-z0-9]+/g,
-        "-"
-      )}-${req.body.address.city.toLowerCase()}-${Math.random()
+      .replace(/[^a-z0-9]+/g, "-")}-${req.body.address.city.toLowerCase()}-${Math.random()
       .toString(36)
       .substring(2, 6)}`;
 
-    // 9️⃣ Final restaurant data prep
+    // 9️⃣ Prepare restaurant data
     const restaurantData = {
       name: req.body.name.trim(),
-      ownerId: req.body.ownerId, // Store owner reference
-      ownerName: owner.name, // Get from owner document
+      ownerId: req.body.ownerId,
+      ownerName: owner.name,
       address: {
         street: req.body.address.street.trim(),
         city: req.body.address.city.trim(),
@@ -264,8 +191,8 @@ exports.createRestaurant = async (req, res) => {
           parseFloat(req.body.address.latitude) || 0,
         ],
       },
-      phone: owner.phone, // Get from owner document
-      email: owner.email, // Get from owner document
+      phone: owner.phone,
+      email: owner.email,
       openingHours,
       foodType: req.body.foodType.trim(),
       minOrderAmount: req.body.minOrderAmount || 100,
@@ -286,9 +213,10 @@ exports.createRestaurant = async (req, res) => {
 
     const newRestaurant = await Restaurant.create(restaurantData);
 
+    // 10️⃣ Assign permissions
     await Permission.create({
       restaurantId: newRestaurant._id,
-      userId: req.body.ownerId, // Assign permissions to owner
+      userId: req.body.ownerId,
       permissions: {
         canManageMenu: true,
         canAcceptOrder: false,
@@ -315,6 +243,7 @@ exports.createRestaurant = async (req, res) => {
     });
   }
 };
+
 
 exports.getRestaurantsByMerchantId = async (req, res) => {
   try {

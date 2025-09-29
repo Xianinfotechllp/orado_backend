@@ -25,15 +25,15 @@ exports.updateAllocationSettings = async (req, res) => {
       taskAllocationPriority: Joi.array()
         .items(Joi.string().valid("captive", "freelancer"))
         .default([]),
-      calculateByRoadDistance: Joi.boolean().required(),
-      maximumRadiusKm: Joi.number().min(0).required(),
-      startAllocationBeforeTaskTimeMin: Joi.number().min(0).required(),
+      calculateByRoadDistance: Joi.boolean().default(true),
+      maximumRadiusKm: Joi.number().min(0).default(10),
+      startAllocationBeforeTaskTimeMin: Joi.number().min(0).default(0),
       autoCancelSettings: Joi.object({
-        enabled: Joi.boolean().required(),
-        timeForAutoCancelOnFailSec: Joi.number().min(0).required(),
-      }).required(),
-      considerAgentRating: Joi.boolean().required(),
-    }).required(),
+        enabled: Joi.boolean().default(false),
+        timeForAutoCancelOnFailSec: Joi.number().min(0).default(0),
+      }).default(),
+      considerAgentRating: Joi.boolean().default(false),
+    }).default(),
   });
 
   // One by One Settings schema
@@ -42,94 +42,90 @@ exports.updateAllocationSettings = async (req, res) => {
       taskAllocationPriority: Joi.array()
         .items(Joi.string().valid("captive", "freelancer"))
         .default([]),
-      requestExpirySec: Joi.number().min(0).required(),
-      numberOfRetries: Joi.number().min(0).required(),
-      startAllocationBeforeTaskTimeMin: Joi.number().min(0).required(),
+      requestExpirySec: Joi.number().min(0).default(30),
+      numberOfRetries: Joi.number().min(0).default(0),
+      startAllocationBeforeTaskTimeMin: Joi.number().min(0).default(0),
       autoCancelSettings: Joi.object({
-        enabled: Joi.boolean().required(),
-        timeForAutoCancelOnFailSec: Joi.number().min(0).required(),
-      }).required(),
-      considerAgentRating: Joi.boolean().required(),
-    }).required(),
+        enabled: Joi.boolean().default(false),
+        timeForAutoCancelOnFailSec: Joi.number().min(0).default(0),
+      }).default(),
+      considerAgentRating: Joi.boolean().default(false),
+    }).default(),
   });
 
   // Send to All Settings schema
   const sendToAllSchema = Joi.object({
     sendToAllSettings: Joi.object({
-      taskAllocationPriority: Joi.array()
-        .items(Joi.string().valid("captive", "freelancer"))
-        .default([]),
-      maxAgents: Joi.number().min(1).required(),
-      requestExpirySec: Joi.number().min(0).required(),
-      startAllocationBeforeTaskTimeMin: Joi.number().min(0).required(),
-      autoCancelSettings: Joi.object({
-        enabled: Joi.boolean().required(),
-        timeForAutoCancelOnFailSec: Joi.number().min(0).required(),
-      }).required(),
-      considerAgentRating: Joi.boolean().required(),
-    }).required(),
+         taskAllocationPriority: Joi.array()
+      .items(Joi.string().valid("captive", "freelancer"))
+      .default(["captive", "freelancer"]),
+      maxAgents: Joi.number().min(1).max(500).default(500),
+      requestExpirySec: Joi.number().min(0).default(30),
+      startAllocationBeforeTaskTimeMin: Joi.number().min(0).default(0),
+      radiusKm: Joi.number().min(0).default(5),
+      maximumRadiusKm: Joi.number().min(0).default(20),
+      radiusIncrementKm: Joi.number().min(0).default(2),
+    }).default(),
+  });
+
+  // Batch Wise Settings schema
+  const batchWiseSchema = Joi.object({
+    batchWiseSettings: Joi.object({
+      batchSize: Joi.number().min(1).default(5),
+      batchLimit: Joi.number().min(1).default(5),
+    }).default(),
   });
 
   // Round Robin Settings schema
   const roundRobinSchema = Joi.object({
     roundRobinSettings: Joi.object({
-      taskAllocationPriority: Joi.array()
-        .items(Joi.string().valid("captive", "freelancer"))
-        .default([]),
-      maxTasksAllowed: Joi.number().min(0).required(),
-      radiusKm: Joi.number().min(0).required(),
-      startAllocationBeforeTaskTimeMin: Joi.number().min(0).required(),
-      samePickupRadiusMeters: Joi.number().min(0).required(),
-      waitingTimeForPickupMin: Joi.number().min(0).required(),
-      waitingTimeForDeliveryMin: Joi.number().min(0).required(),
-      parkingTimeAtPickupMin: Joi.number().min(0).required(),
-      shortestEtaIgnoreMin: Joi.number().min(0).required(),
-      shortestTimeSlaMin: Joi.number().min(0).required(),
-      maxPoolTimeDifferenceMin: Joi.number().min(0).required(),
-      maxPoolTaskCount: Joi.number().min(0).required(),
-      assignTaskToOffDutyAgents: Joi.boolean().required(),
-      considerThisDistanceAsMaxDistance: Joi.boolean().required(),
-      restartAllocationOnDecline: Joi.boolean().required(),
-      autoCancelSettings: Joi.object({
-        enabled: Joi.boolean().required(),
-        timeForAutoCancelOnFailSec: Joi.number().min(0).required(),
-      }).required(),
-      considerAgentRating: Joi.boolean().required(),
-    }).required(),
+      maxTasksAllowed: Joi.number().min(1).default(20),
+      radiusKm: Joi.number().min(0).default(10),
+      radiusIncrementKm: Joi.number().min(0).default(2),
+      maximumRadiusKm: Joi.number().min(0).default(10),
+      startAllocationBeforeTaskTimeMin: Joi.number().min(0).default(0),
+      considerAgentRating: Joi.boolean().default(false),
+    }).default(),
   });
 
+  // FIFO Settings schema
   const fifoSchema = Joi.object({
     fifoSettings: Joi.object({
-      considerAgentRating: Joi.boolean().required(),
-      startAllocationBeforeTaskTimeMin: Joi.number().min(0).required(),
+      considerAgentRating: Joi.boolean().default(false),
+      startAllocationBeforeTaskTimeMin: Joi.number().min(0).default(0),
+      startRadiusKm: Joi.number().min(0).default(3),
+      radiusIncrementKm: Joi.number().min(0).default(2),
+      maximumRadiusKm: Joi.number().min(0).default(10),
+      requestExpirySec: Joi.number().min(0).default(25),
+    }).default(),
+  });
 
-      // Distance Settings
-      startRadiusKm: Joi.number().min(0).required(),
-      radiusIncrementKm: Joi.number().min(0).required(),
-      maximumRadiusKm: Joi.number().min(0).required(),
+  // Pooling Settings schema
+  const poolingSchema = Joi.object({
+    poolingSettings: Joi.object({
+      poolSize: Joi.number().min(1).default(10),
+    }).default(),
+  });
 
-      // Time Settings
-      batchProcessingTimeSec: Joi.number().min(0).required(),
-      requestTimeSec: Joi.number().min(0).required(),
-
-      // Batch Settings
-      maximumBatchSize: Joi.number().min(0).required(),
-      maximumBatchLimit: Joi.number().min(0).required(),
-
-      enableClubbing: Joi.boolean().required(),
-
-      // Clubbing Settings (conditionally validated if enableClubbing true)
-      clubbingSettings: Joi.object({
-        deliveryDistanceKm: Joi.number().min(0).required(),
-        orderThresholdTimeSec: Joi.number().min(0).required(),
-        additionalTasksToBeClubbed: Joi.number().min(0).required(),
-      }).optional(), // optional unless toggled on UI
-    }).required(),
+  // Auto Allocation Enabled schema
+  const autoAllocationSchema = Joi.object({
+    isAutoAllocationEnabled: Joi.boolean().default(false),
   });
 
   let update = {};
 
-  // Validate and set method first
+  // Validate and set auto allocation enabled
+  if (req.body.hasOwnProperty('isAutoAllocationEnabled')) {
+    const { error } = autoAllocationSchema.validate({ 
+      isAutoAllocationEnabled: req.body.isAutoAllocationEnabled 
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
+
+    update.isAutoAllocationEnabled = req.body.isAutoAllocationEnabled;
+  }
+
+  // Validate and set method
   if (req.body.method) {
     const { error } = methodSchema.validate({ method: req.body.method });
     if (error)
@@ -138,73 +134,91 @@ exports.updateAllocationSettings = async (req, res) => {
     update.method = req.body.method;
   }
 
-  // Check and validate based on method provided
-  switch (req.body.method) {
-    case "nearest_available":
-      if (req.body.nearestAvailableSettings) {
-        const { error } = nearestAvailableSchema.validate({
-          nearestAvailableSettings: req.body.nearestAvailableSettings,
-        });
-        if (error)
-          return res.status(400).json({ message: error.details[0].message });
+  // Validate and set settings based on method
+  // Note: We should validate ALL settings that are provided, not just based on method
+  // This allows partial updates of settings for different methods
 
-        update.nearestAvailableSettings = req.body.nearestAvailableSettings;
-      }
-      break;
+  // Validate Nearest Available Settings if provided
+  if (req.body.nearestAvailableSettings) {
+    const { error, value } = nearestAvailableSchema.validate({
+      nearestAvailableSettings: req.body.nearestAvailableSettings,
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
-    case "one_by_one":
-      if (req.body.oneByOneSettings) {
-        const { error } = oneByOneSchema.validate({
-          oneByOneSettings: req.body.oneByOneSettings,
-        });
-        if (error)
-          return res.status(400).json({ message: error.details[0].message });
+    update.nearestAvailableSettings = value.nearestAvailableSettings;
+  }
 
-        update.oneByOneSettings = req.body.oneByOneSettings;
-      }
-      break;
+  // Validate One by One Settings if provided
+  if (req.body.oneByOneSettings) {
+    const { error, value } = oneByOneSchema.validate({
+      oneByOneSettings: req.body.oneByOneSettings,
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
-    case "send_to_all":
-      if (req.body.sendToAllSettings) {
-        const { error } = sendToAllSchema.validate({
-          sendToAllSettings: req.body.sendToAllSettings,
-        });
-        if (error)
-          return res.status(400).json({ message: error.details[0].message });
+    update.oneByOneSettings = value.oneByOneSettings;
+  }
 
-        update.sendToAllSettings = req.body.sendToAllSettings;
-      }
-      break;
+  // Validate Send to All Settings if provided
+  if (req.body.sendToAllSettings) {
+    const { error, value } = sendToAllSchema.validate({
+      sendToAllSettings: req.body.sendToAllSettings,
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
-    case "round_robin":
-      if (req.body.roundRobinSettings) {
-        const { error } = roundRobinSchema.validate({
-          roundRobinSettings: req.body.roundRobinSettings,
-        });
-        if (error)
-          return res.status(400).json({ message: error.details[0].message });
+    update.sendToAllSettings = value.sendToAllSettings;
+  }
 
-        update.roundRobinSettings = req.body.roundRobinSettings;
-      }
-      break;
-    case "fifo":
-      if (req.body.fifoSettings) {
-        const { error } = fifoSchema.validate({
-          fifoSettings: req.body.fifoSettings,
-        });
-        if (error)
-          return res.status(400).json({ message: error.details[0].message });
+  // Validate Batch Wise Settings if provided
+  if (req.body.batchWiseSettings) {
+    const { error, value } = batchWiseSchema.validate({
+      batchWiseSettings: req.body.batchWiseSettings,
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
-        update.fifoSettings = req.body.fifoSettings;
-      }
-      break;
-    default:
-      break;
+    update.batchWiseSettings = value.batchWiseSettings;
+  }
+
+  // Validate Round Robin Settings if provided
+  if (req.body.roundRobinSettings) {
+    const { error, value } = roundRobinSchema.validate({
+      roundRobinSettings: req.body.roundRobinSettings,
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
+
+    update.roundRobinSettings = value.roundRobinSettings;
+  }
+
+  // Validate FIFO Settings if provided
+  if (req.body.fifoSettings) {
+    const { error, value } = fifoSchema.validate({
+      fifoSettings: req.body.fifoSettings,
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
+
+    update.fifoSettings = value.fifoSettings;
+  }
+
+  // Validate Pooling Settings if provided
+  if (req.body.poolingSettings) {
+    const { error, value } = poolingSchema.validate({
+      poolingSettings: req.body.poolingSettings,
+    });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
+
+    update.poolingSettings = value.poolingSettings;
   }
 
   // If no valid fields provided
-  if (Object.keys(update).length === 0)
+  if (Object.keys(update).length === 0) {
     return res.status(400).json({ message: "No valid settings provided" });
+  }
 
   try {
     const settings = await AllocationSettings.findOneAndUpdate(
