@@ -33,15 +33,20 @@ const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveAp
   getAgentBasicDetails,
   getAgentLeaves,
   getCurrentTask
-
+,exportAgentPayoutsExcel
 } = require("../controllers/admin/agentControllers")
 const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
 const { getUserStats } = require("../controllers/admin/userController");
 
-const { getRestaurantStats ,getOpeningHours, updateOpeningHours,getCurrentStatus} = require("../controllers/admin/restaurantController");
+const { getRestaurantStats ,getOpeningHours, updateOpeningHours,getCurrentStatus,getStoresByRevenue} = require("../controllers/admin/restaurantController");
 
-const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails,updateOrderStatus, getOrderLocationsByPeriod} = require("../controllers/admin/orderController")
+const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrderLocationsForMap, getAgentOrderDispatchStatuses, getOrderDetails,updateOrderStatus, getOrderLocationsByPeriod,getDeliveryHeatmap ,getPlatformSalesGraphData,
+getPeakHoursGraph,
+getTopMerchantsByRevenue,
+getMostOrderedAreas
+,getOrdersSummary
+} = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
 const {createRestaurant} = require("../controllers/admin/restaurantController")
@@ -215,6 +220,9 @@ router.get("/restaurants/location-map",getAllRestaurantsForMap)
 //get all delieveryed lcoaiont for map
 router.get("/orders/location-map",getAllOrderLocationsForMap)
 router.patch("/orders/:orderId/status",updateOrderStatus)
+
+
+router.get("/order/heat-map",getDeliveryHeatmap)
 
 
 router.get("/order/dispatch-status",getAgentOrderDispatchStatuses)
@@ -445,6 +453,7 @@ router.get("/agent-cod-moniter",getCODMonitoring)
 // Update COD Limit
 router.put("/agents/:agentId/cod-limit", updateAgentCODLimit);
 router.get("/agent/payouts",getAgentPayouts)
+router.get("/agent/payouts/export-excel",exportAgentPayoutsExcel)
 
 
 
@@ -454,8 +463,12 @@ router.post("/milestones",milestoneController.createMilestone);
 router.put("/milestones/:id",milestoneController.updateMilestone);
 router.delete("/milestones/:id",milestoneController.deleteMilestone);
 
-
-
+router.get("/store/by-revenue",getStoresByRevenue)
+router.get("/store/revenue/stats",getTopMerchantsByRevenue)
+router.get("/sales/graph",getPlatformSalesGraphData)
+router.get("/analytics/peak-hours",getPeakHoursGraph)
+router.get("/analytics/most-ordered-area",getMostOrderedAreas)
+router.get("/order/summary",getOrdersSummary)
 // improve code for show lociont in map
 router.get("/orders/locations",getOrderLocationsByPeriod)
 module.exports = router;

@@ -88,6 +88,7 @@ orderItems: [{
   name: String,
   totalPrice: Number,
   image: String,
+  preparationTime: Number,
   costPrice: Number,
 }],
 
@@ -163,6 +164,16 @@ chargesBreakdown: {
   }],
   totalAdditionalCharges: { type: Number, default: 0 }
 },
+
+
+etaAt: {
+  type: Date,
+  default: null, // estimated delivery time
+},
+
+
+
+
 
 // Delivery
 deliveryMode: { type: String, enum: ['contact', 'no_contact', 'do_not_disturb'] },

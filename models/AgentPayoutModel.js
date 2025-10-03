@@ -9,57 +9,61 @@ const AgentPayoutSchema = new Schema({
     index: true,
   },
 
-  // Orders included in this payout
-  earningIds: [{
-    type: Schema.Types.ObjectId,
-    ref: 'AgentEarning',
-  }],
+  periodType: {
+    type: String,
+    enum: ['daily', 'weekly', 'monthly'],
+    required: true,
+  },
 
-  // Incentives included in this payout
-  incentiveIds: [{
-    type: Schema.Types.ObjectId,
-    ref: 'AgentIncentiveEarning',
-  }],
+  periodIdentifier: {
+    type: String, // e.g., "2025-09-29" or "2025-w39" or "2025-m9"
+    required: true,
+  },
 
-  // Consolidated total (earnings + incentives)
-  totalAmount: {
+  totalEarnings: {
     type: Number,
     required: true,
     min: 0,
   },
 
-  // How much was actually paid (for partial payouts)
+  totalTips: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+
+  totalSurge: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+
+  totalIncentives: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+
+  totalPayout: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+
+  payoutStatus: {
+    type: String,
+    enum: ['pending', 'partial', 'paid'],
+    default: 'pending',
+  },
+
   paidAmount: {
     type: Number,
     default: 0,
     min: 0,
   },
 
-  payoutStatus: {
-    type: String,
-    enum: ['pending', 'processing', 'paid'],
-    default: 'pending',
-  },
-
   payoutDate: {
     type: Date,
-  },
-
-  // Payment transaction reference (UPI, bank ref, etc.)
-  transactionId: {
-    type: String,
-  },
-
-  // Payment method used
-  paymentMethod: {
-    type: String,
-    enum: ['bank_transfer', 'upi', 'wallet', 'cash'],
-  },
-
-  // Optional: Admin/user who processed payout
-  processedBy: {
-    type: Schema.Types.ObjectId,
-    ref: 'Admin',
   },
 
 }, {

@@ -1449,8 +1449,13 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     const { orderId } = req.params;
     const agentId = req.user._id;
     const { status } = req.body;
+    const io = req.app.get("io");
 
-    const validStatuses = [...deliveryFlow, "cancelled"];
+    const validStatuses = [
+      'awaiting_start', 'start_journey_to_restaurant', 'reached_restaurant',
+      'picked_up', 'out_for_delivery', 'reached_customer', 'delivered', 'cancelled'
+    ];
+
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid delivery status" });
     }
@@ -1461,65 +1466,100 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
       .populate("orderItems.productId");
 
     if (!order) return res.status(404).json({ message: "Order not found" });
-
     if (order.assignedAgent?.toString() !== agentId.toString()) {
       return res.status(403).json({ message: "You are not assigned to this order" });
     }
 
-    const currentIndex = deliveryFlow.indexOf(order.agentDeliveryStatus);
-    const newIndex = deliveryFlow.indexOf(status);
+    const previousStatus = order.agentDeliveryStatus;
 
+    // Validate step transition
+    const currentIndex = deliveryFlow.indexOf(previousStatus);
+    const newIndex = deliveryFlow.indexOf(status);
     if (status !== "cancelled" && newIndex !== currentIndex + 1) {
       return res.status(400).json({
-        message: `Invalid step transition: can't move from ${order.agentDeliveryStatus} to ${status}`,
+        message: `Invalid step transition: can't move from ${previousStatus} to ${status}`,
       });
     }
 
+    // Save full agent delivery status
     order.agentDeliveryStatus = status;
 
-    // ===============================
-    // ✅ When delivered, set deliveredAt and handle payouts + loyalty
-    // ===============================
-    if (status === "delivered") {
-      order.deliveredAt = new Date(); // <-- set delivery timestamp
-    }
+    // Map agent status to customer orderStatus
+    const mapForCustomer = (agentStatus) => {
+      switch (agentStatus) {
+        case "picked_up": return "picked_up";
+        case "out_for_delivery":
+        case "reached_customer": return "on_the_way";
+        case "delivered": return "delivered";
+        default: return null; // do not save irrelevant statuses
+      }
+    };
+
+    const customerStatus = mapForCustomer(status);
+    if (customerStatus) order.orderStatus = customerStatus;
+    if (status === "delivered") order.deliveredAt = new Date();
 
     await order.save();
 
-    
+    // ===============================
+    // Socket.IO: Notify only relevant statuses
+    // ===============================
+    const relevantStatuses = ["picked_up", "out_for_delivery", "reached_customer", "delivered"];
+    if (io && relevantStatuses.includes(status)) {
+      const customerRoom = `user_${order.customerId._id.toString()}`;
+      const adminRoom = `admin_group`;
 
+      // Customer notifications
+      io.to(customerRoom).emit("order_status_update", {
+        orderId: order._id,
+        newStatus: order.orderStatus,
+        previousStatus: mapForCustomer(previousStatus),
+        timestamp: new Date(),
+      });
+
+      io.to(customerRoom).emit("order_status_update_flutter", {
+        orderId: order._id,
+        newStatus: order.orderStatus,
+        previousStatus: mapForCustomer(previousStatus),
+        timestamp: new Date(),
+      });
+
+      // Admin notifications with full agentDeliveryStatus
+      io.to(adminRoom).emit("order_status_update_admin", {
+        orderId: order._id,
+        newStatus: status,
+        previousStatus,
+        agentId,
+        timestamp: new Date(),
+      });
+
+      if (status === "delivered") {
+        io.to(customerRoom).emit("order_completed", { orderId: order._id, timestamp: new Date() });
+        io.to(customerRoom).emit("order_delivered", { orderId: order._id, timestamp: new Date() });
+        io.to(adminRoom).emit("order_delivered_admin", { orderId: order._id, agentId, timestamp: new Date() });
+      }
+    }
+
+    // ===============================
+    // Handle delivered: agent availability, loyalty points, earnings
+    // ===============================
     if (status === "delivered") {
-      // Set agent back to AVAILABLE
       await Agent.updateOne(
         { _id: agentId },
-        {
-          $set: {
-            "agentStatus.status": "AVAILABLE",
-            "agentStatus.availabilityStatus": "AVAILABLE",
-          },
-        }
+        { $set: { "agentStatus.status": "AVAILABLE", "agentStatus.availabilityStatus": "AVAILABLE" } }
       );
 
-      // Award Loyalty Points (safe call)
       try {
-        await loyaltyService.awardPoints(
-          order.customerId._id, // userId
-          order._id,            // orderId
-          order.subtotal        // totalAmount
-        );
+        await loyaltyService.awardPoints(order.customerId._id, order._id, order.subtotal);
       } catch (err) {
         console.error("Failed to award loyalty points:", err.message);
       }
 
-      // Agent earnings flow
       const existingEarning = await AgentEarning.findOne({ agentId, orderId });
       if (!existingEarning) {
         const earningsConfig = await AgentEarningSettings.findOne({ mode: "global" });
-        if (!earningsConfig) {
-          return res.status(500).json({ message: "Earnings configuration not found." });
-        }
+        if (!earningsConfig) return res.status(500).json({ message: "Earnings configuration not found." });
 
-        // Distance calculation
         let distanceKm = 0;
         if (
           Array.isArray(order.restaurantId?.location?.coordinates) &&
@@ -1527,20 +1567,13 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
         ) {
           const fromCoords = order.restaurantId.location.coordinates;
           const toCoords = order.deliveryLocation.coordinates;
-
           const drivingDistance = await getDrivingDistance(fromCoords, toCoords);
-          if (drivingDistance !== null) {
-            distanceKm = drivingDistance;
-          } else {
-            const distMeters = geolib.getDistance(
-              { latitude: fromCoords[1], longitude: fromCoords[0] },
-              { latitude: toCoords[1], longitude: toCoords[0] }
-            );
-            distanceKm = distMeters / 1000;
-          }
+          distanceKm = drivingDistance ?? geolib.getDistance(
+            { latitude: fromCoords[1], longitude: fromCoords[0] },
+            { latitude: toCoords[1], longitude: toCoords[0] }
+          ) / 1000;
         }
 
-        // Surge zones
         let surgeZones = [];
         try {
           surgeZones = await findApplicableSurgeZones({
@@ -1552,19 +1585,12 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
           console.warn("Failed to fetch surge zones:", err.message);
         }
 
-        // Incentives
-        const incentiveBonuses = {
-          peakHourBonus: 0,
-          rainBonus: 0,
-        };
-
-        // Create earning record
         await createAgentEarning({
           agentId,
           orderId,
           earningsConfig: earningsConfig.toObject(),
           surgeZones,
-          incentiveBonuses,
+          incentiveBonuses: { peakHourBonus: 0, rainBonus: 0 },
           distanceKm,
         });
 
@@ -1572,20 +1598,16 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
       }
     }
 
-    // ===============================
-    // Response
-    // ===============================
     const response = formatOrder(order, agentId);
+    res.status(200).json({ message: "Delivery status updated", order: response });
 
-    res.status(200).json({
-      message: "Delivery status updated",
-      order: response,
-    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
 
 
 
@@ -2594,37 +2616,40 @@ exports.getCODHistory = async (req, res) => {
 exports.getIncentivesForAgent = async (req, res) => {
   try {
     const { agentId } = req.params;
-    const periodFilter = req.query.period || "daily";
+    const periodFilter = req.query.period || 'daily';
 
-    // Fetch agent (for debug logs)
+    if (!mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({ message: 'Invalid agentId' });
+    }
+
     const agent = await Agent.findById(agentId).lean();
-    const agentName = agent?.name || "Unknown";
-    console.log(
-      `🔹 Fetching incentives for Agent: ${agentName} (${agentId}), Period: ${periodFilter}`
-    );
+    const agentName = agent?.name || 'Unknown';
+    console.log(`🔹 Fetching incentives for Agent: ${agentName} (${agentId}), Period: ${periodFilter}`);
 
-    // Period calculation
-    const now = moment();
-    let startDate,
-      endDate = now;
+    // --------------------------
+    // Determine date range
+    // --------------------------
+    const now = moment().utc(); // UTC to avoid timezone mismatch
+    let startDate, endDate = now.clone();
 
     switch (periodFilter) {
-      case "weekly":
-        startDate = now.clone().startOf("isoWeek");
+      case 'weekly':
+        startDate = now.clone().startOf('isoWeek');
         break;
-      case "monthly":
-        startDate = now.clone().startOf("month");
+      case 'monthly':
+        startDate = now.clone().startOf('month');
         break;
-      case "daily":
+      case 'daily':
       default:
-        startDate = now.clone().startOf("day");
+        startDate = now.clone().startOf('day');
         break;
     }
-    console.log(
-      `🔹 Earnings period: ${startDate.format()} to ${endDate.format()}`
-    );
 
-    // Earnings aggregation
+    console.log(`🔹 Earnings period: ${startDate.format()} to ${endDate.format()}`);
+
+    // --------------------------
+    // Aggregate agent earnings
+    // --------------------------
     const earningsAgg = await AgentEarning.aggregate([
       {
         $match: {
@@ -2635,104 +2660,81 @@ exports.getIncentivesForAgent = async (req, res) => {
       {
         $group: {
           _id: null,
-          base_fee: { $sum: "$baseDeliveryFee" },
-          extra_distance_fee: { $sum: "$extraDistanceFee" },
-          tip: { $sum: "$tipAmount" },
-          surge: { $sum: "$surgeAmount" },
-          incentive: { $sum: "$incentiveAmount" },
-          total: {
-            $sum: {
-              $add: [
-                "$baseDeliveryFee",
-                "$extraDistanceFee",
-                "$tipAmount",
-                "$surgeAmount",
-                "$incentiveAmount",
-              ],
-            },
-          },
+          totalEarning: { $sum: '$totalEarning' }, // reliable total
+          baseFee: { $sum: { $ifNull: ['$baseDeliveryFee', 0] } },
+          distanceFee: { $sum: { $ifNull: ['$extraDistanceFee', 0] } },
+          tip: { $sum: { $ifNull: ['$tipAmount', 0] } },
+          surge: { $sum: { $ifNull: ['$surgeAmount', 0] } },
+          incentive: { $sum: { $ifNull: ['$incentiveAmount', 0] } },
         },
       },
     ]);
 
     const summary = earningsAgg[0] || {
-      base_fee: 0,
-      extra_distance_fee: 0,
+      totalEarning: 0,
+      baseFee: 0,
+      distanceFee: 0,
       tip: 0,
       surge: 0,
       incentive: 0,
-      total: 0,
     };
-    const totalEarned = summary.total;
+    const totalEarned = summary.totalEarning;
 
+    // --------------------------
     // Delivery stats
+    // --------------------------
     const totalDeliveries = await Order.countDocuments({
-      assignedAgent: new mongoose.Types.ObjectId(agentId),
+      assignedAgent: agentId,
       createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
     });
 
     const completedDeliveries = await Order.countDocuments({
-      assignedAgent: new mongoose.Types.ObjectId(agentId),
-      agentDeliveryStatus: "delivered",
+      assignedAgent: agentId,
+      agentDeliveryStatus: 'delivered',
       createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
     });
 
-    console.log(
-      `🔹 Agent total earnings: ${totalEarned}, completed deliveries: ${completedDeliveries}`
-    );
+    console.log(`🔹 Agent total earnings: ${totalEarned}, completed deliveries: ${completedDeliveries}`);
 
+    // --------------------------
     // Fetch active incentive plans
-    let planQuery = { isActive: true };
-    if (periodFilter !== "all") planQuery.period = periodFilter;
+    // --------------------------
+    const planQuery = { isActive: true };
+    if (periodFilter !== 'all') planQuery.period = periodFilter;
     const plans = await IncentivePlan.find(planQuery).lean();
     console.log(`🔹 Found ${plans.length} active incentive plans`);
 
-    // Find all eligible plans
+    // --------------------------
+    // Determine eligible incentives
+    // --------------------------
     const eligiblePlans = [];
     for (const plan of plans) {
       for (const cond of plan.conditions) {
-        let eligible = false;
-        if (cond.conditionType === "earnings" && totalEarned >= cond.threshold)
-          eligible = true;
-        if (
-          cond.conditionType === "deliveries" &&
-          completedDeliveries >= cond.threshold
-        )
-          eligible = true;
-
-        if (eligible) {
+        const currentValue = cond.conditionType === 'earnings' ? totalEarned : completedDeliveries;
+        if (currentValue >= cond.threshold) {
           eligiblePlans.push({ ...plan, eligibleCondition: cond });
         }
       }
     }
 
-    // Sort to find highest eligible
+    // Find highest eligible
     eligiblePlans.sort(
-      (a, b) =>
-        b.eligibleCondition.incentiveAmount - a.eligibleCondition.incentiveAmount
+      (a, b) => b.eligibleCondition.incentiveAmount - a.eligibleCondition.incentiveAmount
     );
     const highestEligible = eligiblePlans[0] || null;
 
-    if (highestEligible) {
-      console.log(
-        `🔹 Highest eligible incentive: ${highestEligible.name} - ${highestEligible.eligibleCondition.incentiveAmount}`
-      );
-    } else {
-      console.log(`🔹 No eligible incentive for this period`);
-    }
-
+    // --------------------------
     // Build incentivePlans response
+    // --------------------------
     const incentivePlans = [];
     for (const plan of plans) {
       for (const cond of plan.conditions) {
-        let currentValue = cond.conditionType === "earnings" ? totalEarned : completedDeliveries;
+        const currentValue = cond.conditionType === 'earnings' ? totalEarned : completedDeliveries;
         const percent = Math.min((currentValue / cond.threshold) * 100, 100);
+        let status = '🔒 Not Yet Reached';
+        if (currentValue >= cond.threshold) status = '✅ Completed';
+        else if (currentValue > 0) status = 'In Progress';
 
-        let status = "🔒 Not Yet Reached";
-        if (currentValue >= cond.threshold) status = "✅ Completed";
-        else if (currentValue > 0) status = "In Progress";
-
-        // Highlight check
         const highlighted =
           highestEligible &&
           highestEligible._id.equals(plan._id) &&
@@ -2754,7 +2756,9 @@ exports.getIncentivesForAgent = async (req, res) => {
       }
     }
 
-    // Full response
+    // --------------------------
+    // Send final response
+    // --------------------------
     return res.json({
       period: periodFilter,
       totalEarned,
@@ -2769,12 +2773,12 @@ exports.getIncentivesForAgent = async (req, res) => {
             minValue: highestEligible.eligibleCondition.threshold,
             incentive: highestEligible.eligibleCondition.incentiveAmount,
             currentValue:
-              highestEligible.eligibleCondition.conditionType === "earnings"
+              highestEligible.eligibleCondition.conditionType === 'earnings'
                 ? totalEarned
                 : completedDeliveries,
             percent: Math.min(
               (
-                (highestEligible.eligibleCondition.conditionType === "earnings"
+                (highestEligible.eligibleCondition.conditionType === 'earnings'
                   ? totalEarned
                   : completedDeliveries) /
                 highestEligible.eligibleCondition.threshold
@@ -2782,26 +2786,25 @@ exports.getIncentivesForAgent = async (req, res) => {
               100
             ),
             status:
-              (highestEligible.eligibleCondition.conditionType === "earnings"
+              (highestEligible.eligibleCondition.conditionType === 'earnings'
                 ? totalEarned
                 : completedDeliveries) >= highestEligible.eligibleCondition.threshold
-                ? "✅ Completed"
-                : (highestEligible.eligibleCondition.conditionType === "earnings"
+                ? '✅ Completed'
+                : (highestEligible.eligibleCondition.conditionType === 'earnings'
                     ? totalEarned
                     : completedDeliveries) > 0
-                ? "In Progress"
-                : "🔒 Not Yet Reached",
+                ? 'In Progress'
+                : '🔒 Not Yet Reached',
             highlighted: true,
           }
         : null,
       incentivePlans,
     });
   } catch (error) {
-    console.error("❌ Error fetching incentives:", error);
-    return res.status(500).json({ message: "Something went wrong" });
+    console.error('❌ Error fetching incentives:', error);
+    return res.status(500).json({ message: 'Something went wrong' });
   }
 };
-
 
 
 exports.getAgentMilestones = async (req, res) => {
@@ -2883,44 +2886,41 @@ exports.getAgentMilestones = async (req, res) => {
 exports.updateAgentLocation = async (req, res) => {
   try {
     const { agentId } = req.params;
-    const { lat, lng, deviceInfo } = req.body;
+    const { lat, lng, accuracy } = req.body;
 
-    if (
-      !mongoose.Types.ObjectId.isValid(agentId) ||
-      typeof lat !== "number" ||
-      typeof lng !== "number"
-    ) {
-      return res.status(400).json({ message: "Invalid agent location data" });
+    // Validate agentId
+    if (!mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({ message: "Invalid agent ID" });
     }
 
-    console.log(`📍 Agent ${agentId} location update (HTTP):`, { lat, lng });
+    // Validate coordinates
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      return res.status(400).json({ message: "Invalid latitude or longitude" });
+    }
 
-    // Save to Redis
-    await redis.set(`agent_last_seen:${agentId}`, Date.now(), "EX", 60);
-    await redis.set(
-      `agent_location:${agentId}`,
-      JSON.stringify({ lat, lng }),
-      "EX",
-      60
+    // Update location
+    const updatedAgent = await Agent.findByIdAndUpdate(
+      agentId,
+      {
+        location: {
+          type: "Point",
+          coordinates: [lng, lat],
+          accuracy: accuracy || 0,
+        }
+      },
+      { new: true } // return the updated document
     );
 
-    // ------------------------------
-    // Emit to connected clients (like admin dashboards)
-    // ------------------------------
-    const io = req.app.get("io");
-    if (io) {
-      // Broadcast to everyone except the sender (like socket.broadcast.emit)
-      io.emit("admin:updateLocation", {
-        agentId,
-        lat,
-        lng,
-        deviceInfo,
-      });
+    if (!updatedAgent) {
+      return res.status(404).json({ message: "Agent not found" });
     }
 
-    res.status(200).json({ message: "Location updated successfully" });
-  } catch (err) {
-    console.error("Error updating agent location:", err);
-    res.status(500).json({ message: "Internal server error" });
+    return res.json({
+      message: "Location updated successfully",
+      agent: updatedAgent,
+    });
+  } catch (error) {
+    console.error("Error updating agent location:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };

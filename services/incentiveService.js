@@ -8,27 +8,25 @@ exports.createAgentIncentive = async ({ agentId }) => {
   console.log('🔹 Running createAgentIncentive for agentId:', agentId, 'at', now);
 
   try {
-    // 1️⃣ Get all active plans
+    // 1️⃣ Get all active incentive plans
     const activePlans = await IncentivePlan.find({
       isActive: true,
       validFrom: { $lte: now },
       $or: [{ validTo: null }, { validTo: { $gte: now } }]
     });
+
     console.log('🔹 Found active incentive plans:', activePlans.length);
 
     for (const plan of activePlans) {
       console.log('➡ Processing plan:', plan.name, 'Period:', plan.period);
 
-      // Determine period identifier
+      // Determine period identifier and dates
       const periodIdentifier = getPeriodIdentifier(plan.period, now);
-      console.log('   Period Identifier:', periodIdentifier);
-
-      // Get start & end of period
       const startOfPeriod = getPeriodStartDate(plan.period, now);
       const endOfPeriod = getPeriodEndDate(plan.period, now);
-      console.log('   Period Start:', startOfPeriod, 'End:', endOfPeriod);
+      console.log('   Period Identifier:', periodIdentifier, 'Start:', startOfPeriod, 'End:', endOfPeriod);
 
-      // 2️⃣ Calculate total earnings and deliveries in this period
+      // 2️⃣ Calculate total earnings and completed deliveries for this period
       const earnings = await AgentEarning.find({
         agentId,
         createdAt: { $gte: startOfPeriod, $lte: endOfPeriod }
@@ -38,26 +36,25 @@ exports.createAgentIncentive = async ({ agentId }) => {
       const completedDeliveries = earnings.length;
       console.log('   Total Earnings:', totalEarnings, 'Completed Deliveries:', completedDeliveries);
 
-      // 3️⃣ Calculate total incentive based on plan conditions
-      let totalIncentive = 0;
+      // 3️⃣ Find highest eligible incentive for this plan
+      let highestEligible = null;
       for (const condition of plan.conditions) {
-        if (condition.conditionType === 'earnings' && totalEarnings >= condition.threshold) {
-          totalIncentive += condition.incentiveAmount;
-          console.log(`     + Incentive added for earnings condition: ${condition.incentiveAmount}`);
-        } else if (condition.conditionType === 'deliveries' && completedDeliveries >= condition.threshold) {
-          totalIncentive += condition.incentiveAmount;
-          console.log(`     + Incentive added for deliveries condition: ${condition.incentiveAmount}`);
+        const currentValue = condition.conditionType === 'earnings' ? totalEarnings : completedDeliveries;
+        if (currentValue >= condition.threshold) {
+          if (!highestEligible || condition.incentiveAmount > highestEligible.incentiveAmount) {
+            highestEligible = condition;
+          }
         }
       }
-      console.log('   Calculated total incentive:', totalIncentive);
 
-      // Skip if no incentive
-      if (totalIncentive <= 0) {
-        console.log('   Skipping plan, no incentive earned.');
+      if (!highestEligible) {
+        console.log('   No incentive earned for this plan');
         continue;
       }
 
-      // 4️⃣ Upsert incentive earning record
+      console.log('   Highest eligible incentive:', highestEligible.incentiveAmount);
+
+      // 4️⃣ Upsert incentive record in AgentIncentiveEarning
       const existing = await AgentIncentiveEarning.findOne({
         agentId,
         planId: plan._id,
@@ -71,15 +68,16 @@ exports.createAgentIncentive = async ({ agentId }) => {
           planId: plan._id,
           periodType: plan.period,
           periodIdentifier,
-          incentiveAmount: totalIncentive,
+          incentiveAmount: highestEligible.incentiveAmount,
           payoutStatus: 'pending'
         });
       } else {
         console.log('   Updating existing incentive record');
-        existing.incentiveAmount = totalIncentive;
+        existing.incentiveAmount = highestEligible.incentiveAmount;
         await existing.save();
       }
     }
+
     console.log('✅ createAgentIncentive completed successfully for agentId:', agentId);
   } catch (err) {
     console.error('❌ Error creating agent incentive:', err);

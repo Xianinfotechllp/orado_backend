@@ -6,7 +6,7 @@ const mongoose = require("mongoose");
 const { uploadOnCloudinary } = require('../utils/cloudinary');
 const Restaurant = require("../models/restaurantModel")
 const Order = require('../models/orderModel')
-
+const moment = require("moment")
 exports.registerMerchant = async (req, res) => {
   try {
     const {
@@ -746,3 +746,94 @@ exports.getOrderDetails = async (req, res) => {
 };
 
 
+
+
+exports.getMerchantOrders = async (req, res) => {
+  try {
+    const ownerId = req.user._id; // owner id from JWT
+    const { storeId } = req.query; // optional: filter by specific store
+
+    // Fetch stores owned by this merchant
+    const stores = await Restaurant.find({ ownerId }).select("_id name").lean();
+    const storeIds = stores.map(store => store._id);
+
+    if (!storeIds.length) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: "No stores found for this merchant",
+      });
+    }
+
+    // Build query
+    const query = {};
+    if (storeId && storeId !== "all") {
+      // Only if the storeId belongs to this merchant
+      if (!storeIds.includes(storeId)) {
+        return res.status(403).json({ success: false, message: "Unauthorized store access" });
+      }
+      query.restaurantId = storeId;
+    } else {
+      // Fetch all stores of this merchant
+      query.restaurantId = { $in: storeIds };
+    }
+
+    // Fetch orders
+    const orders = await Order.find(query)
+      .populate({
+        path: "customerId",
+        select: "name deliveryAddress guestName guestPhone guestEmail",
+      })
+      .populate({
+        path: "restaurantId",
+        select: "name",
+      })
+      .populate({
+        path: "assignedAgent",
+        select: "fullName phoneNumber",
+      })
+      .lean();
+
+    // Format response
+    const formattedOrders = orders.map(order => {
+      const customer = order.customerId || {};
+      const restaurant = order.restaurantId || {};
+      const agent = order.assignedAgent || null;
+
+      return {
+        orderId: order._id,
+        orderStatus: order.orderStatus,
+        storeName: restaurant.name || "",
+        customerName: customer.name || customer.guestName || "",
+        customerAddress: customer.deliveryAddress
+          ? `${customer.deliveryAddress.street}, ${customer.deliveryAddress.area || ""}, ${customer.deliveryAddress.city}, ${customer.deliveryAddress.state || ""}, ${customer.deliveryAddress.pincode || ""}`
+          : "",
+        orderItemCount: order.orderItems.length,
+        orderItems: order.orderItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          instructions: item.instructions || "", // include cooking/instructions per item if exists
+        })),
+        subtotal: order.totalAmount || order.subtotal || 0,
+        assignedAgent: agent
+          ? {
+              fullName: agent.fullName,
+              phoneNumber: agent.phoneNumber,
+            }
+          : null,
+        orderTime: order.orderTime,
+        cookingInstructions: order.instructions || "", // include overall order instructions if exists
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: formattedOrders,
+      message: "Orders fetched successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};

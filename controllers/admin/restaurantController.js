@@ -4,6 +4,7 @@ const User = require("../../models/userModel")
 const {uploadOnCloudinary} =require("../../utils/cloudinary")
 const Permission = require("../../models/restaurantPermissionModel")
 const Product = require("../../models/productModel")
+const Order = require("../../models/orderModel")
 exports.getRestaurantStats = async (req, res) => {
     try {
         // Get total approved restaurants
@@ -751,3 +752,172 @@ exports.getCurrentStatus = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+exports.getStoresByRevenue = async (req, res) => {
+  try {
+    const period = req.query.period || "daily"; // daily, weekly, monthly, yearly
+    const { startDate: customStart, endDate: customEnd } = req.query; // optional custom dates
+    let startDate, endDate;
+    const today = new Date();
+
+    if (customStart && customEnd) {
+      // Use custom dates if provided
+      startDate = new Date(customStart);
+      endDate = new Date(customEnd);
+    } else {
+      // Determine period
+      endDate = new Date(today); // now
+      if (period === "daily") {
+        startDate = new Date(today.setHours(0, 0, 0, 0));
+      } else if (period === "weekly") {
+        const firstDayOfWeek = today.getDate() - today.getDay(); // Sunday as first day
+        startDate = new Date(today.setDate(firstDayOfWeek));
+        startDate.setHours(0, 0, 0, 0);
+      } else if (period === "monthly") {
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1); // 1st of month
+      } else if (period === "yearly") {
+        startDate = new Date(today.getFullYear(), 0, 1); // Jan 1st of this year
+      } else {
+        // default fallback
+        startDate = new Date(today.setHours(0, 0, 0, 0));
+      }
+    }
+
+    const result = await Order.aggregate([
+      {
+        $match: {
+          orderStatus: "delivered",
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: "$restaurantId",
+          totalRevenue: { $sum: "$totalAmount" },
+          orderCount: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: "restaurants",
+          localField: "_id",
+          foreignField: "_id",
+          as: "restaurant"
+        }
+      },
+      { $unwind: "$restaurant" },
+      {
+        $project: {
+          _id: 1,
+          totalRevenue: 1,
+          orderCount: 1,
+          restaurant: { _id: 1, name: 1 }
+        }
+      },
+      { $sort: { totalRevenue: -1 } }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "Stores revenue fetched successfully",
+      data: result
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching stores revenue",
+      error: err.message
+    });
+  }
+};
+
+
+
+exports.getPlatformSalesGraphData = async (req, res) => {
+  try {
+    const period = req.query.period || "daily"; // daily, weekly, monthly, yearly
+    const { startDate: customStart, endDate: customEnd } = req.query;
+
+    let startDate, endDate;
+    const today = new Date();
+
+    // ------------------ Set date range ------------------
+    if (customStart && customEnd) {
+      startDate = new Date(customStart);
+      endDate = new Date(customEnd);
+    } else {
+      endDate = new Date(today);
+      if (period === "daily") startDate = new Date(today.setHours(0,0,0,0));
+      else if (period === "weekly") {
+        const firstDayOfWeek = today.getDate() - today.getDay(); // Sunday as first
+        startDate = new Date(today.setDate(firstDayOfWeek));
+        startDate.setHours(0,0,0,0);
+      }
+      else if (period === "monthly") startDate = new Date(today.getFullYear(), today.getMonth(),1);
+      else if (period === "yearly") startDate = new Date(today.getFullYear(),0,1);
+    }
+
+    // ------------------ Revenue Overview ------------------
+    let groupIdRevenue;
+    if (period === "daily" || customStart || customEnd) {
+      groupIdRevenue = { year: { $year: "$createdAt" }, month: { $month: "$createdAt" }, day: { $dayOfMonth: "$createdAt" } };
+    } else if (period === "weekly") groupIdRevenue = { year: { $year: "$createdAt" }, week: { $week: "$createdAt" } };
+    else if (period === "monthly") groupIdRevenue = { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } };
+    else if (period === "yearly") groupIdRevenue = { year: { $year: "$createdAt" } };
+
+    const revenueData = await Order.aggregate([
+      { $match: { orderStatus: "delivered", createdAt: { $gte: startDate, $lte: endDate } } },
+      { $group: { _id: groupIdRevenue, totalRevenue: { $sum: "$totalAmount" }, totalOrders: { $sum: 1 } } },
+      { $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 } }
+    ]);
+
+    // Format revenue for graph
+    const revenueOverview = revenueData.map(r => {
+      if (r._id.day) {
+        const d = new Date(r._id.year, r._id.month - 1, r._id.day);
+        const weekday = d.toLocaleString("en-US", { weekday: "short" }); // Mon, Tue
+        return { day: weekday, totalRevenue: r.totalRevenue, totalOrders: r.totalOrders };
+      } else if (r._id.week) return { day: `W${r._id.week}`, totalRevenue: r.totalRevenue, totalOrders: r.totalOrders };
+      else if (r._id.month) return { day: `${r._id.year}-${r._id.month}`, totalRevenue: r.totalRevenue, totalOrders: r.totalOrders };
+      else return { day: `${r._id.year}`, totalRevenue: r.totalRevenue, totalOrders: r.totalOrders };
+    });
+
+    // ------------------ Peak Hours Analysis ------------------
+    const peakHoursData = await Order.aggregate([
+      { $match: { orderStatus: "delivered", createdAt: { $gte: startDate, $lte: endDate } } },
+      { $group: { _id: { hour: { $hour: "$createdAt" } }, totalOrders: { $sum: 1 }, totalRevenue: { $sum: "$totalAmount" } } },
+      { $sort: { "_id.hour": 1 } }
+    ]);
+
+    const peakHours = peakHoursData.map(p => {
+      const hour12 = p._id.hour % 12 === 0 ? 12 : p._id.hour % 12;
+      const ampm = p._id.hour < 12 ? "AM" : "PM";
+      return { hour: `${hour12}${ampm}`, totalOrders: p.totalOrders, totalRevenue: p.totalRevenue };
+    });
+
+    // ------------------ Total Revenue & Orders ------------------
+    const totalRevenue = revenueOverview.reduce((acc, cur) => acc + cur.totalRevenue, 0);
+    const totalOrders = revenueOverview.reduce((acc, cur) => acc + cur.totalOrders, 0);
+
+    // ------------------ Send Response ------------------
+    res.status(200).json({
+      success: true,
+      data: {
+        revenueOverview,
+        peakHours,
+        totalRevenue,
+        totalOrders
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Error fetching graph data", error: err.message });
+  }
+};
+
+
+

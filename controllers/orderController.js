@@ -30,7 +30,7 @@ const {
   assignNearestAgentSimple,
   assignRandomAgentSimple,
 } = require("../services/findAndAssignNearestAgent");
-
+const calculateETA = require("../utils/etaCalculator");
 const { placeOrderService } = require("../services/orderService");
 const Restaurant = require("../models/restaurantModel");
 const { sendPushNotification } = require("../utils/sendPushNotification");
@@ -265,10 +265,10 @@ exports.placeOrder = async (req, res) => {
       couponCode,
     });
 
-    // ✅ Map order items with product images
+    // ✅ Map order items with product images and preparation time
     const orderItems = await Promise.all(
       cart.products.map(async (item) => {
-        const product = await Product.findById(item.productId).select("images");
+        const product = await Product.findById(item.productId).select("images preparationTime");
         return {
           productId: item.productId,
           quantity: item.quantity,
@@ -276,9 +276,11 @@ exports.placeOrder = async (req, res) => {
           name: item.name,
           totalPrice: item.price * item.quantity,
           image: product?.images?.[0] || null,
+          preparationTime: product?.preparationTime || 10,
         };
       })
     );
+  
 
     let orderStatus = "pending";
     const permission = await Permission.findOne({
@@ -295,6 +297,7 @@ exports.placeOrder = async (req, res) => {
       orderItems,
       paymentMethod,
       orderStatus: orderStatus,
+      preparationTime: totalPreparationTime,
       deliveryLocation: { type: "Point", coordinates: userCoords },
       deliveryAddress: {
         street,
@@ -2458,10 +2461,10 @@ exports.placeOrderV2 = async (req, res) => {
       ? costSummary.finalAmount - walletAmount 
       : costSummary.finalAmount;
 
-    // Map order items with product images
+// Map order items with product images, costPrice and preparation time
  const orderItems = await Promise.all(
   cart.products.map(async (item) => {
-    const product = await Product.findById(item.productId).select("images costPrice"); // include costPrice
+    const product = await Product.findById(item.productId).select("images costPrice preparationTime"); // include costPrice & preparationTime
 
     return {
       productId: item.productId,
@@ -2471,9 +2474,16 @@ exports.placeOrderV2 = async (req, res) => {
       totalPrice: item.price * item.quantity,
       costPrice: product?.costPrice || 0, // add costPrice, default to 0 if not set
       image: product?.images?.[0] || null,
+      preparationTime: product?.preparationTime || 10,
     };
   })
-);
+); const totalPreparationTimeV2 = Math.max(
+      ...orderItems.map((item) => item.preparationTime || 10)
+    );
+
+
+    const eta = calculateETA(restaurantCoords, userCoords, totalPreparationTimeV2);
+    console.log("Calculated ETA (minutes):", eta);
 
     // Determine initial order status based on restaurant permissions
     let orderStatus = "pending";
@@ -2484,6 +2494,8 @@ exports.placeOrderV2 = async (req, res) => {
       orderStatus = "accepted_by_restaurant";
     }
 
+   
+
     // Create and save order with all V2 fields including wallet info
     const newOrder = new Order({
       customerId: userId,
@@ -2491,6 +2503,7 @@ exports.placeOrderV2 = async (req, res) => {
       orderItems,
       paymentMethod,
       orderStatus: orderStatus,
+      preparationTime: totalPreparationTimeV2,
       deliveryLocation: { type: "Point", coordinates: userCoords },
       deliveryAddress: {
         street,
@@ -2548,7 +2561,8 @@ exports.placeOrderV2 = async (req, res) => {
         turf.point(userCoords),
         turf.point(restaurantCoords),
         { units: "kilometers" }
-      )
+      ),
+      etaAt: eta.eta
     });
 
     const savedOrder = await newOrder.save();

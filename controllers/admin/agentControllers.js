@@ -15,7 +15,11 @@ const  getRedisClient  = require("../../config/redisClient");
 const redis = getRedisClient();
 const Product = require("../../models/productModel");
 const geolib = require('geolib');
+const moment = require('moment')
+const AgentPayout = require("../../models/AgentPayoutModel")
 const AgentEarningSettings = require("../../models/AgentEarningSettingModel")
+const ExcelJS = require('exceljs');
+
 exports.getAllList = async (req, res) => {
   try {
     // First get all agents with basic info
@@ -1646,97 +1650,304 @@ exports.updateAgentCODLimit = async (req, res) => {
 
 
 
-exports.getAgentPayouts = async (req, res) => {
-  try {
-    // Step 1: Aggregate earnings per agent
-    const earnings = await AgentEarning.aggregate([
-      {
-        $group: {
-          _id: "$agentId",
-          orders: { $sum: 1 },
-          earnings: { $sum: "$totalEarning" },
-          tips: { $sum: "$tipAmount" },
-          surge: { $sum: "$surgeAmount" },
-          totalPaid: { $sum: "$paidAmount" },
-          payoutStatuses: { $addToSet: "$payoutStatus" },
-        },
-      },
-    ]);
+// exports.getAgentPayouts = async (req, res) => {
+//   try {
+//     // Step 1: Aggregate earnings per agent
+//     const earnings = await AgentEarning.aggregate([
+//       {
+//         $group: {
+//           _id: "$agentId",
+//           orders: { $sum: 1 },
+//           earnings: { $sum: "$totalEarning" },
+//           tips: { $sum: "$tipAmount" },
+//           surge: { $sum: "$surgeAmount" },
+//           totalPaid: { $sum: "$paidAmount" },
+//           payoutStatuses: { $addToSet: "$payoutStatus" },
+//         },
+//       },
+//     ]);
 
-    // Step 2: Aggregate incentives per agent
-    const incentives = await AgentIncentiveEarning.aggregate([
-      {
-        $group: {
-          _id: { agentId: "$agentId", periodType: "$periodType" },
-          incentive: { $sum: "$incentiveAmount" },
-        },
-      },
-    ]);
+//     // Step 2: Aggregate incentives per agent
+//     const incentives = await AgentIncentiveEarning.aggregate([
+//       {
+//         $group: {
+//           _id: { agentId: "$agentId", periodType: "$periodType" },
+//           incentive: { $sum: "$incentiveAmount" },
+//         },
+//       },
+//     ]);
 
-    // Step 3: Transform incentives into daily/weekly/monthly map
-    const incentiveMap = {};
-    incentives.forEach((inc) => {
-      const agentId = inc._id.agentId.toString();
-      if (!incentiveMap[agentId]) {
-        incentiveMap[agentId] = { daily: 0, weekly: 0, monthly: 0 };
-      }
-      if (inc._id.periodType === "daily") incentiveMap[agentId].daily += inc.incentive;
-      else if (inc._id.periodType === "weekly") incentiveMap[agentId].weekly += inc.incentive;
-      else if (inc._id.periodType === "monthly") incentiveMap[agentId].monthly += inc.incentive;
-    });
+//     // Step 3: Transform incentives into daily/weekly/monthly map
+//     const incentiveMap = {};
+//     incentives.forEach((inc) => {
+//       const agentId = inc._id.agentId.toString();
+//       if (!incentiveMap[agentId]) {
+//         incentiveMap[agentId] = { daily: 0, weekly: 0, monthly: 0 };
+//       }
+//       if (inc._id.periodType === "daily") incentiveMap[agentId].daily += inc.incentive;
+//       else if (inc._id.periodType === "weekly") incentiveMap[agentId].weekly += inc.incentive;
+//       else if (inc._id.periodType === "monthly") incentiveMap[agentId].monthly += inc.incentive;
+//     });
 
-    // Step 4: Merge earnings + incentives + populate agent details
-    const result = await Promise.all(
-      earnings.map(async (e) => {
-        const agentId = e._id.toString();
-        const agent = await Agent.findById(agentId).select("fullName _id"); // select only required fields
-        const dailyInc = incentiveMap[agentId]?.daily || 0;
-        const weeklyInc = incentiveMap[agentId]?.weekly || 0;
-        const monthlyInc = incentiveMap[agentId]?.monthly || 0;
-        const totalIncentive = dailyInc + weeklyInc + monthlyInc;
+//     // Step 4: Merge earnings + incentives + populate agent details
+//     const result = await Promise.all(
+//       earnings.map(async (e) => {
+//         const agentId = e._id.toString();
+//         const agent = await Agent.findById(agentId).select("fullName _id"); // select only required fields
+//         const dailyInc = incentiveMap[agentId]?.daily || 0;
+//         const weeklyInc = incentiveMap[agentId]?.weekly || 0;
+//         const monthlyInc = incentiveMap[agentId]?.monthly || 0;
+//         const totalIncentive = dailyInc + weeklyInc + monthlyInc;
 
-        return {
-  agentId,
-  agentName: agent?.fullName || "Unknown",
-  orders: e.orders,
-  earnings: e.earnings,
-  tips: e.tips,
-  surge: e.surge,
-  dailyIncentive: dailyInc,
-  weeklyIncentive: weeklyInc,
-  monthlyIncentive: monthlyInc,
-  totalIncentive,
-  totalPayout: e.earnings + totalIncentive, // <-- use total earnings, not paidAmount
-  amountPaid: e.totalPaid, // optional: how much has been already paid
-  status: e.payoutStatuses.includes("pending")
-    ? "pending"
-    : e.payoutStatuses.includes("partial")
-    ? "partial"
-    : "paid",
-};
-      })
-    );
+//         return {
+//   agentId,
+//   agentName: agent?.fullName || "Unknown",
+//   orders: e.orders,
+//   earnings: e.earnings,
+//   tips: e.tips,
+//   surge: e.surge,
+//   dailyIncentive: dailyInc,
+//   weeklyIncentive: weeklyInc,
+//   monthlyIncentive: monthlyInc,
+//   totalIncentive,
+//   totalPayout: e.earnings + totalIncentive, // <-- use total earnings, not paidAmount
+//   amountPaid: e.totalPaid, // optional: how much has been already paid
+//   status: e.payoutStatuses.includes("pending")
+//     ? "pending"
+//     : e.payoutStatuses.includes("partial")
+//     ? "partial"
+//     : "paid",
+// };
+//       })
+//     );
 
-    res.json(result);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch agent payouts" });
+//     res.json(result);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Failed to fetch agent payouts" });
+//   }
+// };
+
+
+
+
+const getPeriodIdentifier = (periodType, date) => {
+  const m = moment(date);
+  switch (periodType) {
+    case 'weekly':
+      return `${m.year()}-w${m.isoWeek()}`;
+    case 'monthly':
+      return `${m.year()}-m${m.month() + 1}`;
+    case 'daily':
+    default:
+      return m.format('YYYY-MM-DD');
   }
 };
 
 
+exports.getAgentPayouts = async (req, res) => {
+  try {
+    const { period = 'daily', date, startDate, endDate } = req.query;
+    const queryDate = date ? moment(date) : moment();
+    const customStart = startDate ? moment(startDate) : null;
+    const customEnd = endDate ? moment(endDate) : null;
+
+    const agents = await Agent.find().lean();
+
+    // Use Promise.all to fetch all agent data concurrently
+    const payouts = await Promise.all(
+      agents.map(async (agent) => {
+        // Determine period start/end
+        let start, end;
+        if (customStart && customEnd) {
+          start = customStart.clone().startOf('day');
+          end = customEnd.clone().endOf('day');
+        } else {
+          switch (period) {
+            case 'weekly':
+              start = queryDate.clone().startOf('isoWeek');
+              end = queryDate.clone().endOf('isoWeek');
+              break;
+            case 'monthly':
+              start = queryDate.clone().startOf('month');
+              end = queryDate.clone().endOf('month');
+              break;
+            case 'daily':
+            default:
+              start = queryDate.clone().startOf('day');
+              end = queryDate.clone().endOf('day');
+              break;
+          }
+        }
+
+        // Fetch earnings for this agent and period
+        const earnings = await AgentEarning.find({
+          agentId: agent._id,
+          createdAt: { $gte: start.toDate(), $lte: end.toDate() },
+        });
+
+        const totalBaseEarnings = earnings.reduce((sum, e) => sum + (e.baseDeliveryFee + e.extraDistanceFee), 0);
+        const totalTips = earnings.reduce((sum, e) => sum + e.tipAmount, 0);
+        const totalSurge = earnings.reduce((sum, e) => sum + e.surgeAmount, 0);
+        const totalOrderIncentives = earnings.reduce((sum, e) => sum + e.incentiveAmount, 0);
+
+        // Fetch period incentives concurrently
+        const [dailyInc, weeklyInc, monthlyInc, payoutRecord] = await Promise.all([
+          AgentIncentiveEarning.findOne({
+            agentId: agent._id,
+            periodType: 'daily',
+            periodIdentifier: getPeriodIdentifier('daily', start),
+          }),
+          AgentIncentiveEarning.findOne({
+            agentId: agent._id,
+            periodType: 'weekly',
+            periodIdentifier: getPeriodIdentifier('weekly', start),
+          }),
+          AgentIncentiveEarning.findOne({
+            agentId: agent._id,
+            periodType: 'monthly',
+            periodIdentifier: getPeriodIdentifier('monthly', start),
+          }),
+          AgentPayout.findOne({
+            agentId: agent._id,
+            periodType: period,
+            periodIdentifier: getPeriodIdentifier(period, start),
+          }),
+        ]);
+
+        // Decide which incentives to show
+        let showDaily = 0, showWeekly = 0, showMonthly = 0;
+        if (period === 'daily') showDaily = dailyInc?.incentiveAmount || 0;
+        if (period === 'weekly') {
+          showDaily = dailyInc?.incentiveAmount || 0;
+          showWeekly = weeklyInc?.incentiveAmount || 0;
+        }
+        if (period === 'monthly') {
+          showDaily = dailyInc?.incentiveAmount || 0;
+          showWeekly = weeklyInc?.incentiveAmount || 0;
+          showMonthly = monthlyInc?.incentiveAmount || 0;
+        }
+
+        const totalIncentives = showDaily + showWeekly + showMonthly;
+        const totalPayout = totalBaseEarnings + totalTips + totalSurge + totalOrderIncentives + totalIncentives;
+
+        // Get paid amount from AgentPayout
+        const paidAmount = payoutRecord?.paidAmount || 0;
+        const pendingAmount = totalPayout - paidAmount;
+
+        return {
+          agentId: agent._id,
+          agentName: agent.fullName,
+          totalOrders: earnings.length,
+          totalBaseEarnings,
+          totalTips,
+          totalSurge,
+          totalOrderIncentives,
+          dailyIncentive: showDaily,
+          weeklyIncentive: showWeekly,
+          monthlyIncentive: showMonthly,
+          totalIncentives,
+          totalPayout,
+          paidAmount,
+          pendingAmount,
+          status: payoutRecord?.payoutStatus || 'pending',
+        };
+      })
+    );
+
+    return res.json({
+      period,
+      start: (customStart || queryDate).toDate(),
+      end: (customEnd || queryDate).toDate(),
+      payouts,
+    });
+  } catch (err) {
+    console.error('Error fetching agent payouts:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
 
 
+exports.exportAgentPayoutsExcel = async (req, res) => {
+  try {
+    const { period = 'daily', startDate, endDate } = req.query;
 
+    // Determine date range filter
+    let start = startDate ? moment(startDate).startOf('day') : null;
+    let end = endDate ? moment(endDate).endOf('day') : null;
 
+    const query = {};
+    if (period) query.periodType = period;
+    if (start && end) query.createdAt = { $gte: start.toDate(), $lte: end.toDate() };
 
+    // Fetch payouts with agent name
+    const payouts = await AgentPayout.find(query)
+      .populate('agentId', 'fullName')
+      .lean();
 
+    // Create Excel workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Agent Payouts');
 
+    // Define columns
+    worksheet.columns = [
+      { header: 'Agent Name', key: 'agentName', width: 25 },
+      { header: 'Period Type', key: 'periodType', width: 15 },
+      { header: 'Period Identifier', key: 'periodIdentifier', width: 20 },
+      { header: 'Total Earnings', key: 'totalEarnings', width: 15 },
+      { header: 'Total Tips', key: 'totalTips', width: 15 },
+      { header: 'Total Surge', key: 'totalSurge', width: 15 },
+      { header: 'Total Incentives', key: 'totalIncentives', width: 15 },
+      { header: 'Total Payout', key: 'totalPayout', width: 15 },
+      { header: 'Paid Amount', key: 'paidAmount', width: 15 },
+      { header: 'Pending Amount', key: 'pendingAmount', width: 15 },
+      { header: 'Status', key: 'status', width: 15 },
+    ];
+console.log('Payouts found:', payouts.length);
+console.log(
+  payouts.map(p => ({
+    agentName: p.agentId?.fullName,
+    totalPayout: p.totalPayout,
+    paidAmount: p.paidAmount,
+    pendingAmount: p.totalPayout - p.paidAmount,
+    status: p.payoutStatus
+  }))
+);
 
+    // Add data rows
+   payouts.forEach(p => {
+  worksheet.addRow({
+    agentName: p.agentId?.fullName || 'N/A',
+    periodType: p.periodType,
+    periodIdentifier: p.periodIdentifier,
+    totalEarnings: p.totalEarnings,
+    totalTips: p.totalTips,
+    totalSurge: p.totalSurge,
+    totalIncentives: p.totalIncentives,
+    totalPayout: p.totalPayout,
+    paidAmount: p.paidAmount,
+    pendingAmount: p.totalPayout - p.paidAmount,
+    status: p.payoutStatus,
+  });
+});
+    // Set response headers for download
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=Agent_Payouts_${moment().format('YYYYMMDD_HHmm')}.xlsx`
+    );
 
-
-
-
+    // Send Excel file
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error exporting agent payouts to Excel:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 
 
 

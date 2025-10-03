@@ -26,6 +26,8 @@ const { emitNewOrderToAdmin } = require("../../../../services/orderSocketService
 const notificationService = require("../../../../services/notificationService")
 const {reduceStockForOrder} = require("../../../../services/inventoryService")
 const loyaliltyPoinService = require("../../../../services/loyaltyPointService")
+
+const calculateETA  = require("../../../../utils/etaCalculator")
 exports.createOrder = async (req, res) => {
   try {
     const { customerId, restaurantId, orderItems, paymentMethod, location } =
@@ -2208,10 +2210,10 @@ exports.placeOrderV2 = async (req, res) => {
       couponCode,
     });
 
-    // Map order items with product images
+    // Map order items with product images and preparation time
     const orderItems = await Promise.all(
       cart.products.map(async (item) => {
-        const product = await Product.findById(item.productId).select("images");
+        const product = await Product.findById(item.productId).select("images preparationTime");
         return {
           productId: item.productId,
           quantity: item.quantity,
@@ -2219,6 +2221,7 @@ exports.placeOrderV2 = async (req, res) => {
           name: item.name,
           totalPrice: item.price * item.quantity,
           image: product?.images?.[0] || null,
+          preparationTime: product?.preparationTime || 10,
         };
       })
     );
@@ -2564,7 +2567,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
 
     // Prepare cart products with additional details
     const cartProducts = await Promise.all(cart.products.map(async (item) => {
-      const product = await Product.findById(item.productId).select("images");
+      const product = await Product.findById(item.productId).select("images preparationTime");
       return {
         productId: item.productId?._id,
         quantity: item.quantity,
@@ -2572,6 +2575,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
         name: item.productId?.name || "Unknown Product",
         totalPrice: item.price * item.quantity,
         image: product?.images?.[0] || null,
+        preparationTime: product?.preparationTime || 10,
       };
     }));
 
@@ -2593,6 +2597,17 @@ exports.placeOrderWithAddressId = async (req, res) => {
     }
 
     const [restaurantLongitude, restaurantLatitude] = restaurant.location.coordinates;
+
+    // Calculate ETA
+    const totalPreparationTime = Math.max(
+      ...cartProducts.map((item) => item.preparationTime || 10)
+    );
+    const etaDetails = calculateETA(
+      [restaurantLongitude, restaurantLatitude],
+      [userLongitude, userLatitude],
+      totalPreparationTime,
+      40 // average speed
+    );
 
     // Calculate pre-surge amount
     const preSurgeOrderAmount = cartProducts.reduce(
@@ -2661,11 +2676,12 @@ exports.placeOrderWithAddressId = async (req, res) => {
     const newOrder = new Order({
       customerId: userId,
       restaurantId: restaurant._id,
-      cartId:cartId,
+      cartId: cartId,
       orderItems: cartProducts,
       paymentMethod,
       orderStatus,
       paymentStatus: "pending",
+      preparationTime: totalPreparationTime,
       deliveryLocation: { 
         type: "Point", 
         coordinates: [userLongitude, userLatitude] 
@@ -2727,6 +2743,7 @@ exports.placeOrderWithAddressId = async (req, res) => {
         turf.point([userLongitude, userLatitude]),
         { units: "kilometers" }
       ),
+      etaAt: etaDetails.eta, // Add ETA timestamp
       loyaltyPoints: {
         used: bill.loyaltyPoints?.used || 0,
         value: bill.loyaltyPoints?.discount || 0,
@@ -2765,78 +2782,82 @@ exports.placeOrderWithAddressId = async (req, res) => {
         amount: bill.finalAmount,
         currency: "INR",
         keyId: process.env.RAZORPAY_KEY_ID,
-        billSummary: bill
+        billSummary: bill,
+        eta: { // Include ETA in response
+          totalMinutes: Math.ceil(etaDetails.totalTimeMinutes),
+          estimatedDeliveryTime: etaDetails.eta,
+          preparationTime: etaDetails.preparationTime,
+          travelTime: Math.ceil(etaDetails.travelTimeMinutes),
+          distance: parseFloat(etaDetails.distanceKm.toFixed(2))
+        }
       });
     }
            
     // Save COD order
     const savedOrder = await newOrder.save();
     const populatedOrder = await Order.findById(savedOrder._id)
-  .populate("customerId", "name email phone")
-  .lean();
+      .populate("customerId", "name email phone")
+      .lean();
 
+    const sanitizeOrderNumbers = (order, fields) => {
+      fields.forEach((key) => {
+        order[key] = Number(order[key]) || 0;
+      });
+      return order;
+    };
 
-   const sanitizeOrderNumbers = (order, fields) => {
-        fields.forEach((key) => {
-          order[key] = Number(order[key]) || 0;
-        });
-        return order;
-      };
+    sanitizeOrderNumbers(populatedOrder, [
+      "subtotal",
+      "tax",
+      "discountAmount",
+      "deliveryCharge",
+      "offerDiscount",
+      "surgeCharge",
+      "tipAmount",
+      "totalAmount",
+    ]);
 
-sanitizeOrderNumbers(populatedOrder, [
-  "subtotal",
-  "tax",
-  "discountAmount",
-  "deliveryCharge",
-  "offerDiscount",
-  "surgeCharge",
-  "tipAmount",
-  "totalAmount",
-]);
+    const io = req.app.get("io");
+    io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
+      "new_order",
+      populatedOrder
+    );
 
-const io = req.app.get("io");
-io.to(`restaurant_${savedOrder.restaurantId.toString()}`).emit(
-  "new_order",
-  populatedOrder
-);
+    await reduceStockForOrder(savedOrder.orderItems, io);
+    await loyaliltyPoinService.redeemLoyaltyPoints(savedOrder.customerId, savedOrder);
 
+    // Format ETA for notification
+    const etaMinutes = Math.ceil(etaDetails.totalTimeMinutes);
+    const estimatedDeliveryTime = `${etaMinutes} minutes`;
 
-   await reduceStockForOrder(savedOrder.orderItems, io);
-  await  loyaliltyPoinService.redeemLoyaltyPoints(savedOrder.customerId,savedOrder);
-
-      await notificationService.sendOrderNotification({
+    await notificationService.sendOrderNotification({
       userId: userId,
       title: "Order Placed Successfully",
-      body: `Your order #${savedOrder._id.toString().slice(-6)} has been received`,
+      body: `Your order #${savedOrder._id.toString().slice(-6)} has been received. Estimated delivery: ${etaMinutes} mins`,
       orderId: savedOrder._id.toString(),
       data: {
         orderStatus: "placed",
         restaurantName: restaurant.name,
-        estimatedDeliveryTime: "30-45 mins" // You can calculate this
+        estimatedDeliveryTime: estimatedDeliveryTime
       },
       deepLinkUrl: `/orders/${savedOrder._id}`
     });
 
-
-
     // Emit events
-
     await emitNewOrderToAdmin(io, savedOrder._id);
     
-const orderItemsList = savedOrder.orderItems.map(item => 
-  `${item.quantity} ${item.name}` 
-).join(', ');
+    const orderItemsList = savedOrder.orderItems.map(item => 
+      `${item.quantity} ${item.name}` 
+    ).join(', ');
 
-const totalAmount = savedOrder.orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
-const orderNumber = savedOrder._id.toString().slice(-6).toUpperCase();
+    const totalAmount = savedOrder.orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const orderNumber = savedOrder._id.toString().slice(-6).toUpperCase();
 
-await notificationService.sendNotificationToAdmins({
-  title: `New Order Recieved`,
-  body: `Order for ${orderItemsList}. Total: ₹${totalAmount}`,
+    await notificationService.sendNotificationToAdmins({
+      title: `New Order Received`,
+      body: `Order for ${orderItemsList}. Total: ₹${totalAmount}. ETA: ${etaMinutes} mins`,
+    });
 
-});
-
-  
     // Assign delivery agent
     try {
       const assignmentResult = await assignTask(savedOrder._id);
@@ -2873,6 +2894,13 @@ await notificationService.sendNotificationToAdmins({
       billSummary: bill,
       orderStatus: savedOrder.orderStatus,
       agentAssignmentStatus: savedOrder.agentAssignmentStatus,
+      eta: { // Include ETA in final response
+        totalMinutes: Math.ceil(etaDetails.totalTimeMinutes),
+        estimatedDeliveryTime: etaDetails.eta,
+        preparationTime: etaDetails.preparationTime,
+        travelTime: Math.ceil(etaDetails.travelTimeMinutes),
+        distance: parseFloat(etaDetails.distanceKm.toFixed(2))
+      },
       loyaltyPoints: {
         used: bill.loyaltyPoints?.used || 0,
         potentialEarned: bill.loyaltyPoints?.potentialEarned || 0
@@ -2888,7 +2916,6 @@ await notificationService.sendNotificationToAdmins({
     });
   }
 };
-
 // Helper function to calculate distance between coordinates
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // Earth radius in km

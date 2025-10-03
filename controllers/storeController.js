@@ -1176,3 +1176,70 @@ exports.getProductsByStore = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+exports.getCatalogByStore = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    // 1️⃣ Fetch categories for this store
+    const categories = await Category.find({ restaurantId: storeId, active: true }).sort({ name: 1 });
+
+    // 2️⃣ Fetch products grouped by category
+    const catalog = await Promise.all(
+      categories.map(async (category) => {
+        const products = await FoodItem.find({
+          restaurantId: storeId,
+          categoryId: category._id,
+        }).sort({ name: 1 });
+
+        return {
+          category: {
+            id: category._id,
+            name: category.name,
+          },
+          products: products.map((p) => ({
+            id: p._id,
+            name: p.name,
+            description: p.description,
+            price: p.price,
+            status: p.active ? "Active" : "Inactive",
+            foodType: p.foodType, // veg / non-veg
+            preparationTime: p.preparationTime,
+
+            // 📌 Availability details
+            availability: p.availability, // always / time-based / out-of-stock
+            availableAfterTime: p.availableAfterTime, // e.g. "17:00"
+
+            // 📌 Inventory details
+            inventoryEnabled: p.enableInventory,
+            stock: p.enableInventory ? p.stock : null,
+            reorderLevel: p.enableInventory ? p.reorderLevel : null,
+
+            // 📌 Extra details
+            image: p.images?.length ? p.images[0] : null,
+            rating: p.rating,
+        
+          })),
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Catalog fetched successfully",
+      data: catalog,
+    });
+  } catch (error) {
+    console.error("Error fetching catalog:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};

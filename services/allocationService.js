@@ -340,7 +340,6 @@ const assignRoundRobin = async (orderId, config) => {
 
 
 
-
 const notifyNextPendingAgent = async (order, agenda) => {
   try {
     // Re-fetch fresh order to avoid stale data
@@ -357,11 +356,8 @@ const notifyNextPendingAgent = async (order, agenda) => {
 
     if (!nextCandidate) {
       console.log("❌ No more agents left to notify.");
-      
-      // Update order status if no more candidates
       freshOrder.agentAssignmentStatus = "unassigned";
       await freshOrder.save();
-      
       return { status: "no_more_candidates" };
     }
 
@@ -382,20 +378,17 @@ const notifyNextPendingAgent = async (order, agenda) => {
     const nextAgent = await Agent.findById(nextCandidate.agent);
     if (!nextAgent) {
       console.log(`⚠️ Agent ${nextCandidate.agent} not found in DB`);
-      
-      // Mark as failed and try next one
       nextCandidate.status = "failed";
       await freshOrder.save();
-      
-      // Recursively try next agent
       return await notifyNextPendingAgent(freshOrder, agenda);
     }
 
     // Determine expiry time dynamically based on allocation method
     const allocationSettings = await AllocationSettings.findOne({});
     let expirySec = 25; // fallback default
+    const method = freshOrder.allocationMethod || "one_by_one";
 
-    switch (freshOrder.allocationMethod) {
+    switch (method) {
       case "one_by_one":
         expirySec = allocationSettings?.oneByOneSettings?.requestExpirySec || expirySec;
         break;
@@ -407,18 +400,19 @@ const notifyNextPendingAgent = async (order, agenda) => {
         break;
     }
 
-    console.log(`🔁 Notifying next agent in FIFO: ${nextAgent.fullName} (Attempt: ${nextCandidate.attemptNumber}) for ${expirySec}s`);
+    // Log dynamically
+    console.log(`🔁 Notifying next agent (${method}): ${nextAgent.fullName} (Attempt: ${nextCandidate.attemptNumber}) for ${expirySec}s`);
 
-    // Send push/notification to agent
+    // Send push/notification dynamically
     await sendNotificationToAgent({
       agentId: nextAgent._id,
-      title: "📦 New Delivery Task (FIFO)",
+      title: `📦 New Delivery Task (${method.toUpperCase()})`,
       body: "You have a new delivery request. Please accept or decline.",
       data: {
         orderId: freshOrder._id.toString(),
         type: "order_allocation",
-        expirySec,
-        allocationMethod: "fifo",
+        expirySec: String(expirySec),
+        allocationMethod: method,
       },
     });
 
@@ -459,11 +453,9 @@ const assignSendToAll = async (orderId) => {
   const restaurant = await Restaurant.findById(order.restaurantId);
   if (!restaurant?.location) throw new Error("❌ [Send-to-All] Restaurant location not found");
 
-  // 🔹 Load settings from DB (allocation settings or order-specific config)
-  const allocationSettings = await AllocationSettings.findOne({}); // Or per-merchant if needed
+  const allocationSettings = await AllocationSettings.findOne({});
   const config = allocationSettings?.sendToAllSettings || {};
 
-  // 🔹 Apply defaults if missing
   let radiusKm = config.radiusKm || 5;
   const maxRadius = config.maximumRadiusKm || 20;
   const radiusIncrement = config.radiusIncrementKm || 2;
@@ -475,7 +467,6 @@ const assignSendToAll = async (orderId) => {
     `🔍 [Send-to-All] Searching agents (start=${radiusKm}km, max=${maxRadius}km, step=${radiusIncrement}km)...`
   );
 
-  // Expand radius until agents found or max radius reached
   while (radiusKm <= maxRadius && availableAgents.length === 0) {
     console.log(`➡️ [Send-to-All] Checking within ${radiusKm} km...`);
     availableAgents = await Agent.find({
@@ -502,42 +493,44 @@ const assignSendToAll = async (orderId) => {
 
   console.log(`✅ [Send-to-All] Found ${availableAgents.length} agents (within ${radiusKm} km)`);
 
+  // 🔹 Log agent list for debugging
+  const agentListToLog = availableAgents.map(agent => ({
+    id: agent._id.toString(),
+    name: agent.fullName,
+    location: agent.location,
+  }));
+  console.log("💾 [Send-to-All] Agent list:", agentListToLog);
+
   const now = new Date();
   order.agentCandidates = availableAgents.map(agent => ({
-  agent: agent._id,
-  status: "broadcasted",  // ✅ valid enum
-  assignedAt: now,
-  respondedAt: null,
-  isCurrentCandidate: true,
-}));
+    agent: agent._id,
+    status: "broadcasted",
+    assignedAt: now,
+    respondedAt: null,
+    isCurrentCandidate: true,
+  }));
 
   order.agentAssignmentStatus = "awaiting_agent_acceptance";
   order.allocationMethod = "send_to_all";
   await order.save();
 
-  console.log(`📝 [Send-to-All] Updated order ${orderId} with ${availableAgents.length} candidates`);
-
-  // 🔔 Notify all agents
   for (const agent of availableAgents) {
     console.log(`📨 [Send-to-All] Sending notification to agent ${agent.fullName}`);
-  await sendNotificationToAgent({
-  agentId: agent._id,
-  title: "📦 New Task Available",
-  body: "You have a new delivery task. Accept before others do!",
-  data: {
-    type: "ORDER_ASSIGNMENT",
-    orderId: order._id.toString(),
-    customerName: order.customerName || "Customer",
-    address: order.deliveryAddress?.formatted || "",
-    expirySec: String(requestExpirySec),   // convert number to string
-    allocationMethod: "send_to_all",
-  },
-});
+    await sendNotificationToAgent({
+      agentId: agent._id,
+      title: "📦 New Task Available",
+      body: "You have a new delivery task. Accept before others do!",
+      data: {
+        type: "ORDER_ASSIGNMENT",
+        orderId: order._id.toString(),
+        customerName: order.customerName || "Customer",
+        address: order.deliveryAddress?.formatted || "",
+        expirySec: String(requestExpirySec),
+        allocationMethod: "send_to_all",
+      },
+    });
   }
 
-  console.log(`✅ [Send-to-All] Notified ${availableAgents.length} agents for order ${orderId}`);
-
-  // ⏳ Auto-cancel if no one accepts within expiry
   if (requestExpirySec) {
     await agenda.schedule(
       `in ${requestExpirySec} seconds`,
@@ -559,6 +552,8 @@ const assignSendToAll = async (orderId) => {
     radiusUsed: radiusKm,
   };
 };
+
+
 
 
 
