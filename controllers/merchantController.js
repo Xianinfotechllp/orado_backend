@@ -78,7 +78,7 @@ exports.getMerchantDetails = async (req, res) => {
 
 exports.loginMerchant = async (req, res) => {
   try {
-    const { identifier, password } = req.body; // identifier = email or phone
+    const { identifier, password, fcmToken } = req.body; // identifier = email or phone
 
     if (!identifier || !password) {
       return res.status(400).json({ message: "Email/Phone and password are required." });
@@ -98,33 +98,20 @@ exports.loginMerchant = async (req, res) => {
       return res.status(401).json({ message: "Invalid password." });
     }
 
+    // Create JWT token
     const token = jwt.sign(
       { userId: userExist._id },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Limit to 3 active sessions
-    const MAX_SESSIONS = 3;
-    const existingSessions = await Session.find({ userId: userExist._id }).sort({ createdAt: 1 });
-
-    if (existingSessions.length >= MAX_SESSIONS) {
-      const oldestSession = existingSessions[0];
-      await Session.findByIdAndDelete(oldestSession._id); // Kick the oldest session out
+    // 🔹 Save FCM token if provided
+    if (fcmToken) {
+      if (!userExist.deviceTokens.includes(fcmToken)) {
+        userExist.deviceTokens.push(fcmToken);
+        await userExist.save();
+      }
     }
-
-    // Get device + IP info 
-    const userAgent = req.headers["user-agent"] || "Unknown Device";
-    const ip = req.ip || req.connection.remoteAddress || "Unknown IP";
-
-    // Save new session in DB
-    await Session.create({
-      userId: userExist._id,
-      token,
-      userAgent,
-      ip,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
 
     res.status(200).json({
       message: "Login successful",
@@ -134,7 +121,8 @@ exports.loginMerchant = async (req, res) => {
         name: userExist.name,
         email: userExist.email,
         phone: userExist.phone,
-        userType: userExist.userType
+        userType: userExist.userType,
+        deviceTokens: userExist.deviceTokens
       }
     });
   } catch (err) {
@@ -146,13 +134,29 @@ exports.loginMerchant = async (req, res) => {
 // Logout user by deleting session
 
 exports.logoutMerchant = async (req, res) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(400).json({ message: "Token required" });
+  try {
+    const userId = req.user._id; // From JWT middleware
+    const { fcmToken } = req.body; // FCM token to remove
 
-  await Session.findOneAndDelete({ token });
-  res.json({ message: "Logged out successfully" });
+    if (!fcmToken) {
+      return res.status(400).json({ message: "FCM token is required to logout." });
+    }
+
+    // Remove token from deviceTokens array
+    await User.updateOne(
+      { _id: userId },
+      { $pull: { deviceTokens: fcmToken } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Logout successful and FCM token removed."
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
 };
-
 // logout from all devices
 
 exports.logoutAll = async (req, res) => {
@@ -1014,7 +1018,29 @@ exports.updateOrderStatus = async (req, res) => {
   }
 };
 
+exports.saveFcmToken = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { fcmToken } = req.body;
 
+    if (!fcmToken) {
+      return res.status(400).json({ message: "fcmToken is required." });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    if (!user.deviceTokens.includes(fcmToken)) {
+      user.deviceTokens.push(fcmToken);
+      await user.save();
+    }
+
+    res.status(200).json({ success: true, message: "FCM token saved successfully." });
+  } catch (err) {
+    console.error("Save FCM token error:", err);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
 
 
 

@@ -3,7 +3,7 @@ const router = express.Router();
 
 const {registerMerchant,loginMerchant,getRestaurantsByOwner,getRestaurantApprovalStatus,changePassword, getOrdersByCustomer, getOrderDetails
 
-    ,getMerchantOrders,updateOrderStatus
+    ,getMerchantOrders,updateOrderStatus,saveFcmToken,logoutMerchant
 } = require("../controllers/merchantController")
 const {createCategory} = require("../controllers/categoryController")
 const {getAssignableOffers,createOfferByRestaurantOwner,getOffersForRestaurant,toggleOfferAssignment,
@@ -14,6 +14,10 @@ const { getMerchantTaxesAndCharges } = require('../controllers/taxAndChargeContr
 router.post("/register",registerMerchant)
 router.post("/login",loginMerchant)
 router.post("/change-password",protect,changePassword)
+
+
+router.post("/save-token",protect,saveFcmToken)
+router.post("/logout",protect,logoutMerchant)
 
 
 router.get("/getmy-restaurants/:ownerId",protect,getRestaurantsByOwner)
