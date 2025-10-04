@@ -21,7 +21,7 @@ const firebase = require("../config/firebaseAdmin");
 const DeviceToken = require("../models/deviceTokenModel");
 const path = require("path");
 const schedule = require("node-schedule");
-
+const {Notification} = require("../models/notificationModel");
 const agenda = require("../config/agenda");
 
 exports.adminLogin = async (req, res) => {
@@ -1968,20 +1968,26 @@ exports.saveFcmToken = async (req, res) => {
   }
 };
 
+
 exports.sendPushNotification = async (req, res) => {
   try {
-    const { userType, userIds, title, body, deepLinkUrl, data = {} } = req.body;
+    const {
+      userType,
+      userIds,
+      title,
+      body,
+      deepLinkUrl,
+      data = {},
+      scheduledAt,
+      recurring
+    } = req.body;
+
     let imageUrl = null;
 
-    // ✅ If image file is attached
+    // ✅ Upload image if attached
     if (req.file) {
-      const uploadResult = await uploadOnCloudinary(
-        req.file.path,
-        "orado_notifications"
-      );
-      if (uploadResult?.secure_url) {
-        imageUrl = uploadResult.secure_url;
-      }
+      const uploadResult = await uploadOnCloudinary(req.file.path, "orado_notifications");
+      if (uploadResult?.secure_url) imageUrl = uploadResult.secure_url;
     }
 
     // ✅ Validate userType
@@ -1989,124 +1995,93 @@ exports.sendPushNotification = async (req, res) => {
     if (!validUserTypes.includes(userType)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid user type. Valid types: ${validUserTypes.join(", ")}`,
+        message: `Invalid user type. Valid types: ${validUserTypes.join(", ")}`
       });
     }
 
-    // ✅ Select model
+    // ✅ Select user model
     let Model;
-    console.log(userType);
     switch (userType) {
-      case "customer":
-        Model = User;
-        break;
-      case "agent":
-        Model = Agent;
-        break;
-      case "restaurant":
-        Model = Restaurant;
-        break;
+      case "customer": Model = User; break;
+      case "agent": Model = Agent; break;
+      case "restaurant": Model = Restaurant; break;
     }
+
     const users = await Model.find({ _id: { $in: userIds } }).lean();
 
-    const tokens = users.flatMap((user) => {
-      // For agents - get tokens from fcmTokens array
+    // ✅ Extract FCM tokens
+    const tokens = users.flatMap(user => {
       if (userType === "agent" && Array.isArray(user.fcmTokens)) {
-        return user.fcmTokens.map((t) => t.token).filter(Boolean);
-      }
-      // For customers and restaurants - get tokens from devices array
-      else if (Array.isArray(user.devices)) {
-        return user.devices
-          .filter((d) => d.status === "active" && d.token)
-          .map((d) => d.token)
-          .filter(Boolean);
+        return user.fcmTokens.map(t => t.token).filter(Boolean);
+      } else if (Array.isArray(user.devices)) {
+        return user.devices.filter(d => d.status === "active" && d.token).map(d => d.token);
       }
       return [];
     });
 
-    if (tokens.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No valid FCM tokens found for the specified users.",
-      });
+    if (!tokens.length) {
+      return res.status(400).json({ success: false, message: "No valid FCM tokens found." });
     }
 
     // ✅ Construct notification message
     const message = {
       tokens,
-      notification: {
-        title,
-        body,
-        ...(imageUrl && { image: imageUrl }),
-      },
-      data: {
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
-        ...(deepLinkUrl && { deepLinkUrl }),
-        ...data,
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: "default",
-            mutableContent: true,
-          },
-        },
-        fcm_options: {
-          ...(imageUrl && { image: imageUrl }),
-        },
-      },
-      android: {
-        priority: "high",
-        notification: {
-          sound: "default",
-          channel_id: "high_importance_channel",
-          ...(imageUrl && { image: imageUrl }),
-        },
-      },
+      notification: { title, body, ...(imageUrl && { image: imageUrl }) },
+      data: { click_action: "FLUTTER_NOTIFICATION_CLICK", ...(deepLinkUrl && { deepLinkUrl }), ...data },
+      android: { priority: "high", notification: { sound: "default", channel_id: "high_importance_channel", ...(imageUrl && { image: imageUrl }) } },
+      apns: { payload: { aps: { sound: "default", mutableContent: true } }, fcm_options: { ...(imageUrl && { image: imageUrl }) } }
     };
 
-       if (req.body.scheduledAt) {
-      // Convert string to Date object
-      const scheduledAt = new Date(req.body.scheduledAt);
-      
-      // Validate future date
-      if (scheduledAt <= new Date()) {
-        return res.status(400).json({
-          success: false,
-          message: "Scheduled time must be in the future"
-        });
+    // ✅ Save notification in DB
+    const notificationDoc = new Notification({
+      userId: userIds.length === 1 ? userIds[0] : null,
+      sendToAll: userIds.length > 1,
+      title,
+      body,
+      type: data.type || "info",
+      schedule: scheduledAt ? new Date(scheduledAt) : null,
+      recurring: recurring || { enabled: false },
+      audience: userType,
+      delivered: false
+    });
+
+    await notificationDoc.save();
+
+    // ✅ Schedule notification if scheduledAt is provided
+    if (scheduledAt) {
+      const scheduleDate = new Date(scheduledAt);
+      if (scheduleDate <= new Date()) {
+        return res.status(400).json({ success: false, message: "Scheduled time must be in the future" });
       }
 
-
-      const result = await agenda.schedule(new Date(scheduledAt), "send", {
-      message})
-
+      await agenda.schedule(scheduleDate, "send", { notificationId: notificationDoc._id, message });
 
       return res.status(200).json({
         success: true,
         message: "Notification scheduled successfully",
-        // jobId: result.jobId,
-        // scheduledAt: result.scheduledAt
+        notificationId: notificationDoc._id,
+        scheduledAt: scheduleDate
       });
     }
 
+    // ✅ Send immediately
     const response = await firebase.messaging().sendEachForMulticast(message);
+
+    // ✅ Update notification as delivered
+    notificationDoc.delivered = true;
+    notificationDoc.sentAt = new Date();
+    await notificationDoc.save();
 
     res.status(200).json({
       success: true,
-      message: "Notifications processed",
+      message: "Notifications sent successfully",
       sentCount: response.successCount,
       failedCount: response.failureCount,
-      failedTokens: response.responses
-        .map((resp, idx) => (!resp.success ? tokens[idx] : null))
-        .filter(Boolean),
+      failedTokens: response.responses.map((resp, idx) => (!resp.success ? tokens[idx] : null)).filter(Boolean)
     });
+
   } catch (err) {
     console.error("Notification error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: process.env.NODE_ENV === "development" ? err.message : undefined,
-    });
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };

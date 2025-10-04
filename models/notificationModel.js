@@ -1,12 +1,9 @@
 const mongoose = require('mongoose');
 
-
-
 const NotificationSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-    // Not required directly — conditional validation handled below
   },
 
   sendToAll: {
@@ -26,7 +23,7 @@ const NotificationSchema = new mongoose.Schema({
 
   type: {
     type: String,
-    enum: ['orderUpdates', 'promotions', 'walletCredits', 'newFeatures', 'serviceAlerts'],
+    enum: ['orderUpdates', 'promotions', 'walletCredits', 'newFeatures', 'serviceAlerts', "info"],
     required: true
   },
 
@@ -41,23 +38,32 @@ const NotificationSchema = new mongoose.Schema({
   },
 
   sentAt: {
-    type: Date
+    type: Date // when it was actually sent
+  },
+
+  // ✅ New fields for scheduling
+  schedule: {
+    type: Date, // when it should be sent
+    default: null
+  },
+
+  recurring: {
+    enabled: { type: Boolean, default: false },
+    interval: { type: String, enum: ['daily', 'weekly', 'monthly'], default: null }, // how often it should repeat
+    endDate: { type: Date, default: null } // optional end date for recurring
   },
 
 }, {
   timestamps: true
 });
 
-// 📌 Custom validation to enforce userId presence if sendToAll is false
+// Custom validation for userId when sendToAll is false
 NotificationSchema.pre('validate', function (next) {
   if (!this.sendToAll && !this.userId) {
     return next(new Error('userId is required when sendToAll is false.'));
   }
   next();
 });
-
-module.exports = mongoose.model('Notification', NotificationSchema);
-
 
 const NotificationPreferenceSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', unique: true, required: true },

@@ -7,6 +7,7 @@ const { uploadOnCloudinary } = require('../utils/cloudinary');
 const Restaurant = require("../models/restaurantModel")
 const Order = require('../models/orderModel')
 const moment = require("moment")
+const Permission = require("../models/restaurantPermissionModel")
 exports.registerMerchant = async (req, res) => {
   try {
     const {
@@ -748,12 +749,26 @@ exports.getOrderDetails = async (req, res) => {
 
 
 
+
+// Map backend status to friendly merchant view status
+const statusMap = {
+  pending: "pending",
+  accepted_by_restaurant: "accepted_by_restaurant",
+  rejected_by_restaurant: "rejected_by_restaurant",
+  preparing: "preparing",
+  ready: "ready",
+  picked_up: "completed",
+  on_the_way: "completed",
+  delivered: "completed",
+  cancelled_by_customer: "cancelled_by_customer",
+};
+
 exports.getMerchantOrders = async (req, res) => {
   try {
-    const ownerId = req.user._id; // owner id from JWT
-    const { storeId } = req.query; // optional: filter by specific store
+    const ownerId = req.user._id;
+    const { storeId, startDate, endDate } = req.query;
 
-    // Fetch stores owned by this merchant
+    // 1️⃣ Find all stores belonging to the merchant
     const stores = await Restaurant.find({ ownerId }).select("_id name").lean();
     const storeIds = stores.map(store => store._id);
 
@@ -761,24 +776,47 @@ exports.getMerchantOrders = async (req, res) => {
       return res.status(200).json({
         success: true,
         data: [],
-        message: "No stores found for this merchant",
+        message: "No stores found",
       });
     }
 
-    // Build query
+    // 2️⃣ Base query — store filter
     const query = {};
     if (storeId && storeId !== "all") {
-      // Only if the storeId belongs to this merchant
-      if (!storeIds.includes(storeId)) {
-        return res.status(403).json({ success: false, message: "Unauthorized store access" });
+      if (!storeIds.some(id => id.toString() === storeId.toString())) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized store access",
+        });
       }
       query.restaurantId = storeId;
     } else {
-      // Fetch all stores of this merchant
       query.restaurantId = { $in: storeIds };
     }
 
-    // Fetch orders
+    // 3️⃣ Optional date filter
+    if (startDate || endDate) {
+      query.orderTime = {};
+      if (startDate) {
+        query.orderTime.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        // include full day by setting end of the day time
+        query.orderTime.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+      }
+    }
+
+    // 4️⃣ Fetch permissions per restaurant
+    const permissions = await Permission.find({ restaurantId: { $in: storeIds } })
+      .select("restaurantId permissions")
+      .lean();
+
+    const permissionMap = {};
+    permissions.forEach(p => {
+      permissionMap[p.restaurantId.toString()] = p.permissions;
+    });
+
+    // 5️⃣ Fetch orders with relationships
     const orders = await Order.find(query)
       .populate({
         path: "customerId",
@@ -794,46 +832,190 @@ exports.getMerchantOrders = async (req, res) => {
       })
       .lean();
 
-    // Format response
+    // 6️⃣ Format the response
     const formattedOrders = orders.map(order => {
       const customer = order.customerId || {};
       const restaurant = order.restaurantId || {};
       const agent = order.assignedAgent || null;
+      const restaurantPermissions = permissionMap[restaurant._id?.toString()] || {};
 
-      return {
+      // Only show permissions if order is pending
+      let permissionFlags;
+      if (order.orderStatus === "pending") {
+        permissionFlags = {
+          canAcceptOrder: restaurantPermissions.canAcceptOrder || false,
+          canRejectOrder: restaurantPermissions.canRejectOrder || false,
+        };
+      }
+
+      const friendlyStatus = statusMap[order.orderStatus] || order.orderStatus;
+
+      const orderResponse = {
         orderId: order._id,
-        orderStatus: order.orderStatus,
+        orderStatus: friendlyStatus,
         storeName: restaurant.name || "",
         customerName: customer.name || customer.guestName || "",
-        customerAddress: customer.deliveryAddress
-          ? `${customer.deliveryAddress.street}, ${customer.deliveryAddress.area || ""}, ${customer.deliveryAddress.city}, ${customer.deliveryAddress.state || ""}, ${customer.deliveryAddress.pincode || ""}`
+        customerAddress: order.deliveryAddress
+          ? `${order.deliveryAddress.street || ""}${order.deliveryAddress.area ? ", " + order.deliveryAddress.area : ""}, ${order.deliveryAddress.city || ""}, ${order.deliveryAddress.state || ""}, ${order.deliveryAddress.pincode || ""}, ${order.deliveryAddress.country || ""}`
           : "",
         orderItemCount: order.orderItems.length,
         orderItems: order.orderItems.map(item => ({
           name: item.name,
           quantity: item.quantity,
           price: item.price,
-          instructions: item.instructions || "", // include cooking/instructions per item if exists
         })),
         subtotal: order.totalAmount || order.subtotal || 0,
-        assignedAgent: agent
-          ? {
-              fullName: agent.fullName,
-              phoneNumber: agent.phoneNumber,
-            }
-          : null,
+        assignedAgent: agent ? { fullName: agent.fullName, phoneNumber: agent.phoneNumber } : null,
         orderTime: order.orderTime,
-        cookingInstructions: order.instructions || "", // include overall order instructions if exists
+        cookingInstructions: order.instructions || "",
       };
+
+      if (permissionFlags) {
+        orderResponse.permissions = permissionFlags;
+      }
+
+      return orderResponse;
     });
 
+    // 7️⃣ Send response
     res.status(200).json({
       success: true,
       data: formattedOrders,
       message: "Orders fetched successfully",
     });
   } catch (error) {
+    console.error("Error fetching merchant orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const ownerId = req.user._id; // merchant/owner from JWT
+    const { orderId, status, cancellationReason } = req.body; 
+    const io = req.app.get("io"); 
+
+    if (!orderId || !status) {
+      return res.status(400).json({ success: false, message: "Order ID and status are required" });
+    }
+
+    // Fetch the order
+    const order = await Order.findById(orderId)
+      .populate("restaurantId")
+      .populate("customerId");
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // Check ownership
+    if (!order.restaurantId || order.restaurantId.ownerId.toString() !== ownerId.toString()) {
+      return res.status(403).json({ success: false, message: "Unauthorized to update this order" });
+    }
+
+    // Get restaurant permissions
+    const restaurantPermissions = await Permission.findOne({ restaurantId: order.restaurantId._id });
+    if (!restaurantPermissions) {
+      return res.status(403).json({ success: false, message: "No permissions configured for this restaurant" });
+    }
+
+    const previousStatus = order.orderStatus;
+
+    // Handle rejection
+    if (status === "rejected_by_restaurant") {
+      if (!restaurantPermissions.permissions.canRejectOrder) {
+        return res.status(403).json({ success: false, message: "You do not have permission to reject orders" });
+      }
+
+      order.orderStatus = "rejected_by_restaurant";
+      order.cancellationReason = cancellationReason || "Rejected by merchant";
+
+      // Handle refund
+      if (order.paymentStatus === "completed" && order.paymentMethod === "online") {
+        order.paymentStatus = "pending_refund";
+      }
+    } 
+    // Handle acceptance
+    else if (status === "accepted_by_restaurant") {
+      if (!restaurantPermissions.permissions.canAcceptOrder) {
+        return res.status(403).json({ success: false, message: "You do not have permission to accept orders" });
+      }
+      order.orderStatus = "accepted_by_restaurant";
+    }
+    // Other normal statuses (after accepted)
+    else {
+      const validStatuses = ["preparing", "ready", "delivered"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, message: "Invalid order status" });
+      }
+
+      order.orderStatus = status;
+    }
+
+    await order.save();
+
+    // ===============================
+    // Socket Notifications
+    // ===============================
+    if (io) {
+      const customerRoom = `user_${order.customerId._id.toString()}`;
+      const adminRoom = `admin_group`;
+
+      io.to(customerRoom).emit("order_status_update", {
+        orderId: order._id,
+        newStatus: order.orderStatus,
+        previousStatus,
+        cancellationReason: order.cancellationReason || null,
+        timestamp: new Date(),
+      });
+
+      io.to(adminRoom).emit("order_status_update_admin", {
+        orderId: order._id,
+        newStatus: order.orderStatus,
+        previousStatus,
+        merchantId: ownerId,
+        cancellationReason: order.cancellationReason || null,
+        timestamp: new Date(),
+      });
+
+      if (["delivered", "rejected_by_restaurant"].includes(order.orderStatus)) {
+        io.to(customerRoom).emit("order_finalized", {
+          orderId: order._id,
+          finalStatus: order.orderStatus,
+          timestamp: new Date(),
+        });
+        io.to(adminRoom).emit("order_finalized_admin", {
+          orderId: order._id,
+          finalStatus: order.orderStatus,
+          merchantId: ownerId,
+          timestamp: new Date(),
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Order status updated to ${order.orderStatus}`,
+      data: {
+        orderId: order._id,
+        orderStatus: order.orderStatus,
+        cancellationReason: order.cancellationReason || null,
+      },
+    });
+  } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
+
+
+
+
+
+

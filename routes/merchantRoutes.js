@@ -3,7 +3,7 @@ const router = express.Router();
 
 const {registerMerchant,loginMerchant,getRestaurantsByOwner,getRestaurantApprovalStatus,changePassword, getOrdersByCustomer, getOrderDetails
 
-    ,getMerchantOrders
+    ,getMerchantOrders,updateOrderStatus
 } = require("../controllers/merchantController")
 const {createCategory} = require("../controllers/categoryController")
 const {getAssignableOffers,createOfferByRestaurantOwner,getOffersForRestaurant,toggleOfferAssignment,
@@ -40,6 +40,7 @@ router.get("/order-details/:orderId",getOrderDetails)
 router.get("/:merchantId/taxes",getMerchantTaxesAndCharges)
 
 router.get("/orders",protect,getMerchantOrders)
-
+router.patch("/orders",protect,updateOrderStatus)
+router.get("/orders/:orderId",protect,getOrderDetails)
 
 module.exports = router;
