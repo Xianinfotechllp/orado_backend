@@ -5,7 +5,7 @@ const moment = require('moment')
 const notificationService = require("../../services/notificationService"); // Import the notification service
 const { calculateRestaurantEarnings, createRestaurantEarning } = require("../../services/earningService");
 const mongoose = require("mongoose")
-
+const ExcelJS = require('exceljs')
 
 const AllocationSettings = require("../../models/AllocationSettingsModel");
 exports.getActiveOrdersStats = async (req, res) => {
@@ -1891,7 +1891,7 @@ exports.getOrdersDetailsTable = async (req, res) => {
       orderStatus: { $in: ["cancelled_by_customer", "rejected_by_restaurant"] },
     });
     const inProgress = await Order.countDocuments({
-      orderStatus: { $in: ["preparing", "ready", "on_the_way"] },
+      orderStatus: { $in: ["preparing", "ready", "on_the_way","accepted_by_restaurant","picked_up"] },
     });
     const pendingOrders = await Order.countDocuments({ orderStatus: "pending" });
 
@@ -1936,31 +1936,36 @@ exports.getOrdersDetailsTable = async (req, res) => {
     };
 
     // 🔹 Cleaned order table data
-    const formattedOrders = orders.docs.map((order) => ({
-      orderId: order._id,
-      customer:
-        order.customerId?.name || order.guestName || "Guest User",
-      customerPhone:
-        order.customerId?.phone || order.guestPhone || "-",
-      store: order.restaurantId?.name || "-",
-      address: order.restaurantId?.address || "-",
-      items: order.orderItems || 0,
-      subtotal: order.subtotal || 0,
-      tax: order.tax || 0,
-      discount: order.totalDiscount || 0,
-      surge: order.surgeCharge || 0,
-      delivery: order.deliveryCharge || 0,
-      total: order.totalAmount  || 0,
-      payment: order.paymentMethod,
-      status: order.orderStatus,
-      agent: order.assignedAgent
-        ? {
-            name: order.assignedAgent.fullName,
-            phone: order.assignedAgent.phone,
-          }
-        : null,
-      createdAt: order.createdAt,
-    }));
+const formattedOrders = orders.docs.map((order) => ({
+  orderId: order._id,
+  customer:
+    order.customerId?.name || order.guestName || "Guest User",
+  customerPhone:
+    order.customerId?.phone || order.guestPhone || "-",
+  store: order.restaurantId?.name || "-",
+  address: order.restaurantId?.address || "-",
+  items: order.orderItems,
+  subtotal: order.subtotal || 0,
+  tax: order.tax || 0,
+  discount: order.totalDiscount || 0,
+  surge: order.surgeCharge || 0,
+  delivery: order.deliveryCharge || 0,
+
+  // 🆕 Added fields
+  packingCharge: order.chargesBreakdown?.totalPackingCharge || 0,
+  additionalCharge: order.chargesBreakdown?.totalAdditionalCharges || 0,
+
+  total: order.totalAmount || 0,
+  payment: order.paymentMethod,
+  status: order.orderStatus,
+  agent: order.assignedAgent
+    ? {
+        name: order.assignedAgent.fullName,
+        phone: order.assignedAgent.phone,
+      }
+    : null,
+  createdAt: order.createdAt,
+}));
 
     res.status(200).json({
       success: true,
@@ -1977,6 +1982,164 @@ exports.getOrdersDetailsTable = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch orders",
+      error: error.message,
+    });
+  }
+};
+
+
+
+exports.exportOrdersToExcel = async (req, res) => {
+  try {
+    const {
+      search = "",
+      paymentMethod,
+      status,
+      fromDate,
+      toDate,
+      sort = "desc",
+    } = req.query;
+
+    const query = {};
+
+    // 🔹 Filters
+    if (paymentMethod && paymentMethod !== "all") {
+      query.paymentMethod = paymentMethod.toLowerCase();
+    }
+
+    if (status && status !== "all") {
+      query.orderStatus = status;
+    }
+
+    if (fromDate && toDate) {
+      query.createdAt = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate),
+      };
+    }
+
+    if (search) {
+      query.$or = [
+        { guestName: new RegExp(search, "i") },
+        { guestPhone: new RegExp(search, "i") },
+        { orderId: new RegExp(search, "i") },
+      ];
+    }
+
+    // 🔹 Fetch orders
+    const orders = await Order.find(query)
+      .populate("customerId", "name phone")
+      .populate("restaurantId", "name address area")
+      .populate("assignedAgent", "fullName phoneNumber")
+      .sort({ createdAt: sort === "asc" ? 1 : -1 });
+
+    if (!orders.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No orders found to export.",
+      });
+    }
+
+    // 🧾 Create workbook & sheet
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Orders Report");
+
+    // 🔹 Report Title
+    sheet.mergeCells("A1", "R1");
+    sheet.getCell("A1").value = "Orders Report";
+    sheet.getCell("A1").font = { size: 16, bold: true };
+    sheet.getCell("A1").alignment = { horizontal: "center" };
+
+    // 🔹 Generated On
+    sheet.mergeCells("A2", "R2");
+    sheet.getCell("A2").value = `Generated On: ${new Date().toLocaleString()}`;
+    sheet.getCell("A2").font = { size: 12, italic: true };
+    sheet.getCell("A2").alignment = { horizontal: "center" };
+
+    // 🔹 Report Date Range
+    sheet.mergeCells("A3", "R3");
+    sheet.getCell("A3").value = `Report Date: ${fromDate || "Start"} to ${toDate || "End"}`;
+    sheet.getCell("A3").font = { size: 12, italic: true };
+    sheet.getCell("A3").alignment = { horizontal: "center" };
+
+    // 🔹 Blank row for spacing
+    sheet.addRow([]);
+
+    // 🔹 Define columns
+    sheet.columns = [
+      { header: "Order ID", key: "orderId", width: 25 },
+      { header: "Customer Name", key: "customer", width: 20 },
+      { header: "Customer Phone", key: "customerPhone", width: 15 },
+      { header: "Store", key: "store", width: 20 },
+      { header: "Order Items", key: "items", width: 50 },
+      { header: "Subtotal", key: "subtotal", width: 12 },
+      { header: "Tax", key: "tax", width: 10 },
+      { header: "Discount", key: "discount", width: 10 },
+      { header: "Delivery Charge", key: "delivery", width: 15 },
+      { header: "Surge", key: "surge", width: 10 },
+      { header: "Packing Charge", key: "packingCharge", width: 15 },
+      { header: "Additional Charge", key: "additionalCharge", width: 18 },
+      { header: "Total", key: "total", width: 12 },
+      { header: "Payment Method", key: "payment", width: 15 },
+      { header: "Status", key: "status", width: 20 },
+      { header: "Agent Name", key: "agentName", width: 20 },
+      { header: "Agent Phone", key: "agentPhone", width: 15 },
+      { header: "Created At", key: "createdAt", width: 20 },
+    ];
+
+    // 🔹 Add header row
+    const headerRow = sheet.addRow(sheet.columns.map((col) => col.header));
+    headerRow.font = { bold: true };
+    headerRow.alignment = { horizontal: "center" };
+
+    // 🔹 Add order rows
+    orders.forEach((order) => {
+      const itemsString = (order.orderItems || [])
+        .map((item) => `${item.name} (x${item.quantity}) ₹${item.price.toFixed(2)}`)
+        .join("\n");
+
+      const row = sheet.addRow({
+        orderId: order._id.toString(),
+        customer: order.customerId?.name || order.guestName || "Guest User",
+        customerPhone: order.customerId?.phone || order.guestPhone || "-",
+        store: order.restaurantId?.name || "-",
+        items: itemsString || "-",
+        subtotal: order.subtotal || 0,
+        tax: order.tax || 0,
+        discount: order.totalDiscount || 0,
+        delivery: order.deliveryCharge || 0,
+        surge: order.surgeCharge || 0,
+        packingCharge: order.chargesBreakdown?.totalPackingCharge || 0,
+        additionalCharge: order.chargesBreakdown?.totalAdditionalCharges || 0,
+        total: order.totalAmount || 0,
+        payment: order.paymentMethod || "-",
+        status: order.orderStatus || "-",
+        agentName: order.assignedAgent?.fullName || "-",
+        agentPhone: order.assignedAgent?.phoneNumber || "-",
+        createdAt: new Date(order.createdAt).toLocaleString(),
+      });
+
+      // Wrap text for multiline items
+      row.getCell("items").alignment = { wrapText: true };
+    });
+
+    // 📤 Send file
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=Orders_Report.xlsx"
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Error exporting orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to export orders",
       error: error.message,
     });
   }

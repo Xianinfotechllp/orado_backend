@@ -46,7 +46,8 @@ getPeakHoursGraph,
 getTopMerchantsByRevenue,
 getMostOrderedAreas
 ,getOrdersSummary,
-getOrdersDetailsTable
+getOrdersDetailsTable,
+exportOrdersToExcel
 } = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
@@ -474,6 +475,7 @@ router.get("/order/summary",getOrdersSummary)
 router.get("/orders/locations",getOrderLocationsByPeriod)
 
 router.get("/order/order-details",getOrdersDetailsTable)
+router.get("/order/export-excel",exportOrdersToExcel)
 module.exports = router;
 
   

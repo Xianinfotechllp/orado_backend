@@ -770,7 +770,7 @@ const statusMap = {
 exports.getMerchantOrders = async (req, res) => {
   try {
     const ownerId = req.user._id;
-    const { storeId, startDate, endDate } = req.query;
+    const { storeId, startDate, endDate, status } = req.query; // 👈 added status filter
 
     // 1️⃣ Find all stores belonging to the merchant
     const stores = await Restaurant.find({ ownerId }).select("_id name").lean();
@@ -801,16 +801,36 @@ exports.getMerchantOrders = async (req, res) => {
     // 3️⃣ Optional date filter
     if (startDate || endDate) {
       query.orderTime = {};
-      if (startDate) {
-        query.orderTime.$gte = new Date(startDate);
-      }
+      if (startDate) query.orderTime.$gte = new Date(startDate);
       if (endDate) {
-        // include full day by setting end of the day time
         query.orderTime.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
       }
     }
 
-    // 4️⃣ Fetch permissions per restaurant
+    // 4️⃣ Optional status filter
+    if (status && status !== "all") {
+      // reverse-map: group actual statuses under each friendly status
+      const reverseStatusMap = {
+        pending: ["pending"],
+        accepted_by_restaurant: ["accepted_by_restaurant"],
+        rejected_by_restaurant: ["rejected_by_restaurant"],
+        preparing: ["preparing"],
+        ready: ["ready"],
+        completed: ["picked_up", "on_the_way", "delivered"],
+        cancelled_by_customer: ["cancelled_by_customer"],
+      };
+
+      if (reverseStatusMap[status]) {
+        query.orderStatus = { $in: reverseStatusMap[status] };
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid status filter",
+        });
+      }
+    }
+
+    // 5️⃣ Fetch permissions per restaurant
     const permissions = await Permission.find({ restaurantId: { $in: storeIds } })
       .select("restaurantId permissions")
       .lean();
@@ -820,7 +840,7 @@ exports.getMerchantOrders = async (req, res) => {
       permissionMap[p.restaurantId.toString()] = p.permissions;
     });
 
-    // 5️⃣ Fetch orders with relationships
+    // 6️⃣ Fetch orders with relationships
     const orders = await Order.find(query)
       .populate({
         path: "customerId",
@@ -836,14 +856,13 @@ exports.getMerchantOrders = async (req, res) => {
       })
       .lean();
 
-    // 6️⃣ Format the response
+    // 7️⃣ Format the response
     const formattedOrders = orders.map(order => {
       const customer = order.customerId || {};
       const restaurant = order.restaurantId || {};
       const agent = order.assignedAgent || null;
       const restaurantPermissions = permissionMap[restaurant._id?.toString()] || {};
 
-      // Only show permissions if order is pending
       let permissionFlags;
       if (order.orderStatus === "pending") {
         permissionFlags = {
@@ -869,19 +888,19 @@ exports.getMerchantOrders = async (req, res) => {
           price: item.price,
         })),
         subtotal: order.totalAmount || order.subtotal || 0,
-        assignedAgent: agent ? { fullName: agent.fullName, phoneNumber: agent.phoneNumber } : null,
+        assignedAgent: agent
+          ? { fullName: agent.fullName, phoneNumber: agent.phoneNumber }
+          : null,
         orderTime: order.orderTime,
         cookingInstructions: order.instructions || "",
       };
 
-      if (permissionFlags) {
-        orderResponse.permissions = permissionFlags;
-      }
+      if (permissionFlags) orderResponse.permissions = permissionFlags;
 
       return orderResponse;
     });
 
-    // 7️⃣ Send response
+    // 8️⃣ Send response
     res.status(200).json({
       success: true,
       data: formattedOrders,
@@ -896,7 +915,6 @@ exports.getMerchantOrders = async (req, res) => {
     });
   }
 };
-
 
 
 exports.updateOrderStatus = async (req, res) => {
