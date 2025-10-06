@@ -45,7 +45,8 @@ const {getActiveOrdersStats,getSimpleRectOrderStats, getAdminOrders, getAllOrder
 getPeakHoursGraph,
 getTopMerchantsByRevenue,
 getMostOrderedAreas
-,getOrdersSummary
+,getOrdersSummary,
+getOrdersDetailsTable
 } = require("../controllers/admin/orderController")
 const { protect, checkRole, checkPermission } = require('../middlewares/authMiddleware');
 const { upload } = require("../middlewares/multer");
@@ -471,6 +472,8 @@ router.get("/analytics/most-ordered-area",getMostOrderedAreas)
 router.get("/order/summary",getOrdersSummary)
 // improve code for show lociont in map
 router.get("/orders/locations",getOrderLocationsByPeriod)
+
+router.get("/order/order-details",getOrdersDetailsTable)
 module.exports = router;
 
   

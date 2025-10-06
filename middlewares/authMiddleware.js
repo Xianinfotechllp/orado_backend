@@ -19,16 +19,16 @@ exports.protect = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       // Validate session token exists in DB
-      const session = await Session.findOne({ token, userId: decoded.userId });
-      if (!session) {
-        return res.status(401).json({ message: "Session expired or invalid" });
-      }
+      // const session = await Session.findOne({ token, userId: decoded.userId });
+      // if (!session) {
+      //   return res.status(401).json({ message: "Session expired or invalid" });
+      // }
 
-      // Optional: Check if session is expired manually (for extra control)
-      if (session.expiresAt && new Date() > session.expiresAt) {
-        await session.deleteOne(); // clean it up
-        return res.status(401).json({ message: "Session expired" });
-      }
+      // // Optional: Check if session is expired manually (for extra control)
+      // if (session.expiresAt && new Date() > session.expiresAt) {
+      //   await session.deleteOne(); // clean it up
+      //   return res.status(401).json({ message: "Session expired" });
+      // }
 
       const user = await User.findById(decoded.userId).select("-password");
       if (!user) return res.status(401).json({ message: "User not found" });

@@ -721,10 +721,31 @@ exports.getDeliveryHeatmap = async (req, res) => {
 
     const matchQuery = {};
 
+    // Add status filter if provided
     if (status) matchQuery.orderStatus = status;
-    if (from || to) matchQuery.orderTime = {};
-    if (from) matchQuery.orderTime.$gte = new Date(from);
-    if (to) matchQuery.orderTime.$lte = new Date(to);
+    
+    // Add date range filter if provided
+    if (from || to) {
+      matchQuery.orderTime = {};
+      
+      if (from) {
+        matchQuery.orderTime.$gte = new Date(from);
+      }
+      
+      if (to) {
+        // Set to end of day for the 'to' date
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        matchQuery.orderTime.$lte = toDate;
+      }
+    }
+
+    // Validate date range
+    if (from && to && new Date(from) > new Date(to)) {
+      return res.status(400).json({ 
+        message: "Invalid date range: 'from' date cannot be after 'to' date" 
+      });
+    }
 
     // Aggregate orders by coordinates
     const aggregated = await Order.aggregate([
@@ -743,7 +764,10 @@ exports.getDeliveryHeatmap = async (req, res) => {
         $project: {
           _id: 0,
           type: "Feature",
-          geometry: { type: "Point", coordinates: ["$_id.lng", "$_id.lat"] },
+          geometry: { 
+            type: "Point", 
+            coordinates: ["$_id.lng", "$_id.lat"] 
+          },
           properties: {
             orderCount: "$orderCount",
             totalAmount: "$totalAmount"
@@ -752,13 +776,22 @@ exports.getDeliveryHeatmap = async (req, res) => {
       }
     ]);
 
-    res.json({ type: "FeatureCollection", features: aggregated });
+    res.json({ 
+      type: "FeatureCollection", 
+      features: aggregated,
+      metadata: {
+        totalOrders: aggregated.reduce((sum, feature) => sum + feature.properties.orderCount, 0),
+        totalAmount: aggregated.reduce((sum, feature) => sum + feature.properties.totalAmount, 0),
+        from: from || null,
+        to: to || null,
+        status: status || 'all'
+      }
+    });
   } catch (err) {
     console.error("Error fetching heatmap orders:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 exports.getTopMerchantsByRevenue = async (req, res) => {
   try {
@@ -1794,3 +1827,157 @@ function formatIndianRupees(amount) {
     maximumFractionDigits: 0
   }).format(amount);
 }
+exports.getOrdersDetailsTable = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      paymentMethod,
+      status,
+      fromDate,
+      toDate,
+      sort = "desc",
+    } = req.query;
+
+    const query = {};
+
+    // 🔹 Filter by Payment Method
+    if (paymentMethod && paymentMethod !== "all") {
+      query.paymentMethod = paymentMethod.toLowerCase();
+    }
+
+    // 🔹 Filter by Order Status
+    if (status && status !== "all") {
+      query.orderStatus = status;
+    }
+
+    // 🔹 Filter by Date Range
+    if (fromDate && toDate) {
+      query.createdAt = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate),
+      };
+    }
+
+    // 🔹 Search (by Order ID, Customer Name, Store Name, Agent Name)
+    if (search) {
+      query.$or = [
+        { guestName: new RegExp(search, "i") },
+        { guestPhone: new RegExp(search, "i") },
+        { orderId: new RegExp(search, "i") },
+      ];
+    }
+
+    // 🔹 Pagination & Sorting
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: { createdAt: sort === "asc" ? 1 : -1 },
+      populate: [
+        { path: "customerId", select: "name phone" },
+        { path: "restaurantId", select: "name address area" },
+        { path: "assignedAgent", select: "fullName phone" },
+      ],
+    };
+
+    // 🔹 Fetch paginated orders
+    const orders = await Order.paginate(query, options);
+
+    // 🔹 Summary stats
+    const totalOrders = await Order.countDocuments({});
+    const completedOrders = await Order.countDocuments({ orderStatus: "delivered" });
+    const cancelledOrders = await Order.countDocuments({
+      orderStatus: { $in: ["cancelled_by_customer", "rejected_by_restaurant"] },
+    });
+    const inProgress = await Order.countDocuments({
+      orderStatus: { $in: ["preparing", "ready", "on_the_way"] },
+    });
+    const pendingOrders = await Order.countDocuments({ orderStatus: "pending" });
+
+    // 🔹 Revenue & payment summary
+    const revenueAgg = await Order.aggregate([
+      { $match: { orderStatus: "delivered" } },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$totalAmount" },
+          cashOrders: {
+            $sum: { $cond: [{ $eq: ["$paymentMethod", "cash"] }, 1, 0] },
+          },
+          walletOrders: {
+            $sum: { $cond: [{ $eq: ["$paymentMethod", "wallet"] }, 1, 0] },
+          },
+          onlineOrders: {
+            $sum: { $cond: [{ $eq: ["$paymentMethod", "online"] }, 1, 0] },
+          },
+        },
+
+
+
+
+
+
+
+        
+      },
+    ]);
+
+    const summary = {
+      totalOrders,
+      completedOrders,
+      cancelledOrders,
+      inProgress,
+      pendingOrders,
+      totalRevenue: revenueAgg[0]?.totalRevenue || 0,
+      cashOrders: revenueAgg[0]?.cashOrders || 0,
+      walletOrders: revenueAgg[0]?.walletOrders || 0,
+      onlineOrders: revenueAgg[0]?.onlineOrders || 0,
+    };
+
+    // 🔹 Cleaned order table data
+    const formattedOrders = orders.docs.map((order) => ({
+      orderId: order._id,
+      customer:
+        order.customerId?.name || order.guestName || "Guest User",
+      customerPhone:
+        order.customerId?.phone || order.guestPhone || "-",
+      store: order.restaurantId?.name || "-",
+      address: order.restaurantId?.address || "-",
+      items: order.orderItems || 0,
+      subtotal: order.subtotal || 0,
+      tax: order.tax || 0,
+      discount: order.totalDiscount || 0,
+      surge: order.surgeCharge || 0,
+      delivery: order.deliveryCharge || 0,
+      total: order.totalAmount  || 0,
+      payment: order.paymentMethod,
+      status: order.orderStatus,
+      agent: order.assignedAgent
+        ? {
+            name: order.assignedAgent.fullName,
+            phone: order.assignedAgent.phone,
+          }
+        : null,
+      createdAt: order.createdAt,
+    }));
+
+    res.status(200).json({
+      success: true,
+      summary,
+      pagination: {
+        total: orders.totalDocs,
+        page: orders.page,
+        totalPages: orders.totalPages,
+      },
+      orders: formattedOrders,
+    });
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch orders",
+      error: error.message,
+    });
+  }
+};
