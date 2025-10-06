@@ -809,6 +809,7 @@ exports.getMerchantOrders = async (req, res) => {
 
     // 4️⃣ Optional status filter
     if (status && status !== "all") {
+      // reverse-map: group actual statuses under each friendly status
       const reverseStatusMap = {
         pending: ["pending"],
         accepted_by_restaurant: ["accepted_by_restaurant"],
@@ -856,51 +857,50 @@ exports.getMerchantOrders = async (req, res) => {
       .lean();
 
     // 7️⃣ Format the response
-    const formattedOrders = orders.map(order => {
-      const customer = order.customerId || {};
-      const restaurant = order.restaurantId || {};
-      const agent = order.assignedAgent || null;
-      const restaurantPermissions = permissionMap[restaurant._id?.toString()] || {};
+  const formattedOrders = orders.map(order => {
+  const customer = order.customerId || {};
+  const restaurant = order.restaurantId || {};
+  const agent = order.assignedAgent || null;
+  const restaurantPermissions = permissionMap[restaurant._id?.toString()] || {};
 
-      let permissionFlags;
-      if (order.orderStatus === "pending") {
-        permissionFlags = {
-          canAcceptOrder: restaurantPermissions.canAcceptOrder || false,
-          canRejectOrder: restaurantPermissions.canRejectOrder || false,
-        };
-      }
+  let permissionFlags;
+  if (order.orderStatus === "pending") {
+    permissionFlags = {
+      canAcceptOrder: restaurantPermissions.canAcceptOrder || false,
+      canRejectOrder: restaurantPermissions.canRejectOrder || false,
+    };
+  }
 
-      const friendlyStatus = statusMap[order.orderStatus] || order.orderStatus;
+  const friendlyStatus = statusMap[order.orderStatus] || order.orderStatus;
 
-      const orderResponse = {
-        orderId: order._id,
-        orderStatus: friendlyStatus,
-        storeName: restaurant.name || "",
-        customerName: customer.name || customer.guestName || "",
-        customerAddress: order.deliveryAddress
-          ? `${order.deliveryAddress.street || ""}${order.deliveryAddress.area ? ", " + order.deliveryAddress.area : ""}, ${order.deliveryAddress.city || ""}, ${order.deliveryAddress.state || ""}, ${order.deliveryAddress.pincode || ""}, ${order.deliveryAddress.country || ""}`
-          : "",
-        orderItemCount: order.orderItems.length,
-        orderItems: order.orderItems.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          preparationTime: item.preparationTime || order.preparationTime || 0, // per item prep time
-        })),
-        subtotal: order.totalAmount || order.subtotal || 0,
-        preparationTime: order.preparationTime || 0, // total / default preparation time
-        assignedAgent: agent
-          ? { fullName: agent.fullName, phoneNumber: agent.phoneNumber }
-          : null,
-        orderTime: order.orderTime,
-        cookingInstructions: order.instructions || "",
-        orderPreparationStartedAt: order.orderPreparationStartedAt || null, // ✅ include prep start time
-      };
+  const orderResponse = {
+    orderId: order._id,
+    orderStatus: friendlyStatus,
+    storeName: restaurant.name || "",
+    customerName: customer.name || customer.guestName || "",
+    customerAddress: order.deliveryAddress
+      ? `${order.deliveryAddress.street || ""}${order.deliveryAddress.area ? ", " + order.deliveryAddress.area : ""}, ${order.deliveryAddress.city || ""}, ${order.deliveryAddress.state || ""}, ${order.deliveryAddress.pincode || ""}, ${order.deliveryAddress.country || ""}`
+      : "",
+    orderItemCount: order.orderItems.length,
+    orderItems: order.orderItems.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      preparationTime: item.preparationTime || order.preparationTime || 0, // per item prep time
+    })),
+    subtotal: order.totalAmount || order.subtotal || 0,
+    preparationTime: order.preparationTime || 0, // total / default preparation time
+    assignedAgent: agent
+      ? { fullName: agent.fullName, phoneNumber: agent.phoneNumber }
+      : null,
+    orderTime: order.orderTime,
+    cookingInstructions: order.instructions || "",
+  };
 
-      if (permissionFlags) orderResponse.permissions = permissionFlags;
+  if (permissionFlags) orderResponse.permissions = permissionFlags;
 
-      return orderResponse;
-    });
+  return orderResponse;
+});
 
     // 8️⃣ Send response
     res.status(200).json({
@@ -918,9 +918,9 @@ exports.getMerchantOrders = async (req, res) => {
   }
 };
 
+
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const ownerId = req.user._id; // merchant/owner from JWT
     const { orderId, status, cancellationReason } = req.body; 
     const io = req.app.get("io"); 
 
@@ -936,34 +936,19 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    if (!order.restaurantId || order.restaurantId.ownerId.toString() !== ownerId.toString()) {
-      return res.status(403).json({ success: false, message: "Unauthorized to update this order" });
-    }
-
-    const restaurantPermissions = await Permission.findOne({ restaurantId: order.restaurantId._id });
-    if (!restaurantPermissions) {
-      return res.status(403).json({ success: false, message: "No permissions configured for this restaurant" });
-    }
-
     const previousStatus = order.orderStatus;
 
     // Handle rejection
     if (status === "rejected_by_restaurant") {
-      if (!restaurantPermissions.permissions.canRejectOrder) {
-        return res.status(403).json({ success: false, message: "You do not have permission to reject orders" });
-      }
       order.orderStatus = "rejected_by_restaurant";
       order.cancellationReason = cancellationReason || "Rejected by merchant";
 
-      if (order.paymentStatus === "completed" && order.paymentMethod === "online") {
-        order.paymentStatus = "pending_refund";
-      }
+      // if (order.paymentStatus === "completed" && order.paymentMethod === "online") {
+      //   order.paymentStatus = "pending_refund";
+      // }
     } 
     // Handle acceptance
     else if (status === "accepted_by_restaurant") {
-      if (!restaurantPermissions.permissions.canAcceptOrder) {
-        return res.status(403).json({ success: false, message: "You do not have permission to accept orders" });
-      }
       order.orderStatus = "accepted_by_restaurant";
     }
     // Other normal statuses
@@ -995,8 +980,8 @@ exports.updateOrderStatus = async (req, res) => {
         newStatus: order.orderStatus,
         previousStatus,
         cancellationReason: order.cancellationReason || null,
-        preparationStartedAt: order.orderPreparationStartedAt || null, // send timestamp
-        preparationTime: order.preparationTime || 20, // in minutes
+        preparationStartedAt: order.orderPreparationStartedAt || null,
+        preparationTime: order.preparationTime || 20,
         timestamp: new Date(),
       });
 
@@ -1004,7 +989,7 @@ exports.updateOrderStatus = async (req, res) => {
         orderId: order._id,
         newStatus: order.orderStatus,
         previousStatus,
-        merchantId: ownerId,
+        merchantId: order.restaurantId._id,
         cancellationReason: order.cancellationReason || null,
         preparationStartedAt: order.orderPreparationStartedAt || null,
         preparationTime: order.preparationTime || 20,
@@ -1020,7 +1005,7 @@ exports.updateOrderStatus = async (req, res) => {
         io.to(adminRoom).emit("order_finalized_admin", {
           orderId: order._id,
           finalStatus: order.orderStatus,
-          merchantId: ownerId,
+          merchantId: order.restaurantId._id,
           timestamp: new Date(),
         });
       }
@@ -1042,6 +1027,7 @@ exports.updateOrderStatus = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
+
 
 
 exports.saveFcmToken = async (req, res) => {
