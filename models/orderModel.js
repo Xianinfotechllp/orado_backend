@@ -288,6 +288,12 @@ orderStatus: {
 orderTime: { type: Date, default: Date.now },
 scheduledTime: Date,
 preparationTime: { type: Number, default: 20 },
+
+orderPreparationStartedAt: {
+  type: Date,
+  default: null,
+  comment: "Time when order status changed to 'preparing' for prep timer"
+},
 preparationDelayReason: { type: String, default: "" },
 orderPreparationDelay: Boolean,
 deliveredAt: Date, 
