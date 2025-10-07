@@ -21,7 +21,8 @@ const {
  bulkEditCategories,
  exportProducts,
  bulkEditProducts,getCategoriesByStore
- ,getProductsByStore
+ ,getProductsByStore,
+ getCategoriesWithProducts
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -89,5 +90,7 @@ router.get("/:storeId/categories", getCategoriesByStore);
 
 // ================= Products =================
 router.get("/:storeId/products", getProductsByStore);
+
+router.get("/:storeId/categories-products",getCategoriesWithProducts)
 
 module.exports = router;

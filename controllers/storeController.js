@@ -1243,3 +1243,53 @@ exports.getCatalogByStore = async (req, res) => {
     });
   }
 };
+
+
+
+
+exports.getCategoriesWithProducts = async (req, res) => {
+  const { storeId } = req.params;
+
+  if (!storeId) {
+    return res.status(400).json({ error: 'storeId is required' });
+  }
+
+  try {
+    // Fetch all categories for this store
+    const categories = await Category.find({ restaurantId: storeId }).sort({ name: 1 });
+
+    // Fetch all products for these categories
+    const categoryIds = categories.map(cat => cat._id);
+    const products = await Product.find({ categoryId: { $in: categoryIds } }).sort({ name: 1 });
+
+    // Combine products under categories
+    const categoriesWithProducts = categories.map(cat => ({
+      _id: cat._id,
+      name: cat.name,
+      availability: cat.availability,
+      products: products
+        .filter(p => p.categoryId.toString() === cat._id.toString())
+        .map(p => ({
+          _id: p._id,
+          name: p.name,
+          description: p.description,
+          price: p.price,
+          foodType: p.foodType,
+          availability: p.availability,
+          availableAfterTime: p.availableAfterTime,
+          preparationTime: p.preparationTime,
+          images: p.images,
+          active: p.active,
+          enableInventory: p.enableInventory,
+          stock: p.stock,
+          reorderLevel: p.reorderLevel,
+        
+        })),
+    }));
+
+    res.json({ success: true, categories: categoriesWithProducts });
+  } catch (err) {
+    console.error('Get categories with products error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};

@@ -162,7 +162,6 @@ exports.getAdminOrders = async (req, res) => {
 };
 
 
-
 exports.getOrderDetails = async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId)
@@ -170,7 +169,7 @@ exports.getOrderDetails = async (req, res) => {
         { path: "customerId" },
         { path: "restaurantId" },
         { path: "assignedAgent" },
-        { path: "orderItems.productId" }
+        { path: "orderItems.productId" },
       ])
       .lean();
 
@@ -178,16 +177,19 @@ exports.getOrderDetails = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    // ✅ Calculate restaurant earnings
+    const earningsInfo = await calculateRestaurantEarnings({
+      restaurantId: order.restaurantId._id,
+      storeType: order.restaurantId.storeType || "restaurant",
+      orderAmounts: {
+        subtotal: order.subtotal,
+        tax: order.tax,
+        finalAmount: order.totalAmount,
+      },
+      orderItems: order.orderItems,
+    });
 
-
-  const earningsInfo = await calculateRestaurantEarnings({
-  restaurantId: order.restaurantId._id,
-  storeType: order.restaurantId.storeType || "restaurant", // assuming this field exists
-  orderAmounts:{subtotal:order.subtotal,tax:order.tax,finalAmount:order.totalAmount },
-  orderItems:order.orderItems
-});
-
-    // clean up sensitive / unnecessary fields
+    // ✅ Structure the response
     const sanitizedOrder = {
       _id: order._id,
       orderTime: order.orderTime,
@@ -195,38 +197,39 @@ exports.getOrderDetails = async (req, res) => {
       orderStatus: order.orderStatus,
       paymentMethod: order.paymentMethod,
       paymentStatus: order.paymentStatus,
-      subtotal: order.subtotal,
-      totalAmount: order.totalAmount,
       deliveryMode: order.deliveryMode,
-      preparationTime: order.preparationTime,
-      instructions: order.instructions,
       scheduledTime: order.scheduledTime,
+      preparationTime: order.preparationTime,
+
+      // ✅ Instructions
+      instructions: order.instructions || "",
+      cookingInstructions: order.cookingInstructions || "", // 🆕 added cooking instruction
 
       customer: {
-        _id: order.customerId._id,
-        name: order.customerId.name,
-        email: order.customerId.email,
-        phone: order.customerId.phone,
-        addresses: order.customerId.addresses,  // if needed
+        _id: order.customerId?._id,
+        name: order.customerId?.name,
+        email: order.customerId?.email,
+        phone: order.customerId?.phone,
+        addresses: order.customerId?.addresses || [],
       },
-    
 
       restaurant: {
-        _id: order.restaurantId._id,
-        name: order.restaurantId.name,
-        images: order.restaurantId.images,
-        phone: order.restaurantId.phone,
-        address: order.restaurantId.address,
+        _id: order.restaurantId?._id,
+        name: order.restaurantId?.name,
+        images: order.restaurantId?.images,
+        phone: order.restaurantId?.phone,
+        address: order.restaurantId?.address,
       },
 
       assignedAgent: order.assignedAgent
         ? {
             _id: order.assignedAgent._id,
             name: order.assignedAgent.name,
-            phone: order.assignedAgent.phone
+            phone: order.assignedAgent.phone,
           }
         : null,
 
+      // ✅ Items
       orderItems: order.orderItems.map((item) => ({
         _id: item._id,
         name: item.name,
@@ -235,23 +238,62 @@ exports.getOrderDetails = async (req, res) => {
         image: item.image,
         productId: item.productId?._id,
       })),
-       earningsInfo ,
 
+      // ✅ Restaurant earnings
+      earningsInfo,
 
-      // if needed
-      offerName: order.offerName,
-      offerDiscount: order.offerDiscount,
-      tax: order.tax,
-      discountAmount: order.discountAmount
+      // ✅ Pricing breakdown
+      pricing: {
+        subtotal: order.subtotal || 0,
+        tax: order.tax || 0,
+        totalTaxAmount: order.totalTaxAmount || 0,
+        deliveryCharge: order.deliveryCharge || 0,
+        surgeCharge: order.surgeCharge || 0, // 🆕 Surge charge
+        tipAmount: order.tipAmount || 0,
+        grandTotal: order.grandTotal || order.totalAmount || 0,
+        discountAmount: order.discountAmount || 0,
+
+        // 🧾 Charges Breakdown (Packing + Additional)
+        packingCharges: order.chargesBreakdown?.packingCharges || [],
+        totalPackingCharge: order.chargesBreakdown?.totalPackingCharge || 0,
+        additionalCharges: order.chargesBreakdown?.additionalCharges || [],
+        totalAdditionalCharges:
+          order.chargesBreakdown?.totalAdditionalCharges || 0,
+      },
+
+      // ✅ Surge Info Section
+      surgeInfo: {
+        isSurgeApplied: order.surgeCharge > 0,
+        surgeAmount: order.surgeCharge || 0,
+        surgeReason: order.surgeReason || "High demand in area", // optional field if exists
+        surgeZoneId: order.surgeZoneId || null, // optional if you map zones
+        surgeAppliedAt: order.surgeAppliedAt || order.createdAt,
+      },
+
+      // ✅ Offer Details
+      offerDetails: {
+        offerName: order.offerName,
+        offerDiscount: order.offerDiscount,
+        couponCode: order.couponCode,
+        couponDiscount: order.couponDiscount,
+        appliedOffers: order.appliedOffers || [],
+      },
+
+      taxDetails: order.taxDetails || [],
     };
 
-    res.json({ message: "Order fetched", data: sanitizedOrder });
-
+    res.json({
+      message: "Order fetched successfully",
+      data: sanitizedOrder,
+    });
   } catch (err) {
     console.error("Error fetching order:", err.stack);
-    res.status(500).json({ message: "Error fetching order", error: err.message });
+    res
+      .status(500)
+      .json({ message: "Error fetching order", error: err.message });
   }
 };
+
 
 
 exports.getAllOrderLocationsForMap = async (req, res) => {
