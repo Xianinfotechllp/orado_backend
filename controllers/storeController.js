@@ -1246,23 +1246,41 @@ exports.getCatalogByStore = async (req, res) => {
 
 
 
-
 exports.getCategoriesWithProducts = async (req, res) => {
   const { storeId } = req.params;
+  const { search } = req.query; // get search query
 
   if (!storeId) {
     return res.status(400).json({ error: 'storeId is required' });
   }
 
   try {
-    // Fetch all categories for this store
-    const categories = await Category.find({ restaurantId: storeId }).sort({ name: 1 });
+    // Base query for categories
+    let categoryQuery = { restaurantId: storeId };
+    let productQuery = {};
 
-    // Fetch all products for these categories
+    // If search term exists, make it case-insensitive
+    if (search && search.trim() !== "") {
+      const term = search.trim();
+      categoryQuery.name = { $regex: term, $options: 'i' };
+      productQuery.name = { $regex: term, $options: 'i' };
+    }
+
+    // Fetch all categories for this store that match category name
+    let categories = await Category.find(categoryQuery).sort({ name: 1 });
+
+    // Get categoryIds
     const categoryIds = categories.map(cat => cat._id);
-    const products = await Product.find({ categoryId: { $in: categoryIds } }).sort({ name: 1 });
 
-    // Combine products under categories
+    // Fetch products that either belong to these categories OR match the product search
+    let products = await Product.find({
+      $and: [
+        { categoryId: { $in: categoryIds } },
+        productQuery.name ? productQuery : {}
+      ]
+    }).sort({ name: 1 });
+
+    // Map products to categories
     const categoriesWithProducts = categories.map(cat => ({
       _id: cat._id,
       name: cat.name,
@@ -1283,11 +1301,13 @@ exports.getCategoriesWithProducts = async (req, res) => {
           enableInventory: p.enableInventory,
           stock: p.stock,
           reorderLevel: p.reorderLevel,
-        
-        })),
+        }))
     }));
 
-    res.json({ success: true, categories: categoriesWithProducts });
+    // Filter out categories with no products (optional)
+    const filteredCategories = categoriesWithProducts.filter(cat => cat.products.length > 0);
+
+    res.json({ success: true, categories: filteredCategories });
   } catch (err) {
     console.error('Get categories with products error:', err);
     res.status(500).json({ error: 'Server error' });
