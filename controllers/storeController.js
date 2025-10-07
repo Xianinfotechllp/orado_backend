@@ -1248,66 +1248,70 @@ exports.getCatalogByStore = async (req, res) => {
 
 exports.getCategoriesWithProducts = async (req, res) => {
   const { storeId } = req.params;
-  const { search } = req.query; // get search query
+  const { search } = req.query;
 
   if (!storeId) {
     return res.status(400).json({ error: 'storeId is required' });
   }
 
   try {
-    // Base query for categories
-    let categoryQuery = { restaurantId: storeId };
-    let productQuery = {};
+    // Case-insensitive regex for search
+    const searchRegex = search ? new RegExp(search, 'i') : null;
 
-    // If search term exists, make it case-insensitive
-    if (search && search.trim() !== "") {
-      const term = search.trim();
-      categoryQuery.name = { $regex: term, $options: 'i' };
-      productQuery.name = { $regex: term, $options: 'i' };
-    }
+    // Fetch all categories for this store
+    let categories = await Category.find({ restaurantId: storeId }).sort({ name: 1 });
 
-    // Fetch all categories for this store that match category name
-    let categories = await Category.find(categoryQuery).sort({ name: 1 });
-
-    // Get categoryIds
+    // Fetch all products for these categories
     const categoryIds = categories.map(cat => cat._id);
+    let products = await Product.find({ categoryId: { $in: categoryIds } }).sort({ name: 1 });
 
-    // Fetch products that either belong to these categories OR match the product search
-    let products = await Product.find({
-      $and: [
-        { categoryId: { $in: categoryIds } },
-        productQuery.name ? productQuery : {}
-      ]
-    }).sort({ name: 1 });
+    // Combine products under categories with search filtering
+    const categoriesWithProducts = categories
+      .map(cat => {
+        // Products of this category
+        const catProducts = products.filter(p => p.categoryId.toString() === cat._id.toString());
 
-    // Map products to categories
-    const categoriesWithProducts = categories.map(cat => ({
-      _id: cat._id,
-      name: cat.name,
-      availability: cat.availability,
-      products: products
-        .filter(p => p.categoryId.toString() === cat._id.toString())
-        .map(p => ({
-          _id: p._id,
-          name: p.name,
-          description: p.description,
-          price: p.price,
-          foodType: p.foodType,
-          availability: p.availability,
-          availableAfterTime: p.availableAfterTime,
-          preparationTime: p.preparationTime,
-          images: p.images,
-          active: p.active,
-          enableInventory: p.enableInventory,
-          stock: p.stock,
-          reorderLevel: p.reorderLevel,
-        }))
-    }));
+        let filteredProducts = catProducts;
 
-    // Filter out categories with no products (optional)
-    const filteredCategories = categoriesWithProducts.filter(cat => cat.products.length > 0);
+        if (searchRegex) {
+          // If search matches category name → keep all products
+          if (searchRegex.test(cat.name)) {
+            filteredProducts = catProducts;
+          } else {
+            // Otherwise, filter products by name
+            filteredProducts = catProducts.filter(p => searchRegex.test(p.name));
+          }
+        }
 
-    res.json({ success: true, categories: filteredCategories });
+        // Only return categories that have products (after filtering) or category name matches
+        if (filteredProducts.length > 0 || (searchRegex && searchRegex.test(cat.name))) {
+          return {
+            _id: cat._id,
+            name: cat.name,
+            availability: cat.availability,
+            products: filteredProducts.map(p => ({
+              _id: p._id,
+              name: p.name,
+              description: p.description,
+              price: p.price,
+              foodType: p.foodType,
+              availability: p.availability,
+              availableAfterTime: p.availableAfterTime,
+              preparationTime: p.preparationTime,
+              images: p.images,
+              active: p.active,
+              enableInventory: p.enableInventory,
+              stock: p.stock,
+              reorderLevel: p.reorderLevel
+            }))
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean); // Remove null categories
+
+    res.json({ success: true, categories: categoriesWithProducts });
   } catch (err) {
     console.error('Get categories with products error:', err);
     res.status(500).json({ error: 'Server error' });
