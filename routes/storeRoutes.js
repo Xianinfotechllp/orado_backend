@@ -88,7 +88,7 @@ router.post("/:restaurantId/products/bulk-edit",excelUpload.single("file"),bulkE
 
 
 router.get("/:storeId/categories", getCategoriesByStore);
-router.get("/:storeId/categories", createCategoryWithStore);
+router.post("/:storeId/categories", upload.array("images", 5), createCategoryWithStore);
 
 // ================= Products =================
 router.get("/:storeId/products", getProductsByStore);
