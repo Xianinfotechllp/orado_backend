@@ -22,7 +22,8 @@ const {
  exportProducts,
  bulkEditProducts,getCategoriesByStore
  ,getProductsByStore,
- getCategoriesWithProducts
+ getCategoriesWithProducts,
+ createCategoryWithStore
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -87,6 +88,7 @@ router.post("/:restaurantId/products/bulk-edit",excelUpload.single("file"),bulkE
 
 
 router.get("/:storeId/categories", getCategoriesByStore);
+router.get("/:storeId/categories", createCategoryWithStore);
 
 // ================= Products =================
 router.get("/:storeId/products", getProductsByStore);

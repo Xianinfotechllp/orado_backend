@@ -514,6 +514,67 @@ exports.createCategory = async (req, res) => {
   }
 };
 
+
+
+
+exports.createCategoryWithStore = async (req, res) => {
+  try {
+    const { storeId } = req.params; // Get restaurant/store ID from URL param
+    const {
+      name,
+      availability,
+      availableAfterTime,
+      description,
+      active,
+      autoOnOff
+    } = req.body;
+
+    if (!name || !storeId) {
+      return res.status(400).json({ message: "Name and Store ID are required" });
+    }
+
+    let imageUrls = [];
+
+    // Upload images to Cloudinary
+    if (req.files && req.files.length > 0) {
+      for (let file of req.files) {
+        try {
+          const uploaded = await uploadOnCloudinary(file.path);
+          if (uploaded?.secure_url) {
+            imageUrls.push(uploaded.secure_url);
+          }
+
+          // Safe unlink (delete temp file)
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (uploadErr) {
+          console.error(`Cloudinary upload failed for ${file.originalname}:`, uploadErr);
+        }
+      }
+    }
+
+    const category = await Category.create({
+      name,
+      restaurantId: storeId, // use storeId from URL param
+      availability,
+      availableAfterTime,
+      description,
+      autoOnOff,
+      active,
+      images: imageUrls,
+    });
+
+    return res.status(201).json({
+      message: "Category created successfully",
+      data: category,
+    });
+
+  } catch (error) {
+    console.error("Create Category Error:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
 // Update Category
 exports.updateCategory = async (req, res) => {
   try {
