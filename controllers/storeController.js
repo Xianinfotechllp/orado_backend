@@ -581,7 +581,7 @@ exports.updateCategory = async (req, res) => {
 
 
 
-    console.log(req.body,req.params.id1)
+   
     const categoryId = req.params.id;
     const {
       name,
