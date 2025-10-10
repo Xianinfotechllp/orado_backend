@@ -60,7 +60,11 @@ exports.updateAgentMilestoneProgress = async (agentId, orderData, isOnTime = fal
 
     // 5️⃣ Update each milestone
     for (let milestone of agentProgress.milestones) {
-      const milestoneConfig = allMilestones.find(m => m._id.toString() === milestone.milestoneId.toString());
+      // ✅ Fixed ObjectId comparison
+      const milestoneConfig = allMilestones.find(m =>
+        m._id.equals(milestone.milestoneId._id || milestone.milestoneId)
+      );
+
       if (!milestoneConfig) {
         console.warn("Milestone config not found for:", milestone.milestoneId);
         continue;
@@ -122,7 +126,11 @@ exports.updateAgentMilestoneProgress = async (agentId, orderData, isOnTime = fal
           overallProgress: milestone.overallProgress
         }
       });
+
+      // Keep last 50 history entries
       if (milestone.history.length > 50) milestone.history = milestone.history.slice(-50);
+
+      console.log(`Updated milestone level ${milestone.level}:`, milestone.status, milestone.overallProgress);
     }
 
     // 11️⃣ Save agent progress
@@ -142,7 +150,6 @@ exports.updateAgentMilestoneProgress = async (agentId, orderData, isOnTime = fal
     return { success: false, error: error.message };
   }
 };
-
 
 /**
  * Helper function to check if delivery was on time
