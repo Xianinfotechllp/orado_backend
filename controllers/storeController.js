@@ -1354,11 +1354,22 @@ exports.getCategoriesWithProducts = async (req, res) => {
             restaurantId: cat.restaurantId,
             createdAt: cat.createdAt,
             updatedAt: cat.updatedAt,
-            // ✅ Only include minimal product details
+
+            // ✅ Full product details restored
             products: filteredProducts.map(p => ({
               _id: p._id,
               name: p.name,
+              description: p.description,
+              price: p.price,
+              foodType: p.foodType,
+              availability: p.availability,
+              availableAfterTime: p.availableAfterTime,
+              preparationTime: p.preparationTime,
               images: p.images,
+              active: p.active,
+              enableInventory: p.enableInventory,
+              stock: p.stock,
+              reorderLevel: p.reorderLevel,
             })),
           };
         }
@@ -1376,3 +1387,4 @@ exports.getCategoriesWithProducts = async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 };
+
