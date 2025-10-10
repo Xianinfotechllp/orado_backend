@@ -1349,7 +1349,7 @@ exports.getCategoriesWithProducts = async (req, res) => {
             description: cat.description || "",
             availability: cat.availability,
             sequence: cat.sequence,
-            image: cat.image || null,
+            images: cat.images || [],
             active: cat.active,
             restaurantId: cat.restaurantId,
             createdAt: cat.createdAt,
