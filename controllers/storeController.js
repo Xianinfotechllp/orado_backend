@@ -687,13 +687,9 @@ exports.toggleProductStatus = async (req, res) => {
 exports.deleteProduct = async (req, res) => {
   try {
     const { productId } = req.params;
-    const { restaurantId } = req.body; // or use req.query.restaurantId if coming from query
 
-    if (!restaurantId) {
-      return res.status(400).json({ message: 'Restaurant ID is required.' });
-    }
 
-    const product = await Product.findOne({ _id: productId, restaurantId });
+    const product = await Product.findOne({ _id: productId });
 
     if (!product) {
       return res.status(404).json({ message: 'Product not found for this restaurant.' });
