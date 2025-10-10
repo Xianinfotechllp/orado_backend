@@ -1444,6 +1444,7 @@ const deliveryFlow = [
   "delivered",
 ];
 
+
 exports.updateAgentDeliveryStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -1451,15 +1452,12 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
     const { status } = req.body;
     const io = req.app.get("io");
 
-    const validStatuses = [
-      'awaiting_start', 'start_journey_to_restaurant', 'reached_restaurant',
-      'picked_up', 'out_for_delivery', 'reached_customer', 'delivered', 'cancelled'
-    ];
-
-    if (!validStatuses.includes(status)) {
+    // Validate status
+    if (!deliveryFlow.includes(status)) {
       return res.status(400).json({ message: "Invalid delivery status" });
     }
 
+    // Fetch order
     const order = await Order.findById(orderId)
       .populate("customerId")
       .populate("restaurantId")
@@ -1481,17 +1479,17 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
       });
     }
 
-    // Save full agent delivery status
+    // Update agent delivery status
     order.agentDeliveryStatus = status;
 
-    // Map agent status to customer orderStatus
+    // Map to customer status
     const mapForCustomer = (agentStatus) => {
       switch (agentStatus) {
         case "picked_up": return "picked_up";
         case "out_for_delivery":
         case "reached_customer": return "on_the_way";
         case "delivered": return "delivered";
-        default: return null; // do not save irrelevant statuses
+        default: return null;
       }
     };
 
@@ -1501,15 +1499,12 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
 
     await order.save();
 
-    // ===============================
-    // Socket.IO: Notify only relevant statuses
-    // ===============================
+    // Socket notifications
     const relevantStatuses = ["picked_up", "out_for_delivery", "reached_customer", "delivered"];
     if (io && relevantStatuses.includes(status)) {
       const customerRoom = `user_${order.customerId._id.toString()}`;
       const adminRoom = `admin_group`;
 
-      // Customer notifications
       io.to(customerRoom).emit("order_status_update", {
         orderId: order._id,
         newStatus: order.orderStatus,
@@ -1517,14 +1512,6 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
         timestamp: new Date(),
       });
 
-      io.to(customerRoom).emit("order_status_update_flutter", {
-        orderId: order._id,
-        newStatus: order.orderStatus,
-        previousStatus: mapForCustomer(previousStatus),
-        timestamp: new Date(),
-      });
-
-      // Admin notifications with full agentDeliveryStatus
       io.to(adminRoom).emit("order_status_update_admin", {
         orderId: order._id,
         newStatus: status,
@@ -1534,27 +1521,26 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
       });
 
       if (status === "delivered") {
-        io.to(customerRoom).emit("order_completed", { orderId: order._id, timestamp: new Date() });
         io.to(customerRoom).emit("order_delivered", { orderId: order._id, timestamp: new Date() });
         io.to(adminRoom).emit("order_delivered_admin", { orderId: order._id, agentId, timestamp: new Date() });
       }
     }
 
-    // ===============================
     // Handle delivered: agent availability, loyalty points, earnings
-    // ===============================
     if (status === "delivered") {
       await Agent.updateOne(
         { _id: agentId },
         { $set: { "agentStatus.status": "AVAILABLE", "agentStatus.availabilityStatus": "AVAILABLE" } }
       );
 
+      // Award loyalty points
       try {
         await loyaltyService.awardPoints(order.customerId._id, order._id, order.subtotal);
       } catch (err) {
         console.error("Failed to award loyalty points:", err.message);
       }
 
+      // Create agent earning if not exists
       const existingEarning = await AgentEarning.findOne({ agentId, orderId });
       if (!existingEarning) {
         const earningsConfig = await AgentEarningSettings.findOne({ mode: "global" });
@@ -1596,10 +1582,17 @@ exports.updateAgentDeliveryStatus = async (req, res) => {
 
         await createAgentIncentive({ agentId });
       }
+
+      // ✅ Update Milestone Progress
+      const isOnTime = order.deliveredAt && order.etaAt
+        ? order.deliveredAt <= order.etaAt
+        : false;
+      const earnings = order.totalAmount || 0;
+
+      await updateAgentMilestoneProgress(agentId, order, isOnTime, earnings);
     }
 
-    const response = formatOrder(order, agentId);
-    res.status(200).json({ message: "Delivery status updated", order: response });
+    res.status(200).json({ message: "Delivery status updated", order });
 
   } catch (err) {
     console.error(err);

@@ -33,7 +33,9 @@ const {terminateAgent, giveWarning, getAllLeaveRequests, processLeave, approveAp
   getAgentBasicDetails,
   getAgentLeaves,
   getCurrentTask
-,exportAgentPayoutsExcel
+,exportAgentPayoutsExcel,
+getAgentEarningsSummary,
+getAllAgentsMilestoneSummary
 } = require("../controllers/admin/agentControllers")
 const notificationService = require("../services/notificationService");
 const { importMenuFromExcel,setRestaurantCommission, getAllRestaurantsDropdown, getAllRestaurants, getAllRestaurantsForMap ,getRestaurantById, getProductsByRestaurant} = require("../controllers/admin/restaurantController");
@@ -476,6 +478,9 @@ router.get("/orders/locations",getOrderLocationsByPeriod)
 
 router.get("/order/order-details",getOrdersDetailsTable)
 router.get("/order/export-excel",exportOrdersToExcel)
+
+router.get("/agent-earnings-summary",getAgentEarningsSummary)
+router.get("/agent-milestone-progress-summary",getAllAgentsMilestoneSummary)
 module.exports = router;
 
   

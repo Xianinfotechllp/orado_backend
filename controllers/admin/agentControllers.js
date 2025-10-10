@@ -19,7 +19,8 @@ const moment = require('moment')
 const AgentPayout = require("../../models/AgentPayoutModel")
 const AgentEarningSettings = require("../../models/AgentEarningSettingModel")
 const ExcelJS = require('exceljs');
-
+const MilestoneReward = require("../../models/MilestoneRewardModel")
+const AgentMilestoneProgress = require("../../models/agentIncentiveProgress")
 exports.getAllList = async (req, res) => {
   try {
     // First get all agents with basic info
@@ -1952,9 +1953,142 @@ console.log(
 
 
 
+const sumField = (records, field) => records.reduce((sum, r) => sum + (r[field] || 0), 0);
+
+exports.getAgentEarningsSummary = async (req, res) => {
+  try {
+    const { agentId } = req.query;
+    const { from, to } = req.query;
+
+    if (!agentId) {
+      return res.status(400).json({ message: "agentId is required" });
+    }
+
+    // Prepare date filters
+    const startOfToday = moment().startOf('day');
+    const endOfToday = moment().endOf('day');
+    const startOfWeek = moment().startOf('week');
+    const startOfMonth = moment().startOf('month');
+
+    const filter = { agentId };
+    if (from && to) {
+      filter.createdAt = {
+        $gte: moment(from).startOf('day').toDate(),
+        $lte: moment(to).endOf('day').toDate(),
+      };
+    }
+
+    // All earnings (for lifetime total)
+    const allEarnings = await AgentEarning.find({ agentId });
+
+    // Time-based earnings
+    const todayEarnings = allEarnings.filter(e => moment(e.createdAt).isBetween(startOfToday, endOfToday));
+    const weekEarnings = allEarnings.filter(e => moment(e.createdAt).isAfter(startOfWeek));
+    const monthEarnings = allEarnings.filter(e => moment(e.createdAt).isAfter(startOfMonth));
+
+    // Lifetime
+    const lifetime = sumField(allEarnings, 'totalEarning');
+
+    // Range breakdown (if from-to provided)
+    const rangeEarnings = await AgentEarning.find(filter).populate('orderId', 'orderNumber');
+
+    // Prepare breakdown totals
+    const breakdown = {
+      deliveryFee: sumField(rangeEarnings, 'baseDeliveryFee'),
+      incentives: sumField(rangeEarnings, 'incentiveAmount'),
+      tips: sumField(rangeEarnings, 'tipAmount'),
+      surge: sumField(rangeEarnings, 'surgeAmount'),
+      total: sumField(rangeEarnings, 'totalEarning'),
+    };
+
+    // Prepare detailed table
+    const detailed = rangeEarnings.map((e) => ({
+      orderId: e.orderId?.orderNumber || e.orderId,
+      deliveryFee: e.baseDeliveryFee,
+      tip: e.tipAmount,
+      incentive: e.incentiveAmount,
+      surge: e.surgeAmount,
+      total: e.totalEarning,
+      date: e.createdAt,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      summary: {
+        today: sumField(todayEarnings, 'totalEarning'),
+        thisWeek: sumField(weekEarnings, 'totalEarning'),
+        thisMonth: sumField(monthEarnings, 'totalEarning'),
+        lifetime,
+      },
+      breakdown,
+      detailed,
+    });
+  } catch (error) {
+    console.error('Admin Earnings Fetch Error:', error);
+    return res.status(500).json({ message: 'Server Error', error });
+  }
+};
 
 
 
 
 
+
+
+
+
+
+exports.getAllAgentsMilestoneSummary = async (req, res) => {
+  try {
+    const agents = await Agent.find().select("fullName email").lean();
+    const milestones = await MilestoneReward.find({ active: true }).sort({ level: 1 }).lean();
+
+    const summaryList = [];
+
+    for (const agent of agents) {
+      const agentProgress = await AgentMilestoneProgress.findOne({ agentId: agent._id }).lean();
+
+      for (const milestone of milestones) {
+        const progress = (agentProgress?.milestones || []).find(
+          (m) => m.milestoneId?.toString() === milestone._id.toString()
+        );
+
+        if (progress) {
+          const conditions = milestone.conditions || {};
+          const progressConditions = progress.conditionsProgress || {};
+          let doneCount = 0;
+          let totalCount = 0;
+          let overallPercent = 0;
+
+          for (const key of Object.keys(conditions)) {
+            const target = conditions[key] || 0;
+            const done = progressConditions[key] || 0;
+            doneCount += done;
+            totalCount += target;
+            overallPercent += Math.min((done / target) * 100, 100);
+          }
+
+          const avgPercent = Object.keys(conditions).length
+            ? Math.round(overallPercent / Object.keys(conditions).length)
+            : 0;
+
+          summaryList.push({
+            agentName: agent.fullName,
+            email: agent.email,
+            level: milestone.level,
+            milestoneTitle: milestone.title,
+            progress: `${doneCount}/${totalCount}`,
+            progressPercent: avgPercent,
+            status: progress.status || "Locked",
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, summary: summaryList });
+  } catch (error) {
+    console.error("❌ Error fetching all agent milestones:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
 
