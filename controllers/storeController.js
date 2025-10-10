@@ -1312,12 +1312,11 @@ exports.getCategoriesWithProducts = async (req, res) => {
   const { search } = req.query;
 
   if (!storeId) {
-    return res.status(400).json({ error: 'storeId is required' });
+    return res.status(400).json({ error: "storeId is required" });
   }
 
   try {
-    // Case-insensitive regex for search
-    const searchRegex = search ? new RegExp(search, 'i') : null;
+    const searchRegex = search ? new RegExp(search, "i") : null;
 
     // Fetch all categories for this store
     let categories = await Category.find({ restaurantId: storeId }).sort({ name: 1 });
@@ -1326,55 +1325,59 @@ exports.getCategoriesWithProducts = async (req, res) => {
     const categoryIds = categories.map(cat => cat._id);
     let products = await Product.find({ categoryId: { $in: categoryIds } }).sort({ name: 1 });
 
-    // Combine products under categories with search filtering
-    const categoriesWithProducts = categories
-      .map(cat => {
-        // Products of this category
-        const catProducts = products.filter(p => p.categoryId.toString() === cat._id.toString());
+    // Combine products under categories
+    const categoriesWithProducts = categories.map(cat => {
+      // Products of this category
+      const catProducts = products.filter(
+        p => p.categoryId.toString() === cat._id.toString()
+      );
 
-        let filteredProducts = catProducts;
-
-        if (searchRegex) {
-          // If search matches category name → keep all products
-          if (searchRegex.test(cat.name)) {
-            filteredProducts = catProducts;
-          } else {
-            // Otherwise, filter products by name
-            filteredProducts = catProducts.filter(p => searchRegex.test(p.name));
-          }
+      // Apply search filter if provided
+      let filteredProducts = catProducts;
+      if (searchRegex) {
+        // If category name matches → keep all products
+        if (searchRegex.test(cat.name)) {
+          filteredProducts = catProducts;
+        } else {
+          // Otherwise, filter products by name
+          filteredProducts = catProducts.filter(p => searchRegex.test(p.name));
         }
+      }
 
-        // Only return categories that have products (after filtering) or category name matches
-        if (filteredProducts.length > 0 || (searchRegex && searchRegex.test(cat.name))) {
-          return {
-            _id: cat._id,
-            name: cat.name,
-            availability: cat.availability,
-            products: filteredProducts.map(p => ({
-              _id: p._id,
-              name: p.name,
-              description: p.description,
-              price: p.price,
-              foodType: p.foodType,
-              availability: p.availability,
-              availableAfterTime: p.availableAfterTime,
-              preparationTime: p.preparationTime,
-              images: p.images,
-              active: p.active,
-              enableInventory: p.enableInventory,
-              stock: p.stock,
-              reorderLevel: p.reorderLevel
-            }))
-          };
-        }
+      // ✅ Always include category, even if product count is zero
+      // If search exists and category name or product matches, show filtered list
+      // If no search, show all categories (even empty)
+      if (!search || searchRegex.test(cat.name) || filteredProducts.length > 0) {
+        return {
+          _id: cat._id,
+          name: cat.name,
+          availability: cat.availability,
+          products: filteredProducts.map(p => ({
+            _id: p._id,
+            name: p.name,
+            description: p.description,
+            price: p.price,
+            foodType: p.foodType,
+            availability: p.availability,
+            availableAfterTime: p.availableAfterTime,
+            preparationTime: p.preparationTime,
+            images: p.images,
+            active: p.active,
+            enableInventory: p.enableInventory,
+            stock: p.stock,
+            reorderLevel: p.reorderLevel,
+          })),
+        };
+      }
 
-        return null;
-      })
-      .filter(Boolean); // Remove null categories
+      // If search provided and nothing matches, skip
+      return null;
+    }).filter(Boolean);
 
     res.json({ success: true, categories: categoriesWithProducts });
   } catch (err) {
-    console.error('Get categories with products error:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error("Get categories with products error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 };
+
