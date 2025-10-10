@@ -8,173 +8,138 @@ const MilestoneReward = require("../models/MilestoneRewardModel");
  * @param {boolean} isOnTime - Whether the delivery was on time
  * @param {number} earnings - The earnings from this delivery
  */
-const Order = require("../models/Order");
-const Agent = require("../models/Agent");
-const AgentEarning = require("../models/AgentEarning");
-const MilestoneReward = require("../models/MilestoneReward");
-const AgentMilestoneProgress = require("../models/AgentMilestoneProgress");
-const { updateAgentMilestoneProgress } = require("../services/milestoneService");
-const loyaltyService = require("../services/loyaltyService");
-const { getDrivingDistance, findApplicableSurgeZones } = require("../utils/distance");
-const geolib = require("geolib");
-
-const deliveryFlow = [
-  'awaiting_start', 'start_journey_to_restaurant', 'reached_restaurant',
-  'picked_up', 'out_for_delivery', 'reached_customer', 'delivered', 'cancelled'
-];
-
-exports.updateAgentDeliveryStatus = async (req, res) => {
+exports.updateAgentMilestoneProgress = async (agentId, orderData, isOnTime = false, earnings = 0) => {
   try {
-    const { orderId } = req.params;
-    const agentId = req.user._id;
-    const { status } = req.body;
-    const io = req.app.get("io");
+    console.log("=== updateAgentMilestoneProgress START ===");
+    console.log({ agentId, orderId: orderData?._id, isOnTime, earnings });
 
-    // Validate status
-    if (!deliveryFlow.includes(status)) {
-      return res.status(400).json({ message: "Invalid delivery status" });
-    }
-
-    // Fetch order
-    const order = await Order.findById(orderId)
-      .populate("customerId")
-      .populate("restaurantId")
-      .populate("orderItems.productId");
-
-    if (!order) return res.status(404).json({ message: "Order not found" });
-    if (order.assignedAgent?.toString() !== agentId.toString()) {
-      return res.status(403).json({ message: "You are not assigned to this order" });
-    }
-
-    const previousStatus = order.agentDeliveryStatus;
-
-    // Validate step transition
-    const currentIndex = deliveryFlow.indexOf(previousStatus);
-    const newIndex = deliveryFlow.indexOf(status);
-    if (status !== "cancelled" && newIndex !== currentIndex + 1) {
-      return res.status(400).json({
-        message: `Invalid step transition: can't move from ${previousStatus} to ${status}`,
-      });
-    }
-
-    // Update agent delivery status
-    order.agentDeliveryStatus = status;
-
-    // Map to customer status
-    const mapForCustomer = (agentStatus) => {
-      switch (agentStatus) {
-        case "picked_up": return "picked_up";
-        case "out_for_delivery":
-        case "reached_customer": return "on_the_way";
-        case "delivered": return "delivered";
-        default: return null;
-      }
-    };
-
-    const customerStatus = mapForCustomer(status);
-    if (customerStatus) order.orderStatus = customerStatus;
-    if (status === "delivered") order.deliveredAt = new Date();
-
-    await order.save();
-
-    // Socket notifications
-    const relevantStatuses = ["picked_up", "out_for_delivery", "reached_customer", "delivered"];
-    if (io && relevantStatuses.includes(status)) {
-      const customerRoom = `user_${order.customerId._id.toString()}`;
-      const adminRoom = `admin_group`;
-
-      io.to(customerRoom).emit("order_status_update", {
-        orderId: order._id,
-        newStatus: order.orderStatus,
-        previousStatus: mapForCustomer(previousStatus),
-        timestamp: new Date(),
+    // 1️⃣ Find existing agent progress
+    let agentProgress = await AgentMilestoneProgress.findOne({ agentId })
+      .populate({
+        path: 'milestones.milestoneId',
+        model: 'MilestoneReward'
       });
 
-      io.to(adminRoom).emit("order_status_update_admin", {
-        orderId: order._id,
-        newStatus: status,
-        previousStatus,
+    console.log("Existing agent progress:", agentProgress);
+
+    // 2️⃣ Create new progress if none exists
+    if (!agentProgress) {
+      console.log("No existing progress found. Creating new document...");
+      agentProgress = new AgentMilestoneProgress({
         agentId,
-        timestamp: new Date(),
+        milestones: []
       });
-
-      if (status === "delivered") {
-        io.to(customerRoom).emit("order_delivered", { orderId: order._id, timestamp: new Date() });
-        io.to(adminRoom).emit("order_delivered_admin", { orderId: order._id, agentId, timestamp: new Date() });
-      }
     }
 
-    // Handle delivered: agent availability, loyalty points, earnings
-    if (status === "delivered") {
-      await Agent.updateOne(
-        { _id: agentId },
-        { $set: { "agentStatus.status": "AVAILABLE", "agentStatus.availabilityStatus": "AVAILABLE" } }
-      );
+    // 3️⃣ Fetch active milestones
+    const allMilestones = await MilestoneReward.find({ active: true }).sort({ level: 1 });
+    console.log("Active milestones:", allMilestones);
 
-      // Award loyalty points
-      try {
-        await loyaltyService.awardPoints(order.customerId._id, order._id, order.subtotal);
-      } catch (err) {
-        console.error("Failed to award loyalty points:", err.message);
-      }
-
-      // Create agent earning if not exists
-      const existingEarning = await AgentEarning.findOne({ agentId, orderId });
-      if (!existingEarning) {
-        const earningsConfig = await AgentEarningSettings.findOne({ mode: "global" });
-        if (!earningsConfig) return res.status(500).json({ message: "Earnings configuration not found." });
-
-        let distanceKm = 0;
-        if (
-          Array.isArray(order.restaurantId?.location?.coordinates) &&
-          Array.isArray(order.deliveryLocation?.coordinates)
-        ) {
-          const fromCoords = order.restaurantId.location.coordinates;
-          const toCoords = order.deliveryLocation.coordinates;
-          const drivingDistance = await getDrivingDistance(fromCoords, toCoords);
-          distanceKm = drivingDistance ?? geolib.getDistance(
-            { latitude: fromCoords[1], longitude: fromCoords[0] },
-            { latitude: toCoords[1], longitude: toCoords[0] }
-          ) / 1000;
-        }
-
-        let surgeZones = [];
-        try {
-          surgeZones = await findApplicableSurgeZones({
-            fromCoords: order.restaurantId.location.coordinates,
-            toCoords: order.deliveryLocation.coordinates,
-            time: new Date(),
-          });
-        } catch (err) {
-          console.warn("Failed to fetch surge zones:", err.message);
-        }
-
-        await createAgentEarning({
-          agentId,
-          orderId,
-          earningsConfig: earningsConfig.toObject(),
-          surgeZones,
-          incentiveBonuses: { peakHourBonus: 0, rainBonus: 0 },
-          distanceKm,
-        });
-
-        await createAgentIncentive({ agentId });
-      }
-
-      // ✅ Update Milestone Progress
-      const isOnTime = order.deliveredAt && order.etaAt
-        ? order.deliveredAt <= order.etaAt
-        : false;
-      const earnings = order.totalAmount || 0;
-
-      await updateAgentMilestoneProgress(agentId, order, isOnTime, earnings);
+    if (!allMilestones.length) {
+      console.warn("No active milestones found. Exiting function.");
+      return { success: false, message: "No active milestones" };
     }
 
-    res.status(200).json({ message: "Delivery status updated", order });
+    // 4️⃣ Initialize milestones if empty
+    if (agentProgress.milestones.length === 0) {
+      console.log("Initializing milestones for agent...");
+      agentProgress.milestones = allMilestones.map(milestone => ({
+        milestoneId: milestone._id,
+        level: milestone.level,
+        conditionsProgress: {
+          totalDeliveries: 0,
+          onTimeDeliveries: 0,
+          totalEarnings: 0
+        },
+        overallProgress: 0,
+        status: milestone.level === 1 ? "In Progress" : "Locked",
+        rewardClaimed: { claimed: false, claimedAt: null },
+        history: []
+      }));
+    }
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    // 5️⃣ Update each milestone
+    for (let milestone of agentProgress.milestones) {
+      const milestoneConfig = allMilestones.find(m => m._id.toString() === milestone.milestoneId.toString());
+      if (!milestoneConfig) {
+        console.warn("Milestone config not found for:", milestone.milestoneId);
+        continue;
+      }
+
+      if (milestone.status === "Completed" || milestone.status === "Reward Claimed") continue;
+
+      // Lock if previous milestone not completed
+      if (milestone.level > 1) {
+        const prev = agentProgress.milestones.find(m => m.level === milestone.level - 1);
+        if (prev && prev.status !== "Completed" && prev.status !== "Reward Claimed") {
+          milestone.status = "Locked";
+          continue;
+        }
+      }
+
+      // 6️⃣ Save old progress for history
+      const oldProgress = { ...milestone.conditionsProgress };
+
+      // 7️⃣ Update progress values
+      milestone.conditionsProgress.totalDeliveries += 1;
+      if (isOnTime) milestone.conditionsProgress.onTimeDeliveries += 1;
+      milestone.conditionsProgress.totalEarnings += earnings;
+
+      // 8️⃣ Calculate progress percentages
+      const deliveryProgress = milestoneConfig.conditions.totalDeliveries
+        ? Math.min((milestone.conditionsProgress.totalDeliveries / milestoneConfig.conditions.totalDeliveries) * 100, 100)
+        : 0;
+
+      const onTimeProgress = milestoneConfig.conditions.onTimeDeliveries
+        ? Math.min((milestone.conditionsProgress.onTimeDeliveries / milestoneConfig.conditions.onTimeDeliveries) * 100, 100)
+        : 0;
+
+      const earningsProgress = milestoneConfig.conditions.totalEarnings
+        ? Math.min((milestone.conditionsProgress.totalEarnings / milestoneConfig.conditions.totalEarnings) * 100, 100)
+        : 0;
+
+      const totalConditions = [deliveryProgress, onTimeProgress, earningsProgress].filter(p => p > 0).length;
+      milestone.overallProgress = totalConditions > 0
+        ? Math.round((deliveryProgress + onTimeProgress + earningsProgress) / totalConditions)
+        : 0;
+
+      // 9️⃣ Check completion
+      const isCompleted = 
+        milestone.conditionsProgress.totalDeliveries >= milestoneConfig.conditions.totalDeliveries &&
+        milestone.conditionsProgress.onTimeDeliveries >= milestoneConfig.conditions.onTimeDeliveries &&
+        milestone.conditionsProgress.totalEarnings >= milestoneConfig.conditions.totalEarnings;
+
+      milestone.status = isCompleted ? "Completed" : "In Progress";
+      if (isCompleted) milestone.overallProgress = 100;
+
+      // 10️⃣ Add history
+      milestone.history.push({
+        updatedAt: new Date(),
+        changes: {
+          totalDeliveries: milestone.conditionsProgress.totalDeliveries - oldProgress.totalDeliveries,
+          onTimeDeliveries: milestone.conditionsProgress.onTimeDeliveries - oldProgress.onTimeDeliveries,
+          totalEarnings: milestone.conditionsProgress.totalEarnings - oldProgress.totalEarnings,
+          overallProgress: milestone.overallProgress
+        }
+      });
+      if (milestone.history.length > 50) milestone.history = milestone.history.slice(-50);
+    }
+
+    // 11️⃣ Save agent progress
+    try {
+      await agentProgress.save();
+      console.log("Agent milestone progress saved successfully");
+    } catch (err) {
+      console.error("Error saving agent milestone progress:", err.message);
+      return { success: false, error: err.message };
+    }
+
+    console.log("=== updateAgentMilestoneProgress END ===");
+    return { success: true, progress: agentProgress };
+
+  } catch (error) {
+    console.error("Error in updateAgentMilestoneProgress:", error);
+    return { success: false, error: error.message };
   }
 };
 
