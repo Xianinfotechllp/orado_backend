@@ -2049,39 +2049,39 @@ exports.getAllAgentsMilestoneSummary = async (req, res) => {
       const agentProgress = await AgentMilestoneProgress.findOne({ agentId: agent._id }).lean();
 
       for (const milestone of milestones) {
+        // Find agent's progress or initialize empty
         const progress = (agentProgress?.milestones || []).find(
           (m) => m.milestoneId?.toString() === milestone._id.toString()
-        );
+        ) || {
+          conditionsProgress: { totalDeliveries: 0, onTimeDeliveries: 0, totalEarnings: 0 },
+          status: "Locked"
+        };
 
-        if (progress) {
-          const conditions = milestone.conditions || {};
-          const progressConditions = progress.conditionsProgress || {};
-          let doneCount = 0;
-          let totalCount = 0;
-          let overallPercent = 0;
+        const conditions = milestone.conditions || {};
+        const progressConditions = progress.conditionsProgress || {};
 
-          for (const key of Object.keys(conditions)) {
-            const target = conditions[key] || 0;
-            const done = progressConditions[key] || 0;
-            doneCount += done;
-            totalCount += target;
-            overallPercent += Math.min((done / target) * 100, 100);
-          }
+        // Calculate individual progress for each condition
+        const conditionProgressArr = Object.keys(conditions).map((key) => {
+          const target = conditions[key] || 0;
+          const done = progressConditions[key] || 0;
+          const percent = target ? Math.min((done / target) * 100, 100) : 0;
+          return { key, done, target, percent };
+        });
 
-          const avgPercent = Object.keys(conditions).length
-            ? Math.round(overallPercent / Object.keys(conditions).length)
-            : 0;
+        // Average percent across all conditions
+        const avgPercent = conditionProgressArr.length
+          ? Math.round(conditionProgressArr.reduce((sum, c) => sum + c.percent, 0) / conditionProgressArr.length)
+          : 0;
 
-          summaryList.push({
-            agentName: agent.fullName,
-            email: agent.email,
-            level: milestone.level,
-            milestoneTitle: milestone.title,
-            progress: `${doneCount}/${totalCount}`,
-            progressPercent: avgPercent,
-            status: progress.status || "Locked",
-          });
-        }
+        summaryList.push({
+          agentName: agent.fullName,
+          email: agent.email,
+          level: milestone.level,
+          milestoneTitle: milestone.title,
+          progressDetails: conditionProgressArr, // ✅ include all conditions for display in admin
+          progressPercent: avgPercent,
+          status: progress.status || "Locked",
+        });
       }
     }
 
@@ -2091,4 +2091,6 @@ exports.getAllAgentsMilestoneSummary = async (req, res) => {
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
+
+
 

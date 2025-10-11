@@ -23,7 +23,8 @@ const {
  bulkEditProducts,getCategoriesByStore
  ,getProductsByStore,
  getCategoriesWithProducts,
- createCategoryWithStore
+ createCategoryWithStore,
+ toggleRestaurantStatus
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -94,5 +95,6 @@ router.post("/:storeId/categories", upload.array("images", 5), createCategoryWit
 router.get("/:storeId/products", getProductsByStore);
 
 router.get("/:storeId/categories-products",getCategoriesWithProducts)
+router.put("/toggle-status",toggleRestaurantStatus)
 
 module.exports = router;
