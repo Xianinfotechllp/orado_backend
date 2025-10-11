@@ -1439,3 +1439,47 @@ exports.toggleRestaurantStatus = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+
+exports.getStoreStatus = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "storeId is required" });
+    }
+
+    const store = await Restaurant.findById(storeId);
+    if (!store) {
+      return res.status(404).json({ success: false, message: "Store not found" });
+    }
+
+    let isOpen = store.active;
+
+    if (store.autoOnOff) {
+      const now = new Date();
+      const dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+      const today = dayNames[now.getDay()];
+      const todayHours = store.openingHours.find(h => h.day === today);
+
+      if (todayHours && !todayHours.isClosed) {
+        const currentTime = `${now.getHours()}`.padStart(2,"0") + ":" + `${now.getMinutes()}`.padStart(2,"0");
+        isOpen = currentTime >= todayHours.openingTime && currentTime <= todayHours.closingTime;
+      } else {
+        isOpen = false;
+      }
+    }
+
+    res.json({
+      success: true,
+      storeId: store._id,
+      name: store.name,
+      active: store.active,
+      currentStatus: isOpen ? "Open" : "Closed"
+    });
+
+  } catch (error) {
+    console.error("Get store status error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
