@@ -1952,6 +1952,7 @@ exports.updateOpeningHours = async (req, res) => {
 exports.updateStore = async (req, res) => {
   try {
     const { storeId } = req.params;
+
     const store = await Restaurant.findById(storeId);
     if (!store) {
       return res.status(404).json({ success: false, message: "Store not found" });
@@ -1980,13 +1981,26 @@ exports.updateStore = async (req, res) => {
     if (phone) store.phone = phone;
     if (email) store.email = email;
     if (address) store.address = address;
-    if (location) store.location = location;
+
+    // ✅ Handle location
+    if (location) {
+      if (location.type && location.coordinates) {
+        store.location = location;
+      } else if (location.coordinates) {
+        store.location = { type: "Point", coordinates: location.coordinates };
+      }
+    }
+
     if (minOrderAmount !== undefined) store.minOrderAmount = minOrderAmount;
     if (preparationTime !== undefined) store.preparationTime = preparationTime;
     if (paymentMethods) store.paymentMethods = paymentMethods;
     if (foodType) store.foodType = foodType;
     if (storeType) store.storeType = storeType;
-    if (Array.isArray(openingHours)) store.openingHours = openingHours;
+
+    // ✅ Handle opening hours
+    if (Array.isArray(openingHours)) {
+      store.openingHours = openingHours;
+    }
 
     // ───────────────────────────────
     // 2️⃣ Update KYC
@@ -1998,6 +2012,7 @@ exports.updateStore = async (req, res) => {
       if (aadharNumber) store.kyc.aadharNumber = aadharNumber;
     }
 
+    // ✅ Handle KYC documents upload
     if (req.files) {
       if (req.files.fssaiDoc?.[0]) {
         const result = await uploadOnCloudinary(req.files.fssaiDoc[0].path, "orado/kyc/fssai");
@@ -2024,12 +2039,15 @@ exports.updateStore = async (req, res) => {
       store.images.push(...uploadedImages.map((r) => r.secure_url));
     }
 
+    // Remove images if provided
     if (removeImageUrls) {
       const urlsToRemove = Array.isArray(removeImageUrls) ? removeImageUrls : JSON.parse(removeImageUrls);
       for (const url of urlsToRemove) {
         store.images = store.images.filter((img) => img !== url);
         const match = url.match(/orado\/stores\/images\/([^\.]+)/);
-        if (match && match[1]) await deleteFromCloudinary(`orado/stores/images/${match[1]}`);
+        if (match && match[1]) {
+          await deleteFromCloudinary(`orado/stores/images/${match[1]}`);
+        }
       }
     }
 
