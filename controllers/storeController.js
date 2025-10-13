@@ -7,8 +7,9 @@ const fs = require("fs");
 const User = require("../models/userModel");
 const xlsx = require("xlsx");
 const ExcelJS = require("exceljs");
-
-
+const moment = require('moment')
+const Order = require("../models/orderModel")
+const mongoose = require('mongoose')
 exports.createStore = async (req, res) => {
   try {
     const {
@@ -1483,3 +1484,218 @@ exports.getStoreStatus = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+
+
+
+exports.getMerchantReport = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { range, startDate, endDate } = req.query;
+
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "storeId is required" });
+    }
+
+    // 1️⃣ Date Range Setup
+    const now = moment().utcOffset("+05:30"); // IST timezone
+    let start, end;
+
+    switch (range) {
+      case "today":
+        start = now.clone().startOf("day");
+        end = now.clone().endOf("day");
+        break;
+      case "week":
+        start = now.clone().startOf("week");
+        end = now.clone().endOf("week");
+        break;
+      case "month":
+        start = now.clone().startOf("month");
+        end = now.clone().endOf("month");
+        break;
+      case "custom":
+        if (!startDate || !endDate) {
+          return res
+            .status(400)
+            .json({ success: false, message: "startDate and endDate required for custom range" });
+        }
+        start = moment(startDate).startOf("day");
+        end = moment(endDate).endOf("day");
+        break;
+      default:
+        // Default to current week
+        start = now.clone().startOf("week");
+        end = now.clone().endOf("week");
+    }
+
+    // 2️⃣ Query Base
+    const matchQuery = {
+      restaurantId: new mongoose.Types.ObjectId(storeId),
+      orderStatus: "delivered",
+      createdAt: { $gte: start.toDate(), $lte: end.toDate() },
+    };
+
+    // 3️⃣ Fetch Orders
+    const orders = await Order.find(matchQuery)
+      .populate("customerId", "name")
+      .select("subtotal orderItems orderStatus createdAt");
+
+    const totalOrders = orders.length;
+    const totalRevenue = orders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
+    const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    // 4️⃣ Dynamic Revenue Trend (Hourly / Daily / Datewise)
+    let groupByStage = {};
+    let labels = [];
+    let chartLabelType = "";
+
+    if (range === "today") {
+      groupByStage = {
+        $group: {
+          _id: { $hour: "$createdAt" },
+          totalRevenue: { $sum: "$subtotal" },
+        },
+      };
+      labels = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+      chartLabelType = "hourly";
+    } else if (range === "week" || !range) {
+      groupByStage = {
+        $group: {
+          _id: { $dayOfWeek: "$createdAt" },
+          totalRevenue: { $sum: "$subtotal" },
+        },
+      };
+      labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      chartLabelType = "daily";
+    } else {
+      groupByStage = {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          totalRevenue: { $sum: "$subtotal" },
+        },
+      };
+
+      const days = [];
+      let current = start.clone();
+      while (current.isSameOrBefore(end)) {
+        days.push(current.format("YYYY-MM-DD"));
+        current.add(1, "day");
+      }
+      labels = days;
+      chartLabelType = "datewise";
+    }
+
+    const revenueTrendAgg = await Order.aggregate([
+      { $match: matchQuery },
+      groupByStage,
+      { $sort: { _id: 1 } },
+    ]);
+
+    const dayMap = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    const revenueTrend = labels.map((label) => {
+      const found =
+        range === "today"
+          ? revenueTrendAgg.find((r) => r._id === parseInt(label))
+          : range === "week" || !range
+          ? revenueTrendAgg.find((r) => dayMap[r._id - 1] === label)
+          : revenueTrendAgg.find((r) => r._id === label);
+      return { x: label, amount: found ? found.totalRevenue : 0 };
+    });
+
+    // 5️⃣ Top Products
+    const topProductsAgg = await Order.aggregate([
+      { $match: matchQuery },
+      { $unwind: "$orderItems" },
+      {
+        $group: {
+          _id: "$orderItems.productId",
+          name: { $first: "$orderItems.name" },
+          totalSold: { $sum: "$orderItems.quantity" },
+        },
+      },
+      { $sort: { totalSold: -1 } },
+      { $limit: 5 },
+    ]);
+
+    const topProducts = topProductsAgg.map((p, idx) => ({
+      name: p.name,
+      sold: p.totalSold,
+      percent:
+        idx === 0 ? 100 : Math.round((p.totalSold / topProductsAgg[0].totalSold) * 100),
+    }));
+
+    // 6️⃣ Recent Orders
+    const recentOrders = orders
+      .slice(-5)
+      .reverse()
+      .map((o) => ({
+        orderId: o._id,
+        customer: o.customerId?.name || "Guest",
+        items: o.orderItems.length,
+        total: o.subtotal,
+        status: o.orderStatus,
+      }));
+
+    // 7️⃣ Product Performance
+    const productPerformanceAgg = await Order.aggregate([
+      { $match: matchQuery },
+      { $unwind: "$orderItems" },
+      {
+        $group: {
+          _id: "$orderItems.productId",
+          name: { $first: "$orderItems.name" },
+          sold: { $sum: "$orderItems.quantity" },
+          revenue: { $sum: "$orderItems.totalPrice" },
+        },
+      },
+    ]);
+
+    const products = await Product.find({ restaurantId: storeId })
+      .populate("categoryId", "name")
+      .lean();
+
+    const productPerformance = products.map((p) => {
+      const stats = productPerformanceAgg.find(
+        (x) => x._id?.toString() === p._id.toString()
+      );
+      return {
+        name: p.name,
+        category: p.categoryId?.name || "Uncategorized",
+        sold: stats?.sold || 0,
+        revenue: stats?.revenue || 0,
+        stock: p.stock || 0,
+      };
+    });
+
+    // ✅ Final Response
+    res.status(200).json({
+      success: true,
+      data: {
+        totalOrders,
+        totalRevenue,
+        avgOrder,
+        chartLabelType, // "hourly" | "daily" | "datewise"
+        revenueTrend,
+        topProducts,
+        recentOrders,
+        productPerformance,
+      },
+    });
+  } catch (error) {
+    console.error("Merchant Report Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
+
+

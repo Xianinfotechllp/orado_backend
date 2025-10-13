@@ -25,7 +25,8 @@ const {
  getCategoriesWithProducts,
  createCategoryWithStore,
  toggleRestaurantStatus,
- getStoreStatus
+ getStoreStatus,
+ getMerchantReport
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -99,4 +100,6 @@ router.get("/:storeId/categories-products",getCategoriesWithProducts)
 router.put("/toggle-status",toggleRestaurantStatus)
 router.get("/toggle-status",getStoreStatus)
 
+
+router.get("/:storeId/report", getMerchantReport);
 module.exports = router;
