@@ -30,7 +30,8 @@ const {
  getBasicInfo,
  updateBasicInfo,
  updateImages,
- getImages
+ getImages,
+ getKyc,updateKyc
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -119,4 +120,18 @@ router.put("/update-image/:storeId",upload.fields([
   ]),updateImages)
 
 
+
+
+  router.put(
+  "/:storeId/kyc",
+  upload.fields([
+    { name: "fssaiDoc", maxCount: 1 },
+    { name: "gstDoc", maxCount: 1 },
+    { name: "aadharDoc", maxCount: 1 },
+  ]),
+  updateKyc
+);
+
+// ✅ Get KYC Details (Merchant fetches KYC info)
+router.get("/:storeId/kyc", getKyc);
 module.exports = router;

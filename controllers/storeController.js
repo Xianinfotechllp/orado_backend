@@ -1818,8 +1818,86 @@ exports.updateImages = async (req, res) => {
   }
 };
 
+exports.getKyc = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const restaurant = await Restaurant.findById(storeId).select("kyc kycDocuments kycStatus");
+
+    if (!restaurant) {
+      return res.status(404).json({ success: false, message: "Store not found" });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        kyc: restaurant.kyc,
+        documents: restaurant.kycDocuments,
+     
+      },
+    });
+  } catch (err) {
+    console.error("Get KYC Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 
+
+exports.updateKyc = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const restaurant = await Restaurant.findById(storeId);
+
+    if (!restaurant) {
+      return res.status(404).json({ success: false, message: "Store not found" });
+    }
+
+    // ───────────────────────────────
+    // 1️⃣ Basic KYC Fields
+    // ───────────────────────────────
+    const { fssaiNumber, gstNumber, aadharNumber } = req.body;
+    if (fssaiNumber) restaurant.kyc.fssaiNumber = fssaiNumber;
+    if (gstNumber) restaurant.kyc.gstNumber = gstNumber;
+    if (aadharNumber) restaurant.kyc.aadharNumber = aadharNumber;
+
+    // ───────────────────────────────
+    // 2️⃣ Upload New Documents (if any)
+    // ───────────────────────────────
+    if (req.files) {
+      if (req.files.fssaiDoc?.[0]) {
+        const result = await uploadOnCloudinary(req.files.fssaiDoc[0].path, "orado/kyc/fssai");
+        restaurant.kycDocuments.fssaiDocUrl = result.secure_url;
+      }
+
+      if (req.files.gstDoc?.[0]) {
+        const result = await uploadOnCloudinary(req.files.gstDoc[0].path, "orado/kyc/gst");
+        restaurant.kycDocuments.gstDocUrl = result.secure_url;
+      }
+
+      if (req.files.aadharDoc?.[0]) {
+        const result = await uploadOnCloudinary(req.files.aadharDoc[0].path, "orado/kyc/aadhar");
+        restaurant.kycDocuments.aadharDocUrl = result.secure_url;
+      }
+    }
+
+    // ───────────────────────────────
+    // 3️⃣ Reset status to pending after update
+    // ───────────────────────────────
+    // restaurant.kycStatus = "pending";
+
+    await restaurant.save();
+
+    res.json({
+      success: true,
+      message: "KYC details updated successfully",
+      data: restaurant.kyc,
+      documents: restaurant.kycDocuments,
+    });
+  } catch (err) {
+    console.error("KYC Update Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 
 
