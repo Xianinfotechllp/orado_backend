@@ -1901,3 +1901,55 @@ exports.updateKyc = async (req, res) => {
 
 
 
+exports.getOpeningHours = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const store = await Restaurant.findById(storeId).select("openingHours");
+
+    if (!store)
+      return res.status(404).json({ success: false, message: "Store not found" });
+
+    res.json({ success: true, data: store.openingHours });
+  } catch (err) {
+    console.error("Get Opening Hours Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+exports.updateOpeningHours = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { openingHours } = req.body; // expect an array of openingHour objects
+
+    if (!Array.isArray(openingHours)) {
+      return res.status(400).json({ success: false, message: "openingHours must be an array" });
+    }
+
+    const store = await Restaurant.findById(storeId);
+    if (!store) {
+      return res.status(404).json({ success: false, message: "Store not found" });
+    }
+
+    // Replace old openingHours with new ones
+    store.openingHours = openingHours;
+
+    await store.save();
+
+    res.json({
+      success: true,
+      message: "Opening hours updated successfully",
+      data: store.openingHours,
+    });
+  } catch (err) {
+    console.error("Update Opening Hours Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+
+
+
+
+

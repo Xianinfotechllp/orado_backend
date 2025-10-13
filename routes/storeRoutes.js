@@ -31,7 +31,9 @@ const {
  updateBasicInfo,
  updateImages,
  getImages,
- getKyc,updateKyc
+ getKyc,updateKyc,
+ getOpeningHours,
+ updateOpeningHours
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -135,5 +137,6 @@ router.put("/update-image/:storeId",upload.fields([
 // ✅ Get KYC Details (Merchant fetches KYC info)
 router.get("/:storeId/kyc", getKyc);
 
-
+router.get("/:storeId/opening-hours", getOpeningHours);
+router.put("/:storeId/opening-hours",updateOpeningHours)
 module.exports = router;
