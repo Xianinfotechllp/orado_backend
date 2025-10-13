@@ -140,6 +140,14 @@ router.get("/:storeId/kyc", getKyc);
 
 router.get("/:storeId/opening-hours", getOpeningHours);
 router.put("/:storeId/opening-hours",updateOpeningHours)
-
-router.put("/:storeId/update",updateStore)
+router.put(
+  "/:storeId/update",
+  upload.fields([
+    { name: "images", maxCount: 10 },
+    { name: "fssaiDoc", maxCount: 1 },
+    { name: "gstDoc", maxCount: 1 },
+    { name: "aadharDoc", maxCount: 1 },
+  ]),
+  updateStore
+);
 module.exports = router;
