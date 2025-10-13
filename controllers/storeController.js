@@ -1749,6 +1749,7 @@ exports.updateBasicInfo = async (req, res) => {
   }
 };
 
+// ✅ Get images for a store
 exports.getImages = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -1761,6 +1762,63 @@ exports.getImages = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+
+exports.updateImages = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const store = await Restaurant.findById(storeId);
+    if (!store)
+      return res.status(404).json({ success: false, message: "Store not found" });
+
+    // 🟢 1️⃣ Handle new uploads
+    const imageFiles = req.files?.images || [];
+    let uploadedImages = [];
+
+    if (imageFiles.length) {
+      const results = await Promise.all(
+        imageFiles.map((file) =>
+          uploadOnCloudinary(file.path, "orado/stores/images")
+        )
+      );
+      uploadedImages = results.map((r) => r.secure_url);
+      store.images.push(...uploadedImages);
+    }
+
+    // 🔴 2️⃣ Handle deletions
+    const removeUrls = req.body.removeUrls
+      ? Array.isArray(req.body.removeUrls)
+        ? req.body.removeUrls
+        : JSON.parse(req.body.removeUrls)
+      : [];
+
+    if (removeUrls.length) {
+      for (const url of removeUrls) {
+        store.images = store.images.filter((img) => img !== url);
+
+        // Optional Cloudinary delete
+        const match = url.match(/orado\/stores\/images\/([^\.]+)/);
+        if (match && match[1]) {
+          const publicId = `orado/stores/images/${match[1]}`;
+          await deleteFromCloudinary(publicId);
+        }
+      }
+    }
+
+    await store.save();
+
+    res.json({
+      success: true,
+      message: "Store images updated successfully",
+      data: { images: store.images },
+    });
+  } catch (err) {
+    console.error("Update Images Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
 
 
 

@@ -28,7 +28,9 @@ const {
  getStoreStatus,
  getMerchantReport,
  getBasicInfo,
- updateBasicInfo
+ updateBasicInfo,
+ updateImages,
+ getImages
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -111,6 +113,10 @@ router.get("/basic-info/:storeId",getBasicInfo)
 router.put("/basic-info/:storeId",updateBasicInfo)
 
 
+router.get("/get-image/:storeId",getImages)
+router.put("/update-image/:storeId",upload.fields([
+    { name: "images", maxCount: 5 }
+  ]),updateImages)
 
 
 module.exports = router;
