@@ -1699,3 +1699,69 @@ exports.getMerchantReport = async (req, res) => {
 
 
 
+exports.getBasicInfo = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const store = await Restaurant.findById(storeId).select(
+      "name ownerName phone email address location minOrderAmount preparationTime paymentMethods foodType storeType"
+    );
+    if (!store) return res.status(404).json({ success: false, message: "Store not found" });
+    res.json({ success: true, data: store });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+exports.updateBasicInfo = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const {
+      name,
+      phone,
+      email,
+      address,
+      location,
+      minOrderAmount,
+      preparationTime,
+      paymentMethods,
+      foodType,
+      storeType,
+    } = req.body;
+
+    const store = await Restaurant.findById(storeId);
+    if (!store) return res.status(404).json({ success: false, message: "Store not found" });
+
+    // Update fields
+    if (name) store.name = name;
+    if (phone) store.phone = phone;
+    if (email) store.email = email;
+    if (address) store.address = address;
+    if (location) store.location = location;
+    if (minOrderAmount !== undefined) store.minOrderAmount = minOrderAmount;
+    if (preparationTime !== undefined) store.preparationTime = preparationTime;
+    if (paymentMethods) store.paymentMethods = paymentMethods;
+    if (foodType) store.foodType = foodType;
+    if (storeType) store.storeType = storeType;
+
+    await store.save();
+    res.json({ success: true, message: "Basic info updated", data: store });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.getImages = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const store = await Restaurant.findById(storeId).select("images banners");
+    if (!store)
+      return res.status(404).json({ success: false, message: "Store not found" });
+
+    res.json({ success: true, data: { images: store.images, banners: store.banners } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+
+
