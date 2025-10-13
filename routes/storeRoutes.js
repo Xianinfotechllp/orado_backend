@@ -134,4 +134,6 @@ router.put("/update-image/:storeId",upload.fields([
 
 // ✅ Get KYC Details (Merchant fetches KYC info)
 router.get("/:storeId/kyc", getKyc);
+
+
 module.exports = router;
