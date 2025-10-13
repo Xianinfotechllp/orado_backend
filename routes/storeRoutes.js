@@ -33,7 +33,8 @@ const {
  getImages,
  getKyc,updateKyc,
  getOpeningHours,
- updateOpeningHours
+ updateOpeningHours,
+ updateStore
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -139,4 +140,6 @@ router.get("/:storeId/kyc", getKyc);
 
 router.get("/:storeId/opening-hours", getOpeningHours);
 router.put("/:storeId/opening-hours",updateOpeningHours)
+
+router.put("/:storeId/update",updateStore)
 module.exports = router;

@@ -1949,6 +1949,104 @@ exports.updateOpeningHours = async (req, res) => {
 
 
 
+exports.updateStore = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const store = await Restaurant.findById(storeId);
+    if (!store) {
+      return res.status(404).json({ success: false, message: "Store not found" });
+    }
+
+    // ───────────────────────────────
+    // 1️⃣ Update Basic Info
+    // ───────────────────────────────
+    const {
+      name,
+      phone,
+      email,
+      address,
+      location,
+      minOrderAmount,
+      preparationTime,
+      paymentMethods,
+      foodType,
+      storeType,
+      openingHours,
+      kyc,
+      removeImageUrls
+    } = req.body;
+
+    if (name) store.name = name;
+    if (phone) store.phone = phone;
+    if (email) store.email = email;
+    if (address) store.address = address;
+    if (location) store.location = location;
+    if (minOrderAmount !== undefined) store.minOrderAmount = minOrderAmount;
+    if (preparationTime !== undefined) store.preparationTime = preparationTime;
+    if (paymentMethods) store.paymentMethods = paymentMethods;
+    if (foodType) store.foodType = foodType;
+    if (storeType) store.storeType = storeType;
+    if (Array.isArray(openingHours)) store.openingHours = openingHours;
+
+    // ───────────────────────────────
+    // 2️⃣ Update KYC
+    // ───────────────────────────────
+    if (kyc) {
+      const { fssaiNumber, gstNumber, aadharNumber } = kyc;
+      if (fssaiNumber) store.kyc.fssaiNumber = fssaiNumber;
+      if (gstNumber) store.kyc.gstNumber = gstNumber;
+      if (aadharNumber) store.kyc.aadharNumber = aadharNumber;
+    }
+
+    if (req.files) {
+      if (req.files.fssaiDoc?.[0]) {
+        const result = await uploadOnCloudinary(req.files.fssaiDoc[0].path, "orado/kyc/fssai");
+        store.kycDocuments.fssaiDocUrl = result.secure_url;
+      }
+      if (req.files.gstDoc?.[0]) {
+        const result = await uploadOnCloudinary(req.files.gstDoc[0].path, "orado/kyc/gst");
+        store.kycDocuments.gstDocUrl = result.secure_url;
+      }
+      if (req.files.aadharDoc?.[0]) {
+        const result = await uploadOnCloudinary(req.files.aadharDoc[0].path, "orado/kyc/aadhar");
+        store.kycDocuments.aadharDocUrl = result.secure_url;
+      }
+    }
+
+    // ───────────────────────────────
+    // 3️⃣ Update Images
+    // ───────────────────────────────
+    const imageFiles = req.files?.images || [];
+    if (imageFiles.length) {
+      const uploadedImages = await Promise.all(
+        imageFiles.map((file) => uploadOnCloudinary(file.path, "orado/stores/images"))
+      );
+      store.images.push(...uploadedImages.map((r) => r.secure_url));
+    }
+
+    if (removeImageUrls) {
+      const urlsToRemove = Array.isArray(removeImageUrls) ? removeImageUrls : JSON.parse(removeImageUrls);
+      for (const url of urlsToRemove) {
+        store.images = store.images.filter((img) => img !== url);
+        const match = url.match(/orado\/stores\/images\/([^\.]+)/);
+        if (match && match[1]) await deleteFromCloudinary(`orado/stores/images/${match[1]}`);
+      }
+    }
+
+    await store.save();
+
+    res.json({
+      success: true,
+      message: "Store updated successfully",
+      data: store
+    });
+  } catch (err) {
+    console.error("Update Store Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
 
 
 
