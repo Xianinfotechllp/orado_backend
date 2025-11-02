@@ -2094,3 +2094,237 @@ exports.getAllAgentsMilestoneSummary = async (req, res) => {
 
 
 
+
+
+
+
+exports.getAgentDisciplinarySummary = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    if (!agentId) {
+      return res.status(400).json({ success: false, message: "agentId is required" });
+    }
+
+    // Fetch agent and only needed fields
+    const agent = await Agent.findById(agentId)
+      .select("fullName email phoneNumber warnings leaves permissionRequests termination createdAt")
+      .lean();
+
+    if (!agent) {
+      return res.status(404).json({ success: false, message: "Agent not found" });
+    }
+
+    // 🧾 Warning Summary
+    const totalWarnings = agent.warnings?.length || 0;
+    const warnings = agent.warnings?.map((w) => ({
+      reason: w.reason,
+      severity: w.severity,
+      issuedAt: w.issuedAt?.toISOString().split("T")[0],
+    })) || [];
+
+    // 📝 Leave Summary
+    const totalApprovals = agent.leaves?.filter((l) => l.status === "Approved").length || 0;
+    const pendingApprovals = agent.leaves?.filter((l) => l.status === "Pending").length || 0;
+    const leaves = agent.leaves?.map((l) => ({
+      leaveType: l.leaveType,
+      reason: l.reason,
+      startDate: l.leaveStartDate?.toISOString().split("T")[0],
+      endDate: l.leaveEndDate?.toISOString().split("T")[0],
+      status: l.status,
+    })) || [];
+
+    // ⚙️ Termination Summary
+    let terminationSummary = {
+      terminated: agent.termination?.terminated || false,
+      message: "This agent has a clean employment record with no terminations.",
+    };
+
+    if (agent.termination?.terminated) {
+      terminationSummary = {
+        terminated: true,
+        terminatedAt: agent.termination.terminatedAt?.toISOString().split("T")[0],
+        reason: agent.termination.reason || "No reason specified",
+      };
+    }
+
+    // 🧮 Final structured data for Admin panel
+    const summary = {
+      agentName: agent.fullName,
+      phoneNumber: agent.phoneNumber,
+      email: agent.email,
+      joinDate: agent.createdAt?.toISOString().split("T")[0],
+      activeMonitoring: {
+        totalWarnings,
+        totalApprovals,
+        pendingApprovals,
+        terminations: terminationSummary.terminated ? 1 : 0,
+      },
+      warnings,
+      leaves,
+      termination: terminationSummary,
+    };
+
+    return res.status(200).json({ success: true, data: summary });
+  } catch (error) {
+    console.error("Error in getAgentDisciplinarySummary:", error);
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+exports.getAgentDisciplinarySummary = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    if (!agentId) {
+      return res.status(400).json({ success: false, message: "agentId is required" });
+    }
+
+    // Fetch agent and only needed fields
+    const agent = await Agent.findById(agentId)
+      .select("fullName email phoneNumber warnings leaves permissionRequests termination createdAt")
+      .lean();
+
+    if (!agent) {
+      return res.status(404).json({ success: false, message: "Agent not found" });
+    }
+
+    // 🧾 Warning Summary
+    const totalWarnings = agent.warnings?.length || 0;
+    const warnings = agent.warnings?.map((w) => ({
+      reason: w.reason,
+      severity: w.severity,
+      issuedAt: w.issuedAt?.toISOString().split("T")[0],
+    })) || [];
+
+    // 📝 Leave Summary
+    const totalApprovals = agent.leaves?.filter((l) => l.status === "Approved").length || 0;
+    const pendingApprovals = agent.leaves?.filter((l) => l.status === "Pending").length || 0;
+    const leaves = agent.leaves?.map((l) => ({
+      leaveType: l.leaveType,
+      reason: l.reason,
+      startDate: l.leaveStartDate?.toISOString().split("T")[0],
+      endDate: l.leaveEndDate?.toISOString().split("T")[0],
+      status: l.status,
+    })) || [];
+
+    // ⚙️ Termination Summary
+    let terminationSummary = {
+      terminated: agent.termination?.terminated || false,
+      message: "This agent has a clean employment record with no terminations.",
+    };
+
+    if (agent.termination?.terminated) {
+      terminationSummary = {
+        terminated: true,
+        terminatedAt: agent.termination.terminatedAt?.toISOString().split("T")[0],
+        reason: agent.termination.reason || "No reason specified",
+      };
+    }
+
+    // 🧮 Final structured data for Admin panel
+    const summary = {
+      agentName: agent.fullName,
+      phoneNumber: agent.phoneNumber,
+      email: agent.email,
+      joinDate: agent.createdAt?.toISOString().split("T")[0],
+      activeMonitoring: {
+        totalWarnings,
+        totalApprovals,
+        pendingApprovals,
+        terminations: terminationSummary.terminated ? 1 : 0,
+      },
+      warnings,
+      leaves,
+      termination: terminationSummary,
+    };
+
+    return res.status(200).json({ success: true, data: summary });
+  } catch (error) {
+    console.error("Error in getAgentDisciplinarySummary:", error);
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+  exports.getAgentTodaySummary = async (req, res) => {
+    try {
+      const agentId = req.query.params; // assuming logged-in agent
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // 1️⃣ Completed Orders
+      const completedOrders = await Order.find({
+        assignedAgent: agentId,
+        orderStatus: "delivered",
+        deliveredAt: { $gte: startOfDay, $lte: endOfDay },
+      }).select("agentAcceptedAt deliveredAt");
+
+      // 2️⃣ Cancelled Orders
+      const cancelledCount = await Order.countDocuments({
+        assignedAgent: agentId,
+        orderStatus: { $in: ["cancelled", "cancelled_by_customer"] },
+        updatedAt: { $gte: startOfDay, $lte: endOfDay },
+      });
+
+      // 3️⃣ Earnings from AgentEarning
+      const earnings = await AgentEarning.aggregate([
+        {
+          $match: {
+            agentId: new mongoose.Types.ObjectId(agentId),
+            createdAt: { $gte: startOfDay, $lte: endOfDay },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalEarnings: { $sum: "$totalEarning" },
+          },
+        },
+      ]);
+
+      const totalEarnings = earnings.length ? earnings[0].totalEarnings : 0;
+
+      // 4️⃣ Average Delivery Time (in minutes)
+      let avgTime = 0;
+      if (completedOrders.length > 0) {
+        const totalMinutes = completedOrders.reduce((sum, order) => {
+          if (order.agentAcceptedAt && order.deliveredAt) {
+            const diffMs =
+              new Date(order.deliveredAt) - new Date(order.agentAcceptedAt);
+            return sum + diffMs / 60000; // convert ms → minutes
+          }
+          return sum;
+        }, 0);
+        avgTime = (totalMinutes / completedOrders.length).toFixed(1);
+      }
+
+      // ✅ Final Summary
+      return res.json({
+        success: true,
+
+
+
+
+
+
+
+        
+        summary: {
+          completed: completedOrders.length,
+        
+          cancelled: cancelledCount,
+          earnings: totalEarnings,
+          avgTime: avgTime,
+        },
+      });
+    } catch (error) {
+      console.error("Error in getAgentTodaySummary:", error);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+
+
+
+

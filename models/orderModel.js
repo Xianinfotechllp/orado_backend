@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const mongoosePaginate = require("mongoose-paginate-v2");
+const Counter = require('./Counter');
 
 // Agent candidate sub-schema
 const agentCandidateSchema = new mongoose.Schema(
@@ -78,6 +79,13 @@ const agentCandidateSchema = new mongoose.Schema(
 );
 // Order schema
 const orderSchema = new mongoose.Schema({
+
+
+  // Human-readable sequential bill number
+  billId: { type: Number, unique: true, index: true },
+
+
+
 customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant' },
 cartId:{type: mongoose.Schema.Types.ObjectId, ref:"Cart"},
@@ -348,6 +356,28 @@ taxDetails: [{
 }]
 }, { timestamps: true });
 
+
+
+// Auto-increment billId before saving
+orderSchema.pre("save", async function (next) {
+  // Run only for new orders
+  if (this.isNew) {
+    try {
+      const counter = await Counter.findOneAndUpdate(
+        { name: "bill" },         // counter name
+        { $inc: { value: 1 } },   // increment by 1
+        { new: true, upsert: true } // create if doesn't exist
+      );
+
+      this.billId = counter.value;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  } else {
+    next();
+  }
+});
 
 
 

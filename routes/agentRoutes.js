@@ -137,6 +137,5 @@ router.get("/:agentId/cod-history", protectAgent, getCODHistory);
 
 
 
-
 router.post("/:agentId/update-location", protectAgent, updateAgentLocation);
 module.exports = router;

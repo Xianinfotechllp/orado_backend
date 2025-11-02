@@ -9,7 +9,7 @@ const categoriesSchema = mongoose.Schema({
 
   availability: {
   type: String,
-  enum: ['always', 'time-based', 'disabled'],
+  enum: ['always', 'time-based','time-range' ,'disabled'],
   default: 'always'
 },
 availableAfterTime: {
@@ -17,6 +17,26 @@ availableAfterTime: {
   default: null
 }
 ,
+
+  availableFromTime: {
+    type: String, 
+    default: null,
+  },
+  availableToTime: {
+    type: String, 
+    default: null,
+  },
+
+
+
+archived: {
+  type: Boolean,
+  default: false
+},
+archivedAt: {
+  type: Date,
+  default: null
+},
   active: {type:Boolean,default:true},
   // autoOnOff: Boolean,
   description: String,

@@ -116,6 +116,7 @@ exports.getAdminOrders = async (req, res) => {
       .lean();
 
     const formattedOrders = orders.map(order => ({
+      billId:order.billId,
       orderId: order._id,
       restaurantId: order.restaurantId?._id || null,
       orderStatus: order.orderStatus,
@@ -124,11 +125,11 @@ exports.getAdminOrders = async (req, res) => {
       restaurantLocation: order.restaurantId?.location,
       customerName: order.customerId?.name || 'Guest',
       customerId: order.customerId?._id || null,
-      amount: `₹ ${order.totalAmount?.toFixed(2)}`,
+      amount: `${order.totalAmount?.toFixed(2)}`,
       address: `${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state}`,
       deliveryMode: order.deliveryMode,
       paymentStatus: order.paymentStatus,
-      paymentMethod: order.paymentMethod === 'cash' ? 'Pay On Delivery' : order.paymentMethod,
+      paymentMethod: order.paymentMethod,
       preparationTime: `${order.preparationTime || 0} Mins`,
       orderTime: new Date(order.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
       scheduledDeliveryTime: new Date(order.orderTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
@@ -591,47 +592,52 @@ exports.updateOrderStatus = async (req, res) => {
 
 
 
-
-
 exports.getOrderLocationsByPeriod = async (req, res) => {
   try {
-    const { period, from, to } = req.query;
+    const { period, from, to, startTime, endTime } = req.query;
     let startDate, endDate;
 
-    // Determine date range based on period param
+    // Base date range by period
     switch (period) {
       case "today":
-        startDate = moment().startOf("day").toDate();
-        endDate = moment().endOf("day").toDate();
+        startDate = moment().startOf("day");
+        endDate = moment().endOf("day");
         break;
       case "this_week":
-        startDate = moment().startOf("isoWeek").toDate();
-        endDate = moment().endOf("isoWeek").toDate();
+        startDate = moment().startOf("isoWeek");
+        endDate = moment().endOf("isoWeek");
         break;
       case "this_month":
-        startDate = moment().startOf("month").toDate();
-        endDate = moment().endOf("month").toDate();
+        startDate = moment().startOf("month");
+        endDate = moment().endOf("month");
         break;
       case "custom":
         if (!from || !to) {
           return res.status(400).json({ message: "Custom range requires 'from' and 'to' dates." });
         }
-        startDate = new Date(from);
-        endDate = new Date(to);
+        startDate = moment(from);
+        endDate = moment(to);
         break;
       default:
         return res.status(400).json({ message: "Invalid period specified." });
     }
 
-    // Fetch allocation settings once
-    const allocationSettings = await AllocationSettings.findOne({});
-    if (!allocationSettings) {
-      console.warn("⚠️ AllocationSettings not found, using default expiry");
+    // ⏰ Apply time interval (optional)
+    if (startTime && endTime) {
+      const [startHour, startMin] = startTime.split(":").map(Number);
+      const [endHour, endMin] = endTime.split(":").map(Number);
+
+      // Set time portion of the range
+      startDate = startDate.clone().hour(startHour).minute(startMin).second(0);
+      endDate = endDate.clone().hour(endHour).minute(endMin).second(59);
     }
 
-    // Fetch orders with necessary fields and populate references
+    // Fetch allocation settings once
+    const allocationSettings = await AllocationSettings.findOne({});
+
+    // Fetch orders by date/time range
     const orders = await Order.find({
-      orderTime: { $gte: startDate, $lte: endDate },
+      orderTime: { $gte: startDate.toDate(), $lte: endDate.toDate() },
       "deliveryLocation.coordinates": { $exists: true, $ne: [] },
     })
       .select(`
@@ -644,12 +650,11 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
       .populate("agentCandidates.agent", "fullName phoneNumber profilePicture")
       .lean();
 
-    // Map orders to response format with allocation progress and expiresIn
+    // Process orders
     const mapped = orders.map(order => {
       const [lng, lat] = order.deliveryLocation?.coordinates || [];
 
-      // Determine request expiry seconds based on allocation method config
-      let expirySec = 120; // fallback 2 minutes
+      let expirySec = 120; // default 2 minutes
       switch (order.allocationMethod) {
         case "one_by_one":
           expirySec = allocationSettings?.oneByOneSettings?.requestExpirySec || expirySec;
@@ -660,12 +665,8 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         case "fifo":
           expirySec = allocationSettings?.fifoSettings?.requestTimeSec || expirySec;
           break;
-        // Add more allocation methods here if needed
-        default:
-          expirySec = 120;
       }
 
-      // Build agent candidates summary
       const candidateSummary = {
         total: order.agentCandidates?.length || 0,
         notified: 0,
@@ -677,44 +678,42 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
         candidates: [],
       };
 
-  if (order.agentCandidates?.length) {
-  order.agentCandidates.forEach(c => {
-    candidateSummary[c.status] = (candidateSummary[c.status] || 0) + 1;
+      if (order.agentCandidates?.length) {
+        order.agentCandidates.forEach(c => {
+          candidateSummary[c.status] = (candidateSummary[c.status] || 0) + 1;
+          if (c.isCurrentCandidate) {
+            let expiresIn = null;
+            if (c.notifiedAt) {
+              const notifiedAtMs = new Date(c.notifiedAt).getTime();
+              const nowMs = Date.now();
+              const elapsedMs = nowMs - notifiedAtMs;
+              const remainingMs = expirySec * 1000 - elapsedMs;
+              expiresIn = remainingMs > 0 ? Math.floor(remainingMs / 1000) : 0;
+            }
 
-    if (c.isCurrentCandidate) {
-      // Calculate how many seconds left before expiry
-      let expiresIn = null;
-      if (c.notifiedAt) {
-        const notifiedAtMs = new Date(c.notifiedAt).getTime();
-        const nowMs = Date.now();
-        const elapsedMs = nowMs - notifiedAtMs;
-        const remainingMs = expirySec * 1000 - elapsedMs;
-        expiresIn = remainingMs > 0 ? Math.floor(remainingMs / 1000) : 0;
+            candidateSummary.currentCandidate = {
+              agentId: c.agent._id,
+              fullName: c.agent.fullName,
+              status: c.status,
+              notifiedAt: c.notifiedAt,
+              assignedAt: c.assignedAt,
+              expiresIn,
+              totalTime: expirySec,
+            };
+          }
+
+          candidateSummary.candidates.push({
+            agentId: c.agent._id,
+            fullName: c.agent.fullName,
+            status: c.status,
+            assignedAt: c.assignedAt,
+            notifiedAt: c.notifiedAt,
+            respondedAt: c.respondedAt,
+            rejectionReason: c.rejectionReason || null,
+            isCurrentCandidate: c.isCurrentCandidate,
+          });
+        });
       }
-
-      candidateSummary.currentCandidate = {
-        agentId: c.agent._id,
-        fullName: c.agent.fullName,
-        status: c.status,
-        notifiedAt: c.notifiedAt,
-        assignedAt: c.assignedAt,
-        expiresIn, // seconds left to respond
-        totalTime: expirySec // Add this line to include the total time
-      };
-    }
-
-    candidateSummary.candidates.push({
-      agentId: c.agent._id,
-      fullName: c.agent.fullName,
-      status: c.status,
-      assignedAt: c.assignedAt,
-      notifiedAt: c.notifiedAt,
-      respondedAt: c.respondedAt,
-      rejectionReason: c.rejectionReason || null,
-      isCurrentCandidate: c.isCurrentCandidate,
-    });
-  });
-}
 
       return {
         _id: order._id,
@@ -746,6 +745,8 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
     return res.status(200).json({
       messageType: "success",
       period,
+      from: startDate.toISOString(),
+      to: endDate.toISOString(),
       count: mapped.length,
       data: mapped,
     });
@@ -754,6 +755,7 @@ exports.getOrderLocationsByPeriod = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
 
 
 

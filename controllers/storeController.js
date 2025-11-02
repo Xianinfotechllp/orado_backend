@@ -261,7 +261,10 @@ exports.createMerchantAndStore = async (req, res) => {
 
 exports.storeProduct = async (req, res) => {
   try {
-    // For FormData, we need to handle both body fields and files
+    // Convert body to a plain object (fix for [Object: null prototype])
+    const body = Object.fromEntries(Object.entries(req.body || {}));
+    console.log("Received body:", body);
+
     const {
       name,
       description,
@@ -272,6 +275,8 @@ exports.storeProduct = async (req, res) => {
       preparationTime,
       availability,
       availableAfterTime,
+      availableFromTime,
+      availableToTime,
       foodType,
       unit,
       enableInventory,
@@ -279,12 +284,15 @@ exports.storeProduct = async (req, res) => {
       reorderLevel,
       costPrice,
       minimumOrderQuantity,
-      maximumOrderQuantity
-    } = req.body;
+      maximumOrderQuantity,
+    } = body;
 
-    console.log('Received body:', req.body);
-    
-    // Convert string values to appropriate types
+    // 🧩 Validate required fields
+    if (!name || !price || !categoryId || !storeId || !foodType) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // 🧮 Convert numeric fields safely
     const numericFields = {
       price: parseFloat(price),
       preparationTime: parseInt(preparationTime) || 10,
@@ -292,86 +300,92 @@ exports.storeProduct = async (req, res) => {
       reorderLevel: parseInt(reorderLevel) || 0,
       costPrice: parseFloat(costPrice) || 0,
       minimumOrderQuantity: parseInt(minimumOrderQuantity) || 1,
-      maximumOrderQuantity: parseInt(maximumOrderQuantity) || 100
+      maximumOrderQuantity: parseInt(maximumOrderQuantity) || 100,
     };
 
-    // Validate required fields
-    if (!name || !price || !categoryId || !storeId || !foodType) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
-    // Validate numeric fields
+    // 🧠 Validate numeric constraints
     if (isNaN(numericFields.price)) {
       return res.status(400).json({ message: "Price must be a valid number" });
     }
-
     if (numericFields.minimumOrderQuantity < 1 || numericFields.maximumOrderQuantity < 1) {
       return res.status(400).json({ message: "Min and max quantity must be greater than 0" });
     }
-
     if (numericFields.maximumOrderQuantity < numericFields.minimumOrderQuantity) {
       return res.status(400).json({ message: "Max quantity must be >= min quantity" });
     }
 
-    // Handle image uploads
-    let images = [];
+    // 🕒 Handle availability
+    let availableFromField = null;
+    let availableToField = null;
+    let availableAfterField = null;
+
+    if (availability === "time-range") {
+      if (!availableFromTime || !availableToTime) {
+        return res.status(400).json({
+          message: "Please provide 'availableFromTime' and 'availableToTime' for time-range availability",
+        });
+      }
+      availableFromField = availableFromTime;
+      availableToField = availableToTime;
+    } else if (availability === "time-based") {
+      availableAfterField = availableAfterTime || null;
+    }
+
+    // 🖼️ Handle image uploads
+    let imageUrls = [];
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        const uploadResult = await uploadOnCloudinary(file.path, 'product_images');
-        if (uploadResult?.secure_url) {
-          images.push(uploadResult.secure_url);
+        try {
+          const uploadResult = await uploadOnCloudinary(file.path, "product_images");
+          if (uploadResult?.secure_url) imageUrls.push(uploadResult.secure_url);
+        } catch (err) {
+          console.error("Cloudinary upload failed:", err);
+        } finally {
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path); // Clean up temp file
         }
       }
     }
 
-    // Create product
+    // 🧾 Create product
     const newProduct = new Product({
       name,
-      description: description || '',
+      description: description || "",
       price: numericFields.price,
       categoryId,
       restaurantId: storeId,
-      images,
-      active: active !== undefined ? active : true,
+      images: imageUrls,
+      active: active === "true" || active === true,
       preparationTime: numericFields.preparationTime,
-      availability: availability || 'always',
-      availableAfterTime: availability === 'time-based' ? availableAfterTime : null,
+      availability: availability || "always",
+      availableAfterTime: availableAfterField,
+      availableFromTime: availableFromField,
+      availableToTime: availableToField,
       foodType,
       addOns: [],
-      specialOffer: {
-        discount: 0,
-        startDate: null,
-        endDate: null
-      },
+      specialOffer: { discount: 0, startDate: null, endDate: null },
       rating: 0,
       attributes: [],
-      unit: unit || 'piece',
-      enableInventory: enableInventory === 'true' || false,
+      unit: unit || "piece",
+      enableInventory: enableInventory === "true" || enableInventory === true,
       stock: numericFields.stock,
       reorderLevel: numericFields.reorderLevel,
-      revenueShare: {
-        type: 'percentage',
-        value: 10
-      },
+      revenueShare: { type: "percentage", value: 10 },
       costPrice: numericFields.costPrice,
       minimumOrderQuantity: numericFields.minimumOrderQuantity,
-      maximumOrderQuantity: numericFields.maximumOrderQuantity
+      maximumOrderQuantity: numericFields.maximumOrderQuantity,
     });
 
     await newProduct.save();
 
     return res.status(201).json({
-      message: "Product created successfully",
-      data: newProduct
+      message: "✅ Product created successfully",
+      data: newProduct,
     });
-
   } catch (err) {
-    console.error("Error storing product:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error("❌ Error storing product:", err);
+    return res.status(500).json({ message: "Internal server error", error: err.message });
   }
-};
-
-
+}; 
 exports.updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -381,9 +395,13 @@ exports.updateProduct = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    const body = req.body;
+    // 🔹 Convert req.body to a clean plain object
+    const body = Object.fromEntries(Object.entries(req.body || {}));
+    console.log("Sanitized Body:", body);
 
-    // Convert number fields safely
+    const updates = {};
+
+    // 🔹 Safely convert numeric fields
     const numericFields = {
       price: body.price ? parseFloat(body.price) : undefined,
       preparationTime: body.preparationTime ? parseInt(body.preparationTime) : undefined,
@@ -391,60 +409,94 @@ exports.updateProduct = async (req, res) => {
       reorderLevel: body.reorderLevel ? parseInt(body.reorderLevel) : undefined,
       costPrice: body.costPrice ? parseFloat(body.costPrice) : undefined,
       minimumOrderQuantity: body.minimumOrderQuantity ? parseInt(body.minimumOrderQuantity) : undefined,
-      maximumOrderQuantity: body.maximumOrderQuantity ? parseInt(body.maximumOrderQuantity) : undefined
+      maximumOrderQuantity: body.maximumOrderQuantity ? parseInt(body.maximumOrderQuantity) : undefined,
     };
 
-    // Prepare updates
-    const updates = {};
-
+    // 🔹 Basic fields
     if (body.name) updates.name = body.name;
     if (body.description !== undefined) updates.description = body.description;
     if (!isNaN(numericFields.price)) updates.price = numericFields.price;
     if (body.categoryId) updates.categoryId = body.categoryId;
     if (body.storeId) updates.restaurantId = body.storeId;
-    if (body.active !== undefined) updates.active = body.active === 'true';
     if (!isNaN(numericFields.preparationTime)) updates.preparationTime = numericFields.preparationTime;
-    if (body.availability) updates.availability = body.availability;
-    if (body.availability === 'time-based') updates.availableAfterTime = body.availableAfterTime;
     if (body.foodType) updates.foodType = body.foodType;
     if (body.unit) updates.unit = body.unit;
-    if (body.enableInventory !== undefined) updates.enableInventory = body.enableInventory === 'true';
     if (!isNaN(numericFields.stock)) updates.stock = numericFields.stock;
     if (!isNaN(numericFields.reorderLevel)) updates.reorderLevel = numericFields.reorderLevel;
     if (!isNaN(numericFields.costPrice)) updates.costPrice = numericFields.costPrice;
     if (!isNaN(numericFields.minimumOrderQuantity)) updates.minimumOrderQuantity = numericFields.minimumOrderQuantity;
     if (!isNaN(numericFields.maximumOrderQuantity)) updates.maximumOrderQuantity = numericFields.maximumOrderQuantity;
 
-    // Handle image removal
-    let finalImages = existingProduct.images || [];
-    if (body.imagesToRemove) {
-      const imagesToRemove = JSON.parse(body.imagesToRemove); // send as JSON string from frontend
-      finalImages = finalImages.filter(img => !imagesToRemove.includes(img));
+    // 🔹 Handle boolean fields safely
+    if (body.active && body.active !== "undefined") {
+      updates.active = body.active === "true" || body.active === true;
     }
 
-    // Upload new images
+    if (body.enableInventory && body.enableInventory !== "undefined") {
+      updates.enableInventory = body.enableInventory === "true" || body.enableInventory === true;
+    }
+
+    // 🔹 Handle availability fields
+    if (body.availability) {
+      updates.availability = body.availability;
+
+      if (body.availability === "time-range") {
+        // Validate input times
+        if (!body.availableFromTime || !body.availableToTime) {
+          return res.status(400).json({
+            message: "Please provide both 'availableFromTime' and 'availableToTime' for time-range availability.",
+          });
+        }
+
+        updates.availableFromTime = body.availableFromTime;
+        updates.availableToTime = body.availableToTime;
+      } else {
+        // Clear if not using time range
+        updates.availableFromTime = null;
+        updates.availableToTime = null;
+      }
+    }
+
+    // 🔹 Handle image removal
+    let finalImages = existingProduct.images || [];
+    if (body.imagesToRemove) {
+      try {
+        const imagesToRemove = JSON.parse(body.imagesToRemove);
+        finalImages = finalImages.filter((img) => !imagesToRemove.includes(img));
+      } catch (err) {
+        console.warn("⚠️ Invalid imagesToRemove format");
+      }
+    }
+
+    // 🔹 Handle new image uploads
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        const uploaded = await uploadOnCloudinary(file.path, 'product_images');
-        if (uploaded?.secure_url) {
-          finalImages.push(uploaded.secure_url);
+        try {
+          const uploaded = await uploadOnCloudinary(file.path, "product_images");
+          if (uploaded?.secure_url) {
+            finalImages.push(uploaded.secure_url);
+          }
+        } catch (err) {
+          console.error("Cloudinary upload failed:", err);
+        } finally {
+          // Clean up temp file
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
         }
       }
     }
 
     updates.images = finalImages;
 
-    // Final update
+    // 🔹 Perform update
     const updatedProduct = await Product.findByIdAndUpdate(id, updates, { new: true });
 
     return res.status(200).json({
-      message: "Product updated successfully",
-      data: updatedProduct
+      message: "✅ Product updated successfully",
+      data: updatedProduct,
     });
-
   } catch (err) {
-    console.error("Error updating product:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error("❌ Error updating product:", err);
+    return res.status(500).json({ message: "Internal server error", error: err.message });
   }
 };
 
@@ -456,18 +508,21 @@ exports.updateProduct = async (req, res) => {
 
 
 // Create Category
+
 exports.createCategory = async (req, res) => {
   try {
     const {
       name,
       restaurantId,
       availability,
-      availableAfterTime,
+      availableFromTime,
+      availableToTime,
       description,
       active,
       autoOnOff
     } = req.body;
 
+    // Validation
     if (!name || !restaurantId) {
       return res.status(400).json({ message: "Name and Restaurant ID are required" });
     }
@@ -483,7 +538,7 @@ exports.createCategory = async (req, res) => {
             imageUrls.push(uploaded.secure_url);
           }
 
-          // Safe unlink (delete temp file)
+          // Remove temporary local file
           if (fs.existsSync(file.path)) {
             fs.unlinkSync(file.path);
           }
@@ -493,16 +548,27 @@ exports.createCategory = async (req, res) => {
       }
     }
 
-    const category = await Category.create({
+    // Build category data object
+    const categoryData = {
       name,
       restaurantId,
       availability,
-      availableAfterTime,
       description,
       autoOnOff,
       active,
       images: imageUrls,
-    });
+    };
+
+    // Handle time-range availability
+    if (availability === "time-range") {
+      categoryData.availableFromTime = availableFromTime || null;
+      categoryData.availableToTime = availableToTime || null;
+    } else {
+      categoryData.availableFromTime = null;
+      categoryData.availableToTime = null;
+    }
+
+    const category = await Category.create(categoryData);
 
     return res.status(201).json({
       message: "Category created successfully",
@@ -514,6 +580,7 @@ exports.createCategory = async (req, res) => {
     return res.status(500).json({ message: "Server error", error });
   }
 };
+
 
 
 
@@ -579,22 +646,22 @@ exports.createCategoryWithStore = async (req, res) => {
 // Update Category
 exports.updateCategory = async (req, res) => {
   try {
-
-
-
-   
     const categoryId = req.params.id;
     const {
       name,
       availability,
-      availableAfterTime,
+      availableFromTime,
+      availableToTime,
       description,
       active,
       restaurantId, // optional
       autoOnOff,
       imagesToRemove = [],
     } = req.body;
+ 
 
+
+    console.log(req.body)
     const category = await Category.findById(categoryId);
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
@@ -602,7 +669,9 @@ exports.updateCategory = async (req, res) => {
 
     // Remove selected images
     if (imagesToRemove.length) {
-      category.images = category.images.filter(img => !imagesToRemove.includes(img));
+      category.images = category.images.filter(
+        (img) => !imagesToRemove.includes(img)
+      );
     }
 
     // Upload new images
@@ -614,14 +683,23 @@ exports.updateCategory = async (req, res) => {
       }
     }
 
-    // Update fields conditionally
-    category.name = name ?? category.name;
-    category.availability = availability ?? category.availability;
-    category.availableAfterTime = availableAfterTime ?? category.availableAfterTime;
-    category.description = description ?? category.description;
-    category.active = active ?? category.active;
-    category.autoOnOff = autoOnOff ?? category.autoOnOff;
-    if (restaurantId) category.restId = restaurantId;
+    // Update general fields
+    if (name) category.name = name;
+    if (availability) category.availability = availability;
+    if (description) category.description = description;
+    if (typeof active !== "undefined") category.active = active;
+    if (typeof autoOnOff !== "undefined") category.autoOnOff = autoOnOff;
+    if (restaurantId) category.restaurantId = restaurantId;
+
+    // Handle time-range availability specifically
+    if (availability === "time-range") {
+      category.availableFromTime = availableFromTime || null;
+      category.availableToTime = availableToTime || null;
+    } else {
+      // If not time-range, clear the times
+      category.availableFromTime = null;
+      category.availableToTime = null;
+    }
 
     await category.save();
 
@@ -683,6 +761,35 @@ exports.toggleProductStatus = async (req, res) => {
   }
 };
 
+exports.toggleCategoryStatus = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ 
+        message: 'Category not found', 
+        messageType: 'failure' 
+      });
+    }
+
+    // Toggle the current active status
+    category.active = !category.active;
+    await category.save();
+
+    res.status(200).json({
+      message: `Category ${category.active ? 'activated' : 'deactivated'} successfully.`,
+      messageType: 'success',
+      data: category
+    });
+  } catch (error) {
+    console.error('Error toggling category status:', error);
+    res.status(500).json({ 
+      message: 'Internal server error', 
+      messageType: 'failure' 
+    });
+  }
+};
 
 
 exports.deleteProduct = async (req, res) => {
@@ -1041,13 +1148,13 @@ exports.exportProducts = async (req, res) => {
 
 
 
-
 exports.bulkEditProducts = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
+    // Read Excel file buffer
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
@@ -1067,27 +1174,37 @@ exports.bulkEditProducts = async (req, res) => {
 
         const productId = String(row["Product ID"]).trim().replace(/^"|"$/g, "");
 
+        // ✅ Prepare update data safely
         const updateData = {
-          name: row["Product Name"],
-          description: row["Description"],
-          price: Number(row["Price"]) || 0,
+          name: row["Product Name"]?.trim() || undefined,
+          description: row["Description"]?.trim() || undefined,
+          price: row["Price"] ? Number(row["Price"]) : undefined,
           categoryId: row["Category ID"]
             ? String(row["Category ID"]).trim().replace(/^"|"$/g, "")
-            : null,
-          foodType: row["Food Type"]?.toLowerCase(),
+            : undefined,
+          foodType: row["Food Type"]
+            ? row["Food Type"].toLowerCase().trim()
+            : undefined,
           active: row["Status"] === "Active",
-          availability: row["Availability"] || "always",
-          availableAfterTime: row["Available After Time"] || null,
-          preparationTime: Number(row["Preparation Time (mins)"]) || 10,
+          availability: row["Availability"]?.trim() || undefined,
+          availableAfterTime: row["Available After Time"]?.trim() || undefined,
+          preparationTime: row["Preparation Time (mins)"]
+            ? Number(row["Preparation Time (mins)"])
+            : undefined,
           enableInventory: row["Has Inventory"] === "Yes",
-          stock: Number(row["Stock"]) || 0,
+          stock: row["Stock"] ? Number(row["Stock"]) : undefined,
           images: row["Images"]
             ? row["Images"].split(",").map((s) => s.trim())
-            : [],
+            : undefined,
         };
 
+        // ✅ Remove undefined fields (don’t overwrite existing data)
+        Object.keys(updateData).forEach(
+          (key) => updateData[key] === undefined && delete updateData[key]
+        );
+
         const updated = await Product.findByIdAndUpdate(productId, updateData, {
-          new: true, // return the updated document
+          new: true,
         });
 
         if (updated) {
@@ -1100,13 +1217,13 @@ exports.bulkEditProducts = async (req, res) => {
     }
 
     return res.json({
-      message: "Bulk update completed",
+      message: "✅ Bulk update completed",
       updatedCount,
-      updatedProducts, // 👈 send back updated products
+      updatedProducts,
       errors,
     });
   } catch (error) {
-    console.error("Bulk Edit Products Error:", error);
+    console.error("❌ Bulk Edit Products Error:", error);
     res.status(500).json({ message: "Failed to bulk update products." });
   }
 };
@@ -2067,5 +2184,106 @@ exports.updateStore = async (req, res) => {
 
 
 
+exports.archiveCategory = async (req, res) => {
+  try {
+    const category = await Category.findById(req.params.id);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    if (category.archived) {
+      return res.status(400).json({ message: "Category already archived" });
+    }
+
+    category.archived = true;
+    category.archivedAt = new Date();
+    await category.save();
+
+    res.status(200).json({ message: "Category archived successfully", category });
+  } catch (error) {
+    console.error("Error archiving category:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 
+
+exports.unarchiveCategory = async (req, res) => {
+  try {
+    const category = await Category.findById(req.params.id);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    if (!category.archived) {
+      return res.status(400).json({ message: "Category is not archived" });
+    }
+
+    category.archived = false;
+    category.archivedAt = null;
+    await category.save();
+
+    res.status(200).json({ message: "Category unarchived successfully", category });
+  } catch (error) {
+    console.error("Error unarchiving category:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+
+exports.archiveProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    if (product.archived) {
+      return res.status(400).json({ message: "Product already archived" });
+    }
+
+    product.archived = true;
+    product.archivedAt = new Date();
+    product.active = false; // optional: deactivate archived products
+
+    await product.save();
+
+    res.status(200).json({
+      message: "Product archived successfully",
+      data: product,
+    });
+  } catch (error) {
+    console.error("Error archiving product:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// ✅ Unarchive Product
+exports.unarchiveProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    if (!product.archived) {
+      return res.status(400).json({ message: "Product is not archived" });
+    }
+
+    product.archived = false;
+    product.archivedAt = null;
+    product.active = true; // optional: reactivate after unarchive
+
+    await product.save();
+
+    res.status(200).json({
+      message: "Product unarchived successfully",
+      data: product,
+    });
+  } catch (error) {
+    console.error("Error unarchiving product:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};

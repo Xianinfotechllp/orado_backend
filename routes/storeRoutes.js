@@ -34,7 +34,9 @@ const {
  getKyc,updateKyc,
  getOpeningHours,
  updateOpeningHours,
- updateStore
+ updateStore,archiveCategory
+ , unarchiveCategory,toggleCategoryStatus,
+ unarchiveProduct,archiveProduct
 } = require("../controllers/storeController");
 
 const { getNearbyStores, getStoreById } = require("../controllers/locationControllers");
@@ -150,4 +152,18 @@ router.put(
   ]),
   updateStore
 );
+
+router.put("/category/:categoryId/toggle-status", toggleCategoryStatus);
+// Archive category
+router.put("/category/:id/archive", archiveCategory);
+
+// Unarchive category
+router.put("/category/:id/unarchive", unarchiveCategory);
+
+router.put("/product/:id/archive",archiveProduct );
+
+// PUT /store/product/:id/unarchive
+router.put("/product/:id/unarchive", unarchiveProduct);
+
+router
 module.exports = router;

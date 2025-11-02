@@ -2461,26 +2461,27 @@ exports.placeOrderV2 = async (req, res) => {
       ? costSummary.finalAmount - walletAmount 
       : costSummary.finalAmount;
 
-// Map order items with product images, costPrice and preparation time
- const orderItems = await Promise.all(
-  cart.products.map(async (item) => {
-    const product = await Product.findById(item.productId).select("images costPrice preparationTime"); // include costPrice & preparationTime
+    // Map order items with product images, costPrice and preparation time
+    const orderItems = await Promise.all(
+      cart.products.map(async (item) => {
+        const product = await Product.findById(item.productId).select("images costPrice preparationTime");
 
-    return {
-      productId: item.productId,
-      quantity: item.quantity,
-      price: item.price,
-      name: item.name,
-      totalPrice: item.price * item.quantity,
-      costPrice: product?.costPrice || 0, // add costPrice, default to 0 if not set
-      image: product?.images?.[0] || null,
-      preparationTime: product?.preparationTime || 10,
-    };
-  })
-); const totalPreparationTimeV2 = Math.max(
-      ...orderItems.map((item) => item.preparationTime || 10)
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+          name: item.name,
+          totalPrice: item.price * item.quantity,
+          costPrice: product?.costPrice || 0,
+          image: product?.images?.[0] || null,
+          preparationTime: product?.preparationTime || 10,
+        };
+      })
     );
 
+    const totalPreparationTimeV2 = Math.max(
+      ...orderItems.map((item) => item.preparationTime || 10)
+    );
 
     const eta = calculateETA(restaurantCoords, userCoords, totalPreparationTimeV2);
     console.log("Calculated ETA (minutes):", eta);
@@ -2494,7 +2495,15 @@ exports.placeOrderV2 = async (req, res) => {
       orderStatus = "accepted_by_restaurant";
     }
 
-   
+    // Determine payment status based on payment method
+    let paymentStatus = "pending";
+    if (paymentMethod === "cash") {
+      paymentStatus = "pending"; // Cash payments are pending until delivered
+    } else if (paymentMethod === "wallet" && useWallet && walletAmount >= amountAfterWalletDeduction) {
+      paymentStatus = "completed"; // Full wallet payment is completed immediately
+    } else if (paymentMethod === "online" && amountAfterWalletDeduction === 0) {
+      paymentStatus = "completed"; // Online payment with full wallet coverage
+    }
 
     // Create and save order with all V2 fields including wallet info
     const newOrder = new Order({
@@ -2502,6 +2511,7 @@ exports.placeOrderV2 = async (req, res) => {
       restaurantId: cart.restaurantId,
       orderItems,
       paymentMethod,
+      paymentStatus, // Add payment status here
       orderStatus: orderStatus,
       preparationTime: totalPreparationTimeV2,
       deliveryLocation: { type: "Point", coordinates: userCoords },
@@ -2585,9 +2595,10 @@ exports.placeOrderV2 = async (req, res) => {
         });
         await walletTransaction.save();
         
-        // If wallet covers the entire amount, mark payment method as wallet
+        // If wallet covers the entire amount, mark payment method as wallet and update payment status
         if (walletAmount >= costSummary.finalAmount) {
           savedOrder.paymentMethod = "wallet";
+          savedOrder.paymentStatus = "completed";
           await savedOrder.save();
         }
       } catch (walletError) {
@@ -2604,6 +2615,7 @@ exports.placeOrderV2 = async (req, res) => {
     // Handle cash payment
     if (paymentMethod === "cash") {
       await reduceStockForOrder(orderItems, io);
+      // Cash payments remain as 'pending' until delivered
     }
 
     // Handle online payment
@@ -2627,6 +2639,7 @@ exports.placeOrderV2 = async (req, res) => {
         savedOrder.onlinePaymentDetails = {
           razorpayOrderId: razorpayOrder.id,
         };
+        // Online payment status remains 'pending' until Razorpay confirms
         await savedOrder.save();
 
         const populatedOrder = await Order.findById(savedOrder._id)
@@ -2665,10 +2678,12 @@ exports.placeOrderV2 = async (req, res) => {
           walletAmount: useWallet ? walletAmount : 0,
           currency: "INR",
           keyId: process.env.RAZORPAY_KEY_ID,
+          paymentStatus: savedOrder.paymentStatus // Include payment status in response
         });
       } else {
-        // Wallet covered the entire amount, update payment method to wallet
+        // Wallet covered the entire amount, update payment method to wallet and mark as completed
         savedOrder.paymentMethod = "wallet";
+        savedOrder.paymentStatus = "completed";
         await savedOrder.save();
       }
     }
@@ -2761,6 +2776,7 @@ exports.placeOrderV2 = async (req, res) => {
       walletAmount: useWallet ? walletAmount : 0,
       orderStatus: savedOrder.orderStatus,
       paymentMethod: savedOrder.paymentMethod,
+      paymentStatus: savedOrder.paymentStatus, // Include payment status in response
       messageType: "success",
       loyaltyPoints: {
         used: costSummary.loyaltyPoints.used,
@@ -2777,7 +2793,6 @@ exports.placeOrderV2 = async (req, res) => {
     });
   }
 };
-
 exports.getOrderPriceSummary = async (req, res) => {
   try {
     const { longitude, latitude, couponCode, cartId, userId } = req.body;

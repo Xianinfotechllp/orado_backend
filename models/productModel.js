@@ -43,16 +43,26 @@
 
     availability: {
       type: String,
-      enum: ['always', 'time-based', 'out-of-stock'],
+      enum: ['always', 'time-based','time-range', 'out-of-stock'],
       default: 'always'
     },
     availableAfterTime: {
       type: String, // e.g. '17:00'
       default: null
-    }
+    },
 
 
-    ,
+
+availableFromTime: {
+  type: String, // e.g., '10:00'
+  default: null,
+},
+availableToTime: {
+  type: String, // e.g., '11:00'
+  default: null,
+},
+
+    
       foodType: {
         type: String,
         enum: ['veg', 'non-veg'],
@@ -113,6 +123,15 @@
       type: Boolean,
       default: false, // Disabled by default
     },
+
+    archived: {
+  type: Boolean,
+  default: false
+},
+archivedAt: {
+  type: Date,
+  default: null
+},
       stock: {
         type: Number,
         default: 0
